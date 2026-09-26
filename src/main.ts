@@ -11,9 +11,22 @@ const ui = document.getElementById('ui') as HTMLElement;
 const renderer = new Renderer(canvas);
 const input = new Input(canvas);
 const audio = new AudioEngine();
+audio.setMuted(startMuted());
 const savedMouse = localStorage.getItem('ride.mouse');
 if (savedMouse === 'drag' || savedMouse === 'lock') input.mode = savedMouse;
 if (input.isTouch) input.mode = 'drag';
+
+/**
+ * Start muted when an agent is driving the page, so test runs stay quiet on the computer.
+ * The Claude app's built-in browser has "Claude/<version>" in its user agent; other automated
+ * browsers set navigator.webdriver. ?sound=1 turns sound on anyway, ?sound=0 forces it off.
+ */
+function startMuted(): boolean {
+  const sound = new URLSearchParams(location.search).get('sound');
+  if (sound === '1') return false;
+  if (sound === '0') return true;
+  return / Claude\//.test(navigator.userAgent) || navigator.webdriver === true;
+}
 
 let game: Game | null = null;
 let selected: WorldDef = WORLDS[0];
