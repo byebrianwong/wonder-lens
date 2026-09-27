@@ -41,6 +41,13 @@ Higher-quality building blocks (used by the Ghibli world; any world can use them
 - `SeaMaterial` (`src/engine/Water.ts`): water that reads the terrain height to show shallows, shore foam, sky reflection and sun glitter. Call `update(...)` every frame.
 - `buildDetailedTrack` and `mergeStatic` (`src/engine/Builders.ts`): a track with a gravel bed and shaped rails; and a helper that merges a static prop's meshes into one mesh per material, which cuts draw calls a lot.
 - Lighting keys accept `cloudShadow` (0..1): soft cloud shadows that drift over the ground (drawn in a post pass from the depth buffer).
+- Painted characters and props (`src/engine/Paint.ts`):
+  - `charToon({ map, color, rim, shade, ... })` is a cel-shaded material for characters. Its shadow side is a cool violet instead of grey, and it adds a thin rim of light on the silhouette that is strongest when the sun is behind the character.
+  - `Painter` paints canvas textures: gradients, soft blotches, brushed fur strokes, fine lines. `painter.at([x, y, z], draw)` draws at the point where a direction meets a sphere, so you can paint faces and markings straight onto a sphere's texture.
+  - `boxUV(geo, scale)` and `repeatUV(geo, u, v)` make a tiling texture keep the same size on every box face or cylinder, instead of stretching.
+  - UV layouts: on spheres and capsules the front (+z) is a quarter of the way across the texture; on cylinders and cones it is at the left edge. The top of the shape is the top of the canvas.
+  - The Ghibli painters in `src/worlds/ghibli/characterTextures.ts` (fur, anime faces, hair, cloth, scales, stone) and `propTextures.ts` (train panels, deck boards, bark, granite) are examples to copy.
+- Character gallery (dev only): with the dev server running, open `/gallery.html`. It shows one Ghibli character (or the sea train) at a time under the ride's own lighting presets; drag to orbit, wheel to zoom. From the console, `view('catbus', { u: 0.4, yaw: 0.6, dist: 14 })` frames a character and `advance(2)` steps the animation when the tab is in the background.
 Deterministic randomness: `new Rng(seed)` from `src/engine/math.ts` (`range`, `int`, `pick`, `chance`, `sign`), `fbm`/`noise2`.
 
 ## Gotchas learned the hard way

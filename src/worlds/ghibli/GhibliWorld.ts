@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { BuiltWorld, WorldContext, WorldDef, RideState } from '../../game/types';
 import { Subject } from '../../game/Subject';
-import { makeLighting } from '../../game/lighting';
+import { makeLighting, type LightKey } from '../../game/lighting';
 import { Sky } from '../../engine/Sky';
 import { Drift, Rain } from '../../engine/Particles';
 import { Rng, clamp, damp, fbm, lerp, smoothstep, TAU } from '../../engine/math';
@@ -22,6 +22,19 @@ const TRACK_PTS: [number, number, number][] = [
   [-10, 3.0, -640], [-30, 2.6, -760], [-40, 2.6, -900], [-25, 2.6, -1050], [-10, 2.6, -1160],
   [0, 3.0, -1290], [0, 3.6, -1360], [0, 3.6, -1430], [0, 1.4, -1475], [0, 0.45, -1520],
   [8, 0.45, -1650], [0, 0.45, -1800], [-12, 0.45, -1950], [0, 0.45, -2100], [0, 0.7, -2260], [0, 0.7, -2330],
+];
+
+/** Lighting keyframes along the ride (also used by the dev character gallery). */
+export const LIGHT_KEYS: LightKey[] = [
+  { u: 0.0, skyTop: 0x3b7fd8, skyMid: 0xa6d3f5, skyBottom: 0xeaf2f4, fog: 0xd6e6f0, fogDensity: 0.0021, sunDir: [0.45, 0.75, -0.35], sunColor: 0xfff4de, sunIntensity: 2.3, hemiSky: 0xbfe0ff, hemiGround: 0x6f8f5a, hemiIntensity: 0.8, exposure: 1.0, bloom: 0.3, saturation: 1.1, cloudShadow: 0.38 },
+  { u: 0.28, skyTop: 0x4a86d6, skyMid: 0xbcd6f0, skyBottom: 0xf7e0bc, fog: 0xe0e2e0, fogDensity: 0.0022, sunDir: [0.75, 0.45, -0.2], sunColor: 0xffe2b8, sunIntensity: 2.1, hemiSky: 0xbfd8f0, hemiGround: 0x7a8f55, hemiIntensity: 0.75, exposure: 1.0, bloom: 0.32, saturation: 1.1, cloudShadow: 0.34 },
+  { u: 0.4, skyTop: 0x5b6fb5, skyMid: 0xe8a878, skyBottom: 0xffcf95, fog: 0xe8bb95, fogDensity: 0.0028, sunDir: [0.9, 0.16, -0.1], sunColor: 0xffa060, sunIntensity: 1.7, hemiSky: 0xd0a0a0, hemiGround: 0x5a5a40, hemiIntensity: 0.7, exposure: 1.0, bloom: 0.4, saturation: 1.12, cloudShadow: 0.14 },
+  { u: 0.48, skyTop: 0x3c4160, skyMid: 0x707590, skyBottom: 0x968fa8, fog: 0x7c7f92, fogDensity: 0.0052, sunDir: [0.8, 0.2, 0.2], sunColor: 0xb8bccc, sunIntensity: 0.6, hemiSky: 0x9095b5, hemiGround: 0x3a3f42, hemiIntensity: 0.65, exposure: 0.98, bloom: 0.45, saturation: 0.98, sunGlow: 0.12, sunSize: 0.0 },
+  { u: 0.575, skyTop: 0x1c2038, skyMid: 0x3a3e5e, skyBottom: 0x5e5a76, fog: 0x4b4e66, fogDensity: 0.0068, sunDir: [0.6, 0.3, 0.3], sunColor: 0x9aa0c0, sunIntensity: 0.35, hemiSky: 0x5a6090, hemiGround: 0x25282c, hemiIntensity: 0.55, exposure: 0.95, bloom: 0.5, saturation: 0.95, stars: 0.2, sunGlow: 0.0, sunSize: 0.0 },
+  { u: 0.598, skyTop: 0x06060a, skyMid: 0x08080d, skyBottom: 0x0a0a10, fog: 0x07070b, fogDensity: 0.03, sunDir: [0.6, 0.3, 0.3], sunColor: 0x404050, sunIntensity: 0.1, hemiSky: 0x202030, hemiGround: 0x101014, hemiIntensity: 0.5, exposure: 0.9, bloom: 0.6, saturation: 0.9, sunGlow: 0.0, sunSize: 0.0 },
+  { u: 0.622, skyTop: 0x0a1030, skyMid: 0x1a2a55, skyBottom: 0x34477a, fog: 0x1c2748, fogDensity: 0.0042, sunDir: [-0.4, 0.6, -0.6], sunColor: 0xb4c6ee, sunIntensity: 1.1, hemiSky: 0x4a5c92, hemiGround: 0x161c30, hemiIntensity: 0.95, stars: 1, moon: 1, exposure: 1.12, bloom: 0.6, saturation: 1.05, sunGlow: 0.0, sunSize: 0.0 },
+  { u: 0.86, skyTop: 0x070c26, skyMid: 0x152148, skyBottom: 0x2e4070, fog: 0x172140, fogDensity: 0.0038, sunDir: [-0.5, 0.55, -0.6], sunColor: 0xb4c6ee, sunIntensity: 1.0, hemiSky: 0x465a90, hemiGround: 0x141a2c, hemiIntensity: 0.95, stars: 1, moon: 1, exposure: 1.12, bloom: 0.62, saturation: 1.05, sunGlow: 0.0, sunSize: 0.0 },
+  { u: 1.0, skyTop: 0x070c26, skyMid: 0x152148, skyBottom: 0x2e4070, fog: 0x172140, fogDensity: 0.0038, sunDir: [-0.5, 0.55, -0.6], sunColor: 0xb4c6ee, sunIntensity: 1.0, hemiSky: 0x465a90, hemiGround: 0x141a2c, hemiIntensity: 0.95, stars: 1, moon: 1, exposure: 1.12, bloom: 0.62, saturation: 1.05, sunGlow: 0.0, sunSize: 0.0 },
 ];
 
 function build(ctx: WorldContext): BuiltWorld {
@@ -811,17 +824,7 @@ function build(ctx: WorldContext): BuiltWorld {
   { const sp = makeShadowPassengers(4, rng, 14); sp.position.set(pE.x, pE.y, pE.z + 3); scene.add(sp); }
 
   // ---------- lighting ----------
-  const lighting = makeLighting([
-    { u: 0.0, skyTop: 0x3b7fd8, skyMid: 0xa6d3f5, skyBottom: 0xeaf2f4, fog: 0xd6e6f0, fogDensity: 0.0021, sunDir: [0.45, 0.75, -0.35], sunColor: 0xfff4de, sunIntensity: 2.3, hemiSky: 0xbfe0ff, hemiGround: 0x6f8f5a, hemiIntensity: 0.8, exposure: 1.0, bloom: 0.3, saturation: 1.1, cloudShadow: 0.38 },
-    { u: 0.28, skyTop: 0x4a86d6, skyMid: 0xbcd6f0, skyBottom: 0xf7e0bc, fog: 0xe0e2e0, fogDensity: 0.0022, sunDir: [0.75, 0.45, -0.2], sunColor: 0xffe2b8, sunIntensity: 2.1, hemiSky: 0xbfd8f0, hemiGround: 0x7a8f55, hemiIntensity: 0.75, exposure: 1.0, bloom: 0.32, saturation: 1.1, cloudShadow: 0.34 },
-    { u: 0.4, skyTop: 0x5b6fb5, skyMid: 0xe8a878, skyBottom: 0xffcf95, fog: 0xe8bb95, fogDensity: 0.0028, sunDir: [0.9, 0.16, -0.1], sunColor: 0xffa060, sunIntensity: 1.7, hemiSky: 0xd0a0a0, hemiGround: 0x5a5a40, hemiIntensity: 0.7, exposure: 1.0, bloom: 0.4, saturation: 1.12, cloudShadow: 0.14 },
-    { u: 0.48, skyTop: 0x3c4160, skyMid: 0x707590, skyBottom: 0x968fa8, fog: 0x7c7f92, fogDensity: 0.0052, sunDir: [0.8, 0.2, 0.2], sunColor: 0xb8bccc, sunIntensity: 0.6, hemiSky: 0x9095b5, hemiGround: 0x3a3f42, hemiIntensity: 0.65, exposure: 0.98, bloom: 0.45, saturation: 0.98, sunGlow: 0.12, sunSize: 0.0 },
-    { u: 0.575, skyTop: 0x1c2038, skyMid: 0x3a3e5e, skyBottom: 0x5e5a76, fog: 0x4b4e66, fogDensity: 0.0068, sunDir: [0.6, 0.3, 0.3], sunColor: 0x9aa0c0, sunIntensity: 0.35, hemiSky: 0x5a6090, hemiGround: 0x25282c, hemiIntensity: 0.55, exposure: 0.95, bloom: 0.5, saturation: 0.95, stars: 0.2, sunGlow: 0.0, sunSize: 0.0 },
-    { u: 0.598, skyTop: 0x06060a, skyMid: 0x08080d, skyBottom: 0x0a0a10, fog: 0x07070b, fogDensity: 0.03, sunDir: [0.6, 0.3, 0.3], sunColor: 0x404050, sunIntensity: 0.1, hemiSky: 0x202030, hemiGround: 0x101014, hemiIntensity: 0.5, exposure: 0.9, bloom: 0.6, saturation: 0.9, sunGlow: 0.0, sunSize: 0.0 },
-    { u: 0.622, skyTop: 0x0a1030, skyMid: 0x1a2a55, skyBottom: 0x34477a, fog: 0x1c2748, fogDensity: 0.0042, sunDir: [-0.4, 0.6, -0.6], sunColor: 0xb4c6ee, sunIntensity: 1.1, hemiSky: 0x4a5c92, hemiGround: 0x161c30, hemiIntensity: 0.95, stars: 1, moon: 1, exposure: 1.12, bloom: 0.6, saturation: 1.05, sunGlow: 0.0, sunSize: 0.0 },
-    { u: 0.86, skyTop: 0x070c26, skyMid: 0x152148, skyBottom: 0x2e4070, fog: 0x172140, fogDensity: 0.0038, sunDir: [-0.5, 0.55, -0.6], sunColor: 0xb4c6ee, sunIntensity: 1.0, hemiSky: 0x465a90, hemiGround: 0x141a2c, hemiIntensity: 0.95, stars: 1, moon: 1, exposure: 1.12, bloom: 0.62, saturation: 1.05, sunGlow: 0.0, sunSize: 0.0 },
-    { u: 1.0, skyTop: 0x070c26, skyMid: 0x152148, skyBottom: 0x2e4070, fog: 0x172140, fogDensity: 0.0038, sunDir: [-0.5, 0.55, -0.6], sunColor: 0xb4c6ee, sunIntensity: 1.0, hemiSky: 0x465a90, hemiGround: 0x141a2c, hemiIntensity: 0.95, stars: 1, moon: 1, exposure: 1.12, bloom: 0.62, saturation: 1.05, sunGlow: 0.0, sunSize: 0.0 },
-  ]);
+  const lighting = makeLighting(LIGHT_KEYS.map((k) => ({ ...k })));
 
   const sunTint = new THREE.Color();
   const world: BuiltWorld = {
