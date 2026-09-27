@@ -38,6 +38,10 @@ Then open http://localhost:5173. `npm run build` makes a static bundle in `dist/
 | Pause | Esc | |
 | Mute | M | |
 
+Sound starts muted when an agent or test tool drives the page (the Claude app's built-in browser, or any
+browser with `navigator.webdriver` set). Press M to unmute, or open the page with `?sound=1`. `?sound=0` starts
+muted in any browser.
+
 Snap ride: 24 shots per world. Every photo is scored on which subjects are in it, how large and centred they are,
 whether they are facing you, and whether you caught a special moment. The album at the end keeps your best shot of
 each subject, like the professor's review in Pokémon Snap.
