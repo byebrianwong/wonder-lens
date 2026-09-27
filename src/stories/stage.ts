@@ -52,7 +52,10 @@ export const DEFAULT_ARGS: StageArgs = { light: 'day', yaw: 28, pitch: 12, dista
  * 5% change in Totoro's fur colour (tested 2026-09-27, build 3). These stories draw the same
  * pixels on every run (160 of 161 snapshots were identical between builds 1 and 2; the other
  * differed by 1 level on 123 pixels), so a much stricter threshold is safe. 0.02 flags a
- * brightness change of about 2% or more.
+ * brightness change of about 2% or more (it caught the same Totoro change in build 7).
+ *
+ * A change under the threshold passes as "equal" and its picture becomes the new baseline,
+ * so several small changes in a row can add up without ever being flagged.
  */
 export const STAGE_PARAMETERS = { chromatic: { diffThreshold: 0.02 } };
 
