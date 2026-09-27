@@ -43,8 +43,8 @@ export class AudioEngine {
   private melodyTimer = 0;
   private lastMelodyIdx = 0;
   private birdTimer = 0;
-  private cricketTimer = 0;
-  private cricketOn = false;
+  /** One cricket chirps at a time, in a steady rhythm for a few seconds, then everything rests. */
+  private cricket = { on: false, bout: 0, next: 0, every: 0.7, hz: 4200, pan: 0 };
   private dripTimer = 0;
   private clackTimer = 0;
   private vehicleNode: { gain: GainNode; osc?: OscillatorNode; lfo?: OscillatorNode } | null = null;
@@ -148,18 +148,8 @@ export class AudioEngine {
       src.connect(hp).connect(lp).connect(g).connect(this.env.rain);
       src.start();
     }
-    // crickets: pulsing 4.4k tone
-    {
-      const osc = ctx.createOscillator(); osc.type = 'sine'; osc.frequency.value = 4400;
-      const am = ctx.createGain(); am.gain.value = 0;
-      const lfo = ctx.createOscillator(); lfo.type = 'square'; lfo.frequency.value = 14;
-      const lfoG = ctx.createGain(); lfoG.gain.value = 0.5;
-      const off = ctx.createConstantSource(); off.offset.value = 0.5;
-      lfo.connect(lfoG).connect(am.gain); off.connect(am.gain);
-      const g = ctx.createGain(); g.gain.value = 0.045;
-      osc.connect(am).connect(g).connect(this.env.crickets);
-      osc.start(); lfo.start(); off.start();
-    }
+    // crickets are short chirps scheduled in update() (see playCricket); each chirp carries its own level
+    this.env.crickets.gain.value = 1;
   }
 
   setEnvironment(levels: Partial<EnvLevels>) {
@@ -168,10 +158,9 @@ export class AudioEngine {
     const t = this.ctx.currentTime;
     for (const k of Object.keys(this.envTarget) as (keyof EnvLevels)[]) {
       const v = this.envTarget[k];
-      if (k === 'birds' || k === 'crickets') continue; // handled by schedulers / crickets gate
+      if (k === 'birds' || k === 'crickets') continue; // handled by their schedulers in update()
       this.env[k].gain.setTargetAtTime(v, t, 0.8);
     }
-    this.env.crickets.gain.setTargetAtTime(this.envTarget.crickets, t, 1.0);
   }
 
   setProfile(p: AmbienceProfile) {
@@ -280,13 +269,20 @@ export class AudioEngine {
         this.playBird(this.envTarget.birds);
       }
     }
-    // crickets gate: they chirp in bursts
-    this.cricketTimer -= dt;
-    if (this.cricketTimer <= 0) {
-      this.cricketTimer = 1 + Math.random() * 3;
-      this.cricketOn = !this.cricketOn;
-      const g = this.env!.crickets.gain;
-      g.setTargetAtTime(this.cricketOn ? this.envTarget.crickets : this.envTarget.crickets * 0.25, this.ctx.currentTime, 0.4);
+    // crickets: a few seconds of chirping from one cricket, then a rest, then another cricket somewhere else.
+    // The rests matter: without them a high chirp at a steady rhythm soon grates.
+    if (this.envTarget.crickets > 0.02) {
+      const c = this.cricket;
+      c.bout -= dt;
+      if (c.bout <= 0) {
+        c.on = !c.on;
+        c.bout = c.on ? 3 + Math.random() * 4 : 3 + Math.random() * 6;
+        if (c.on) { c.hz = 3900 + Math.random() * 700; c.pan = Math.random() * 1.4 - 0.7; c.every = 0.55 + Math.random() * 0.4; c.next = 0; }
+      }
+      if (c.on) {
+        c.next -= dt;
+        if (c.next <= 0) { c.next = c.every * (0.95 + Math.random() * 0.1); this.playCricket(this.envTarget.crickets); }
+      }
     }
     // rain drips
     if (this.envTarget.rain > 0.05) {
@@ -384,6 +380,24 @@ export class AudioEngine {
       const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.12, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
       o.connect(g).connect(pan); o.start(t); o.stop(t + 0.12);
     }
+  }
+  /** One chirp: three or four 20 ms pulses of a high sine, with soft edges so they don't click. */
+  private playCricket(level: number) {
+    const ctx = this.ctx!;
+    const c = this.cricket;
+    const t0 = ctx.currentTime + 0.01;
+    const pulses = Math.random() < 0.4 ? 4 : 3;
+    const gap = 0.034;
+    const peak = 0.035 * Math.min(1, level);
+    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = c.hz * (0.99 + Math.random() * 0.02);
+    const g = ctx.createGain(); g.gain.value = 0;
+    for (let i = 0; i < pulses; i++) {
+      const t = t0 + i * gap;
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(peak, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.022);
+    }
+    const pan = ctx.createStereoPanner(); pan.pan.value = c.pan;
+    o.connect(g).connect(pan); pan.connect(this.env!.crickets); pan.connect(this.reverbSend);
+    o.start(t0); o.stop(t0 + pulses * gap + 0.02);
   }
   private playDrip(level: number) {
     const ctx = this.ctx!;
