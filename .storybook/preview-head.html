@@ -1,0 +1,11 @@
+<style>
+  /* Snapshots must show the finished state of every screen, so CSS transitions and animations end at once. */
+  *, *::before, *::after {
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+  }
+  /* The game's stylesheet hides overflow on the page; Storybook needs to scroll tall stories. */
+  html, body { overflow: auto !important; height: auto !important; }
+</style>

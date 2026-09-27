@@ -101,6 +101,15 @@ class SceneFxPass extends ShaderPass {
   }
 }
 
+export interface RendererOptions {
+  /** Draw at this size in CSS pixels. Without it the renderer fills the window and follows resizes. */
+  size?: { width: number; height: number };
+  /** Use this pixel ratio instead of the screen's. */
+  pixelRatio?: number;
+  /** Keep the last frame in the canvas after it is shown, so it can be read back or screenshotted. */
+  preserveDrawingBuffer?: boolean;
+}
+
 export class Renderer {
   readonly renderer: THREE.WebGLRenderer;
   readonly composer: EffectComposer;
@@ -116,16 +125,19 @@ export class Renderer {
   private frameAvg = 16;
   private governorCooldown = 0;
   maxPixelRatio: number;
+  private fixedSize: RendererOptions['size'];
+  private onResize = () => this.resize();
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, opts: RendererOptions = {}) {
     this.canvas = canvas;
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
+    this.fixedSize = opts.size;
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false, preserveDrawingBuffer: opts.preserveDrawingBuffer ?? false });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.maxPixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    this.maxPixelRatio = opts.pixelRatio ?? Math.min(window.devicePixelRatio || 1, 2);
     this.pixelRatio = this.maxPixelRatio;
     this.renderer.setPixelRatio(this.pixelRatio);
 
@@ -143,7 +155,7 @@ export class Renderer {
     this.composer.addPass(this.grade);
     this.composer.addPass(new OutputPass());
     this.resize();
-    window.addEventListener('resize', () => this.resize());
+    if (!this.fixedSize) window.addEventListener('resize', this.onResize);
   }
 
   setScene(scene: THREE.Scene, camera: THREE.Camera) {
@@ -153,8 +165,8 @@ export class Renderer {
   }
 
   resize() {
-    this.w = window.innerWidth;
-    this.h = window.innerHeight;
+    this.w = this.fixedSize?.width ?? window.innerWidth;
+    this.h = this.fixedSize?.height ?? window.innerHeight;
     this.renderer.setPixelRatio(this.pixelRatio);
     this.renderer.setSize(this.w, this.h, false);
     this.composer.setPixelRatio(this.pixelRatio);
@@ -188,5 +200,14 @@ export class Renderer {
     this.grade.uniforms.time.value = time;
     this.fx.uniforms.time.value = time;
     this.composer.render();
+  }
+
+  /** Free the GPU resources. The game never calls this; Storybook does, because a page can hold only a few WebGL contexts. */
+  dispose() {
+    window.removeEventListener('resize', this.onResize);
+    this.composer.dispose();
+    this.bloom.dispose();
+    this.renderer.dispose();
+    this.renderer.forceContextLoss();
   }
 }

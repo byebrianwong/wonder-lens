@@ -11,6 +11,8 @@ import { Items } from './Items';
 import { Hud } from './Hud';
 import { scorePhoto, snapshotCanvas, type PhotoResult } from './Photo';
 import { Album, summarize } from './Album';
+import { applyLighting, emptyLightingState } from './lighting';
+import { pauseElement } from './Screens';
 
 export interface GameOptions {
   renderer: Renderer;
@@ -64,12 +66,7 @@ export class Game {
 
   constructor(o: GameOptions) {
     this.o = o;
-    this.light = {
-      skyTop: new THREE.Color(), skyMid: new THREE.Color(), skyBottom: new THREE.Color(), fog: new THREE.Color(), fogDensity: 0.002,
-      sunDir: new THREE.Vector3(0, 1, 0), sunColor: new THREE.Color(), sunIntensity: 1, hemiSky: new THREE.Color(), hemiGround: new THREE.Color(),
-      hemiIntensity: 1, stars: 0, moon: 0, exposure: 1, bloom: 0.4, saturation: 1, tint: new THREE.Color(1, 1, 1),
-      sunGlow: 0.6, sunSize: 0.02, horizonHeight: 0.08, cloudShadow: 0,
-    };
+    this.light = emptyLightingState();
   }
 
   async start() {
@@ -156,23 +153,7 @@ export class Game {
     this.o.input.suspended = true;
     this.o.audio.setPaused(true);
     this.o.input.releaseLock();
-    const p = document.createElement('div');
-    p.className = 'pause';
-    p.innerHTML = `
-      <div class="pause-box">
-        <h2>Paused</h2>
-        <p class="pause-sub">${this.o.def.title}</p>
-        <button class="btn primary" data-act="resume">Resume ride</button>
-        <button class="btn" data-act="relax">${this.hud.minimal ? 'Show camera HUD' : 'Relax: hide HUD'}</button>
-        <button class="btn" data-act="mouse">Mouse: ${this.o.input.mode === 'lock' ? 'locked (click to look)' : 'drag to look'}</button>
-        <button class="btn" data-act="mute">${this.o.audio.muted ? 'Unmute' : 'Mute'} sound</button>
-        <button class="btn" data-act="finish">Finish ride now</button>
-        <button class="btn ghost" data-act="exit">Back to worlds</button>
-        <div class="pause-help">
-          <span><kbd>Click</kbd>/<kbd>Space</kbd> photo</span><span><kbd>E</kbd> throw</span><span><kbd>Q</kbd> call</span>
-          <span><kbd>Wheel</kbd>/<kbd>Z</kbd> zoom</span><span><kbd>Shift</kbd> fast</span><span><kbd>Ctrl</kbd> slow</span><span><kbd>H</kbd> HUD</span>
-        </div>
-      </div>`;
+    const p = pauseElement({ title: this.o.def.title, hudHidden: this.hud.minimal, mouseMode: this.o.input.mode, muted: this.o.audio.muted });
     this.o.ui.appendChild(p);
     this.pauseEl = p;
     requestAnimationFrame(() => p.classList.add('show'));
@@ -243,30 +224,8 @@ export class Game {
   }
 
   private applyLighting(u: number) {
-    const L = this.light;
-    const w = this.world;
-    w.lighting(u, L);
-    const sky = w.sky.uniforms;
-    sky.topColor.value.copy(L.skyTop); sky.midColor.value.copy(L.skyMid); sky.bottomColor.value.copy(L.skyBottom);
-    sky.sunDir.value.copy(L.sunDir).normalize(); sky.sunColor.value.copy(L.sunColor);
-    sky.starAmount.value = L.stars; sky.moonAmount.value = L.moon;
-    sky.sunGlow.value = L.sunGlow; sky.sunSize.value = L.sunSize;
-    sky.moonDir.value.copy(L.sunDir).normalize();
-    sky.horizonColor.value.copy(L.fog); sky.horizonHeight.value = L.horizonHeight;
-    const fog = w.scene.fog as THREE.FogExp2 | null;
-    if (fog) { fog.color.copy(L.fog); fog.density = L.fogDensity; }
-    w.sun.color.copy(L.sunColor); w.sun.intensity = L.sunIntensity;
-    w.sun.position.copy(L.sunDir).multiplyScalar(180).add(this.ride.state.position);
-    w.sun.target.position.copy(this.ride.state.position);
-    w.sun.target.updateMatrixWorld();
-    w.hemi.color.copy(L.hemiSky); w.hemi.groundColor.copy(L.hemiGround); w.hemi.intensity = L.hemiIntensity;
-    const r = this.o.renderer;
-    r.renderer.toneMappingExposure = L.exposure;
-    r.bloom.strength = L.bloom;
-    r.grade.uniforms.saturation.value = L.saturation;
-    r.fx.uniforms.cloudShadow.value = L.cloudShadow;
-    r.fx.uniforms.sunDir.value.copy(L.sunDir);
-    (r.grade.uniforms.tint.value as THREE.Color).copy(L.tint);
+    this.world.lighting(u, this.light);
+    applyLighting(this.light, this.world, this.o.renderer, this.ride.state.position);
   }
 
   private loop(now: number) {

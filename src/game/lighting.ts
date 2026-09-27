@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { smoothstep } from '../engine/math';
-import type { LightingState } from './types';
+import type { Renderer } from '../engine/Renderer';
+import type { BuiltWorld, LightingState } from './types';
 
 export interface LightKey {
   u: number;
@@ -39,5 +40,42 @@ export function makeLighting(keys: LightKey[]) {
     mixC(a.tint ?? 0xffffff, b.tint ?? 0xffffff, out.tint);
     out.sunGlow = mixN(a.sunGlow, b.sunGlow, 0.6); out.sunSize = mixN(a.sunSize, b.sunSize, 0.02); out.horizonHeight = mixN(a.horizonHeight, b.horizonHeight, 0.08);
     out.cloudShadow = mixN(a.cloudShadow, b.cloudShadow, 0);
+  };
+}
+
+/**
+ * Writes a lighting state into a scene's sky, fog and lights and into the renderer's post effects.
+ * `focus` is the point the sun's shadow camera follows (the rider's position in the game).
+ */
+export function applyLighting(L: LightingState, w: Pick<BuiltWorld, 'sky' | 'scene' | 'sun' | 'hemi'>, r: Renderer, focus: THREE.Vector3) {
+  const sky = w.sky.uniforms;
+  sky.topColor.value.copy(L.skyTop); sky.midColor.value.copy(L.skyMid); sky.bottomColor.value.copy(L.skyBottom);
+  sky.sunDir.value.copy(L.sunDir).normalize(); sky.sunColor.value.copy(L.sunColor);
+  sky.starAmount.value = L.stars; sky.moonAmount.value = L.moon;
+  sky.sunGlow.value = L.sunGlow; sky.sunSize.value = L.sunSize;
+  sky.moonDir.value.copy(L.sunDir).normalize();
+  sky.horizonColor.value.copy(L.fog); sky.horizonHeight.value = L.horizonHeight;
+  const fog = w.scene.fog as THREE.FogExp2 | null;
+  if (fog) { fog.color.copy(L.fog); fog.density = L.fogDensity; }
+  w.sun.color.copy(L.sunColor); w.sun.intensity = L.sunIntensity;
+  w.sun.position.copy(L.sunDir).multiplyScalar(180).add(focus);
+  w.sun.target.position.copy(focus);
+  w.sun.target.updateMatrixWorld();
+  w.hemi.color.copy(L.hemiSky); w.hemi.groundColor.copy(L.hemiGround); w.hemi.intensity = L.hemiIntensity;
+  r.renderer.toneMappingExposure = L.exposure;
+  r.bloom.strength = L.bloom;
+  r.grade.uniforms.saturation.value = L.saturation;
+  r.fx.uniforms.cloudShadow.value = L.cloudShadow;
+  r.fx.uniforms.sunDir.value.copy(L.sunDir);
+  (r.grade.uniforms.tint.value as THREE.Color).copy(L.tint);
+}
+
+/** A lighting state with neutral defaults, for callers that fill it from `makeLighting`. */
+export function emptyLightingState(): LightingState {
+  return {
+    skyTop: new THREE.Color(), skyMid: new THREE.Color(), skyBottom: new THREE.Color(), fog: new THREE.Color(), fogDensity: 0.002,
+    sunDir: new THREE.Vector3(0, 1, 0), sunColor: new THREE.Color(), sunIntensity: 1, hemiSky: new THREE.Color(), hemiGround: new THREE.Color(),
+    hemiIntensity: 1, stars: 0, moon: 0, exposure: 1, bloom: 0.4, saturation: 1, tint: new THREE.Color(1, 1, 1),
+    sunGlow: 0.6, sunSize: 0.02, horizonHeight: 0.08, cloudShadow: 0,
   };
 }
