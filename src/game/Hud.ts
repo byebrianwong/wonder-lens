@@ -31,6 +31,8 @@ export class Hud {
   private captionTimer = 0;
   private hintTimer = 14;
   minimal = false;
+  /** Keep toasts, photo cards and centre messages on screen instead of timing them out. Storybook sets this so snapshots are stable. */
+  persist = false;
   private lastTag = '';
 
   onShoot: (() => void) | null = null;
@@ -106,11 +108,13 @@ export class Hud {
   toast(html: string, cls = '') {
     const t = el('div', 'toast ' + cls, this.toasts, html);
     requestAnimationFrame(() => t.classList.add('show'));
+    if (this.persist) return;
     setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 500); }, 3200);
   }
   centerMessage(text: string) {
     this.centerMsg.textContent = text;
     this.centerMsg.classList.add('show');
+    if (this.persist) return;
     setTimeout(() => this.centerMsg.classList.remove('show'), 1500);
   }
   /** Name shown under the reticle when a subject is near the centre. */
@@ -136,7 +140,7 @@ export class Hud {
         <div class="card-bonus">${r.bonuses.map((b) => `<span>${b}</span>`).join('')}</div>
       </div>`;
     requestAnimationFrame(() => card.classList.add('show'));
-    setTimeout(() => { card.classList.add('out'); setTimeout(() => card.remove(), 600); }, 4200);
+    if (!this.persist) setTimeout(() => { card.classList.add('out'); setTimeout(() => card.remove(), 600); }, 4200);
     while (this.cards.children.length > 3) this.cards.firstElementChild?.remove();
   }
   showLockHint(show: boolean) {
