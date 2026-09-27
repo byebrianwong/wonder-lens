@@ -5,7 +5,15 @@ import { makeLighting } from '../../game/lighting';
 import { Sky } from '../../engine/Sky';
 import { Drift, Rain } from '../../engine/Particles';
 import { Rng, clamp, damp, fbm, lerp, smoothstep, TAU } from '../../engine/math';
-import { PathField, buildTerrain, buildTrack, waterMaterial, cloudField, grassField, toon, glow, sphere, cyl, cone, box, instanced, lambert, mesh, scatter, roofGeometry, textTexture, type Placement } from '../../engine/Builders';
+import { PathField, buildTerrain, buildDetailedTrack, mergeStatic, grassField, toon, glow, sphere, cyl, box, lambert, mesh, textTexture, canvasTexture, type Placement } from '../../engine/Builders';
+import { HeightGrid } from '../../engine/HeightGrid';
+import { SeaMaterial } from '../../engine/Water';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { CumulusField } from '../../engine/Clouds';
+import { flowerField } from '../../engine/Foliage';
+import { GrassField } from '../../engine/Grass';
+import { ExclusionMask, addGroundDetail, paintedDetailTexture } from '../../engine/Ground';
+import { korikoTerrace } from './koriko';
 import { buildKorikoTown, buildSailboats, buildCountryside, buildForests, buildSpiritSea, buildSeaTrain, scatterPlacements } from './environment';
 import { makeTotoro, makeCatbus, makeKiki, makeNoFace, makeSootSprites, makeHaku, makeKodama, makePonyoSchool, makeRadishSpirit, makeHoppingLamp, makeLaputa, makeHowlsCastle, makeShadowPassengers, makeSeagulls, makeDirigible, makeSatsukiMei, makeChihiroSeated } from './characters';
 
@@ -32,8 +40,26 @@ function build(ctx: WorldContext): BuiltWorld {
     return { x: best.x, y: best.y };
   };
 
+  // track x and heading per unit of z, for fast distance-to-track estimates while building the grass maps
+  const TZ0 = -2400, TZ1 = 142;
+  const trackRow = new Float32Array((TZ1 - TZ0) * 2);
+  for (let i = 0; i < TZ1 - TZ0; i++) {
+    const z = TZ0 + i;
+    const a = trackPoint(z), b = trackPoint(z - 2);
+    trackRow[i * 2] = a.x;
+    trackRow[i * 2 + 1] = 2 / Math.hypot(b.x - a.x, 2); // cos of the heading relative to -z
+  }
+  const approxTrackDist = (x: number, z: number) => {
+    const i = clamp(Math.floor(z - TZ0), 0, TZ1 - TZ0 - 1);
+    return Math.abs(x - trackRow[i * 2]) * trackRow[i * 2 + 1];
+  };
+  const trackXAt = (z: number) => trackRow[clamp(Math.floor(z - TZ0), 0, TZ1 - TZ0 - 1) * 2];
+
+
   // ---------- terrain ----------
   const WATER = 0;
+  // Koriko's hill rises to the west (negative x); the town cuts it into terraces for its streets
+  const korikoHill = (x: number, z: number) => 3 + Math.max(0, -x - 22) * 0.22 + fbm(x * 0.01, z * 0.01, 3) * 8 - 3;
   const rawHeight = (x: number, z: number) => {
     // region weights along z
     // z decreases along the ride: smoothstep(a, b, z) with a > b rises as we travel
@@ -45,7 +71,7 @@ function build(ctx: WorldContext): BuiltWorld {
     let h = 0;
     if (wKoriko > 0) {
       // hill rising to the west (negative x), dropping into the sea to the east
-      const hill = 3 + Math.max(0, -x - 22) * 0.22 + fbm(x * 0.01, z * 0.01, 3) * 8 - 3;
+      const hill = korikoTerrace(x, z, trackXAt(z), korikoHill);
       const shore = smoothstep(46, 24, x); // 1 on land
       let hk = lerp(-5 + fbm(x * 0.02, z * 0.02, 2) * 2, hill, shore);
       // sandy beach shelf
@@ -77,7 +103,7 @@ function build(ctx: WorldContext): BuiltWorld {
     }
     return h;
   };
-  const heightAt = (x: number, z: number) => {
+  const heightFn = (x: number, z: number) => {
     const n = field.nearest(x, z, near);
     const raw = rawHeight(x, z);
     // flatten a corridor under the track; in the sea the track sits above the water so leave the seabed alone
@@ -86,27 +112,86 @@ function build(ctx: WorldContext): BuiltWorld {
     if (trackY < WATER + 0.3) return raw;
     return lerp(raw, Math.min(trackY, Math.max(trackY, raw - 8)), corridor);
   };
+  // sample the height once on the terrain's own grid; everything placed on the ground uses this so it sits on the mesh
+  const heights = new HeightGrid(-420, 420, -2400, 140, 4, heightFn);
+  const heightAt = (x: number, z: number) => heights.sample(x, z);
 
-  const grass1 = new THREE.Color(0x5f9e3e), grass2 = new THREE.Color(0x8cbf55), dry = new THREE.Color(0xb7a860), sand = new THREE.Color(0xd8c89a), seabed = new THREE.Color(0x22343a), rock = new THREE.Color(0x6f6a62), dark = new THREE.Color(0x1f3328);
+  // ---------- ground colour ----------
+  // Ghibli meadows: warm yellow-green in the light, cooler blue-green patches, streaks of straw
+  const cLush = new THREE.Color(0x3f7d31), cLight = new THREE.Color(0x7aab45), cCool = new THREE.Color(0x2f6b4c), cDry = new THREE.Color(0xa99f5a);
+  const cTown = new THREE.Color(0x5b9a40), cIsle = new THREE.Color(0x2f5a3c);
+  const sand = new THREE.Color(0xd8c89a), seabed = new THREE.Color(0x22343a), rock = new THREE.Color(0x77705f), dark = new THREE.Color(0x1f3328);
+  const meadow = (x: number, z: number, out: THREE.Color) => {
+    const n1 = fbm(x * 0.016, z * 0.016, 3);
+    const n2 = fbm(x * 0.06 + 31, z * 0.06 - 12, 2);
+    out.copy(cLush).lerp(cLight, smoothstep(0.3, 0.75, n1));
+    out.lerp(cCool, smoothstep(0.45, 0.78, n2) * 0.6);
+    out.lerp(cDry, smoothstep(0.55, 0.85, fbm(x * 0.011 + 7, z * 0.011, 2)) * 0.55);
+    // Koriko's lawns are kept shorter and brighter
+    const town = 1 - smoothstep(-560, -640, z);
+    if (town > 0) out.lerp(cTown, town * 0.35);
+    // the spirit-sea islands: deep, cool greens
+    const isle = smoothstep(-1420, -1460, z);
+    if (isle > 0) out.lerp(cIsle, isle * 0.7);
+    return out;
+  };
+  // grass is kept off the track bed, beaches, steep rock and anything registered in the mask below
+  const grassMask = new ExclusionMask(-180, 170, TZ0, TZ1, 1);
+  // country lanes and footpaths: bare earth where people walk, short grass along the verges
+  const BUS_ROAD = [[60, -980], [40, -1040], [24, -1100], [16, -1150], [18, -1200], [40, -1250], [90, -1320], [160, -1380]];
+  const HILL_PATH = [[-40, -800], [-44, -812], [-50, -834], [-58, -856], [-72, -876], [-90, -890]];
+  const roadMask = new ExclusionMask(-180, 170, TZ0, TZ1, 1);
+  const shortMask = new ExclusionMask(-180, 170, TZ0, TZ1, 1);
+  {
+    const along = (pts: number[][]) => new THREE.CatmullRomCurve3(pts.map(([x, z]) => new THREE.Vector3(x, 0, z))).getSpacedPoints(120).map((p) => ({ x: p.x, z: p.z }));
+    const bus = along(BUS_ROAD), hill = along(HILL_PATH);
+    roadMask.path(bus, 3.6); shortMask.path(bus, 9);
+    roadMask.path(hill, 1.6); shortMask.path(hill, 5);
+    // the bus stop: a mown patch so Totoro and the girls are not lost in the grass
+    shortMask.circle(10, -1154, 8);
+    shortMask.rect(3, -1156, 26, 34, 0, 0);
+    roadMask.circle(9.5, -1154, 2.8);
+    roadMask.build(1.2); shortMask.build(2.5);
+  }
+  const tmpCol = new THREE.Color();
+  const grassDensity = (x: number, z: number, y: number, slope: number) => {
+    if (y < WATER + 0.55) return 0;
+    // out on the spirit sea only the islands have grass, kept back from the shore
+    if (z < -1432 && y < WATER + 1.2) return 0;
+    let d = smoothstep(2.4, 3.6, approxTrackDist(x, z));
+    d *= 1 - smoothstep(0.22, 0.45, slope);
+    if (z > -600) d *= smoothstep(1.0, 2.0, y);
+    // thin, bare patches here and there
+    d *= 0.55 + 0.45 * smoothstep(0.3, 0.55, fbm(x * 0.05 - 3, z * 0.05 + 9, 2));
+    return d * grassMask.at(x, z) * roadMask.at(x, z);
+  };
+
+  const terrainMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const detailTex = paintedDetailTexture(20260926);
+  addGroundDetail(terrainMat, detailTex, { scaleA: 30, scaleB: 8, strength: 0.75, roads: roadMask, roadColor: 0x9a8660 });
+  const terrainColor = (x: number, z: number, y: number, slope: number, out: THREE.Color) => {
+    const n = fbm(x * 0.05, z * 0.05, 3);
+    if (y < WATER + 0.3) { out.copy(seabed).lerp(sand, smoothstep(-2, 0.3, y)); return; }
+    if (z < -1430) { out.copy(dark).lerp(rock, slope * 1.5).offsetHSL(0, 0, (n - 0.5) * 0.08); return; }
+    meadow(x, z, out);
+    if (y < 1.4 && z > -600) out.lerp(sand, 0.7 * (1 - smoothstep(1.0, 1.4, y)));
+    out.lerp(rock, smoothstep(0.3, 0.6, slope));
+    // under dense grass the ground reads as the shadowed base of the blades
+    out.multiplyScalar(0.86 + 0.14 * (1 - smoothstep(2.4, 3.6, approxTrackDist(x, z))));
+  };
   const terrain = buildTerrain({
     xMin: -420, xMax: 420, zMin: -2400, zMax: 140, res: 4, chunk: 280,
     height: heightAt,
-    color: (x, z, y, slope, out) => {
-      const n = fbm(x * 0.05, z * 0.05, 3);
-      if (y < WATER + 0.3) { out.copy(seabed).lerp(sand, smoothstep(-2, 0.3, y)); return; }
-      if (z < -1430) { out.copy(dark).lerp(rock, slope * 1.5).offsetHSL(0, 0, (n - 0.5) * 0.08); return; }
-      out.copy(grass1).lerp(grass2, n);
-      if (y < 1.4 && z > -600) out.lerp(sand, 0.7);
-      out.lerp(dry, smoothstep(0.45, 0.8, fbm(x * 0.02, z * 0.02, 2)) * 0.5);
-      out.lerp(rock, smoothstep(0.35, 0.7, slope));
-    },
+    color: terrainColor,
+    material: terrainMat,
   });
   scene.add(terrain);
 
-  // rice paddies: flat pale-green squares with rows of short grass
+  // rice paddies: shallow water that catches the sky, grassy levees, and young rice planted in rows
   const paddies: THREE.Group = new THREE.Group();
-  const paddyMat = new THREE.MeshLambertMaterial({ color: 0x7db56a });
-  const paddyWater = new THREE.MeshLambertMaterial({ color: 0x9fc9c2, transparent: true, opacity: 0.55 });
+  const mudMat = new THREE.MeshLambertMaterial({ color: 0x55503a });
+  const paddyWater = new THREE.MeshPhongMaterial({ color: 0x9cc4c6, specular: 0xfff4e0, shininess: 140, transparent: true, opacity: 0.82, depthWrite: false });
+  const leveeMat = new THREE.MeshLambertMaterial({ color: 0x5e9444 });
   const riceBlades: Placement[] = [];
   for (let i = 0; i < 26; i++) {
     const z = rng.range(-1300, -620);
@@ -117,50 +202,37 @@ function build(ctx: WorldContext): BuiltWorld {
     const y = heightAt(x, z);
     if (Math.abs(heightAt(x + w / 2, z + d / 2) - y) > 1.8 || Math.abs(heightAt(x - w / 2, z - d / 2) - y) > 1.8) continue;
     if (Math.hypot(x - 26, z + 740) < 20) continue;
-    paddies.add(mesh(new THREE.BoxGeometry(w, 0.5, d), paddyMat, x, y + 0.05, z));
-    paddies.add(mesh(new THREE.PlaneGeometry(w - 1.5, d - 1.5), paddyWater, x, y + 0.32, z).rotateX(-Math.PI / 2));
-    for (let rx = -w / 2 + 1.2; rx < w / 2 - 1; rx += 1.1) for (let rz = -d / 2 + 1.2; rz < d / 2 - 1; rz += 1.1) {
-      if (rng.chance(0.55)) riceBlades.push({ x: x + rx + rng.range(-0.15, 0.15), y: y + 0.3, z: z + rz + rng.range(-0.15, 0.15), scale: rng.range(0.7, 1.1), rot: rng.range(0, TAU) });
+    paddies.add(mesh(new THREE.BoxGeometry(w, 0.8, d), mudMat, x, y - 0.2, z));
+    const water = mesh(new THREE.PlaneGeometry(w - 1.2, d - 1.2), paddyWater, x, y + 0.3, z);
+    water.rotation.x = -Math.PI / 2;
+    water.renderOrder = 1;
+    paddies.add(water);
+    for (const [lx, lz, lw, ld] of [[0, d / 2 - 0.45, w, 0.9], [0, -d / 2 + 0.45, w, 0.9], [w / 2 - 0.45, 0, 0.9, d], [-w / 2 + 0.45, 0, 0.9, d]]) {
+      const lv = mesh(new THREE.BoxGeometry(lw, 0.5, ld), leveeMat, x + lx, y + 0.22, z + lz);
+      lv.receiveShadow = true;
+      paddies.add(lv);
+    }
+    grassMask.rect(x, z, w - 1.6, d - 1.6, 0, 0);
+    // clumps of rice on a planting grid, a few blades each
+    for (let rx = -w / 2 + 1.4; rx < w / 2 - 1.2; rx += 0.8) for (let rz = -d / 2 + 1.4; rz < d / 2 - 1.2; rz += 0.8) {
+      const n = rng.int(3, 5);
+      for (let k = 0; k < n; k++) riceBlades.push({ x: x + rx + rng.range(-0.08, 0.08), y: y + 0.26, z: z + rz + rng.range(-0.08, 0.08), scale: rng.range(0.7, 1.05), rot: rng.range(0, TAU) });
     }
   }
+  mergeStatic(paddies);
   scene.add(paddies);
-  const rice = grassField(riceBlades, { base: 0x4f8f3a, tip: 0xa8d46a, height: 0.6, width: 0.12 });
+  const rice = grassField(riceBlades, { base: 0x3f7f30, tip: 0x9fcf5a, height: 0.72, width: 0.07 });
   scene.add(rice.mesh);
-  // grass along the countryside track
-  const blades: Placement[] = [];
-  for (let z = -1340; z < -560; z += 0.9) {
-    const p = trackPoint(z);
-    for (let k = 0; k < 4; k++) {
-      const side = rng.sign();
-      const x = p.x + side * rng.range(2.4, 22);
-      const y = heightAt(x, z);
-      if (y < 0.5) continue;
-      blades.push({ x, y, z: z + rng.range(-0.5, 0.5), scale: rng.range(0.6, 1.3), rot: rng.range(0, TAU) });
-    }
-  }
-  // grass around Koriko's slopes and the start
-  for (let z = -560; z < 60; z += 1.4) {
-    const p = trackPoint(z);
-    for (let k = 0; k < 2; k++) { const x = p.x + rng.sign() * rng.range(2.4, 14); const y = heightAt(x, z); if (y > 0.5) blades.push({ x, y, z, scale: rng.range(0.6, 1.1), rot: rng.range(0, TAU) }); }
-  }
-  const grass = grassField(blades, { base: 0x3f7f30, tip: 0x9cc95c, height: 0.75, width: 0.11 });
-  scene.add(grass.mesh);
-  // wildflowers
-  const flowerGeo = new THREE.SphereGeometry(0.14, 6, 5);
-  const flowers = scatter(rng, 900, -80, 80, -1340, -560, (x, z) => { const d = trackDist(x, z); return d > 3 && d < 24 && heightAt(x, z) > 0.5; }, (x, z) => heightAt(x, z) + 0.35, [0.7, 1.4]);
-  const flowerColors = [0xffffff, 0xffe27a, 0xf7a1c4, 0xff8e6b, 0xc9a7ff];
-  scene.add(instanced(flowerGeo, toon(0xffffff), flowers, (i, c) => c.set(flowerColors[i % flowerColors.length])));
-
   // water
-  const water = waterMaterial({ shallow: 0x4aa3c9, deep: 0x1c5f86, sky: 0xa9d5f5, opacity: 0.93 });
-  const waterMesh = new THREE.Mesh(new THREE.PlaneGeometry(1400, 2800, 60, 120), water.material);
+  const sea0 = new SeaMaterial(heights);
+  const waterMesh = new THREE.Mesh(new THREE.PlaneGeometry(1400, 2800, 140, 280), sea0.material);
   waterMesh.rotation.x = -Math.PI / 2;
   waterMesh.position.set(0, WATER, -1150);
   waterMesh.renderOrder = 1;
   scene.add(waterMesh);
 
   // track
-  const track = buildTrack(curve, { gauge: 1.5, ballast: true });
+  const track = buildDetailedTrack(curve, { gauge: 1.5 });
   scene.add(track);
   // tunnel through the ridge
   {
@@ -170,12 +242,43 @@ function build(ctx: WorldContext): BuiltWorld {
     const inner = mesh(geo, tunMat, 0, 3.6 + 1.6, -1395);
     inner.rotation.x = Math.PI / 2;
     tun.add(inner);
-    const outerMat = lambert(0x5a5652);
+    // stone portals: a dressed-stone face with an arched opening, a ring of voussoirs and a cornice
+    const portalTex = canvasTexture(256, 256, (g, w, h) => {
+      const r2 = new Rng(77);
+      g.fillStyle = '#4e4a44'; g.fillRect(0, 0, w, h);
+      for (let row = 0; row < 8; row++) {
+        let x = row % 2 ? -28 : 0;
+        while (x < w) {
+          const bw = r2.range(44, 72), v = Math.round(r2.range(118, 150));
+          g.fillStyle = `rgb(${v},${v - 4},${v - 10})`; g.fillRect(x + 2, row * 32 + 2, bw - 4, 28);
+          g.fillStyle = 'rgba(255,255,255,0.07)'; g.fillRect(x + 2, row * 32 + 2, bw - 4, 4);
+          if (r2.chance(0.3)) { g.fillStyle = 'rgba(60,90,50,0.25)'; g.fillRect(x + 2, row * 32 + 20, bw - 4, 10); }
+          x += bw;
+        }
+      }
+    });
+    portalTex.wrapS = portalTex.wrapT = THREE.RepeatWrapping;
+    portalTex.repeat.set(0.18, 0.18);
+    const portalMat = new THREE.MeshLambertMaterial({ map: portalTex });
+    const ringMat = lambert(0x8e877c), capMat = lambert(0x6f6a62);
     for (const z of [-1356, -1434]) {
-      const portal = mesh(new THREE.TorusGeometry(3.9, 0.9, 8, 20, Math.PI), outerMat, 0, 3.6 + 1.6, z);
-      tun.add(portal);
-      tun.add(box(10, 1.2, 1.6, outerMat, 0, 3.6 + 6.2, z));
+      const shape = new THREE.Shape();
+      shape.moveTo(-9, -1); shape.lineTo(9, -1); shape.lineTo(9, 11.5); shape.lineTo(-9, 11.5); shape.closePath();
+      const hole = new THREE.Path();
+      hole.moveTo(3.45, -1); hole.lineTo(3.45, 5.2); hole.absarc(0, 5.2, 3.45, 0, Math.PI, false); hole.lineTo(-3.45, -1); hole.closePath();
+      shape.holes.push(hole);
+      const face = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: 1.4, bevelEnabled: false }), portalMat);
+      face.position.set(0, 0, z - 0.7);
+      face.castShadow = true; face.receiveShadow = true;
+      tun.add(face);
+      const ring = mesh(new THREE.TorusGeometry(3.85, 0.45, 6, 24, Math.PI), ringMat, 0, 5.2, z + (z > -1400 ? 0.75 : -0.75));
+      tun.add(ring);
+      tun.add(box(19, 0.7, 2.0, capMat, 0, 11.7, z));
+      tun.add(box(1.0, 0.9, 1.7, ringMat, 0, 9.3, z + (z > -1400 ? 0.2 : -0.2)));
     }
+    const innerTex = portalTex.clone(); innerTex.repeat.set(2, 16); innerTex.needsUpdate = true;
+    (inner.material as THREE.MeshLambertMaterial).map = innerTex;
+    (inner.material as THREE.MeshLambertMaterial).color.setHex(0x6a6258);
     // a few dim lamps inside
     for (let z = -1365; z > -1430; z -= 16) tun.add(sphere(0.16, new THREE.MeshBasicMaterial({ color: 0xffb060 }), 2.6, 7.0, z));
     scene.add(tun);
@@ -195,57 +298,94 @@ function build(ctx: WorldContext): BuiltWorld {
   const hemi = new THREE.HemisphereLight(0xbfe0ff, 0x6f8f5a, 0.8);
   scene.add(hemi);
 
-  // clouds
+  // clouds: big cumulus banks around the horizon, a few overhead
   const cloudPl: Placement[] = [];
-  for (let i = 0; i < 46; i++) cloudPl.push({ x: rng.range(-500, 500), y: rng.range(70, 150), z: rng.range(-2500, 200), scale: rng.range(1.2, 2.6), rot: rng.range(0, TAU) });
-  const clouds = cloudField(rng, cloudPl, 0xffffff);
-  scene.add(clouds);
+  const crng = new Rng(77);
+  for (let i = 0; i < 44; i++) {
+    const side = crng.sign();
+    const far = crng.chance(0.75);
+    cloudPl.push({
+      x: side * (far ? crng.range(200, 620) : crng.range(40, 200)),
+      y: far ? crng.range(45, 110) : crng.range(120, 180),
+      z: crng.range(-2600, 250),
+      scale: far ? crng.range(3.2, 6.5) : crng.range(1.6, 2.8),
+      rot: crng.range(-0.4, 0.4) + (crng.chance(0.5) ? 0 : Math.PI),
+    });
+  }
+  const clouds = new CumulusField(crng, cloudPl);
+  scene.add(clouds.group);
 
   // ---------- places ----------
-  const town = buildKorikoTown(rng, heightAt, trackDist);
+  const town = buildKorikoTown(rng, heightAt, trackDist, grassMask, trackXAt);
   scene.add(town);
   const boats = buildSailboats(rng, 9, 70, 220, -520, -40);
   scene.add(boats.group);
-  scene.add(buildCountryside(rng, heightAt, trackDist));
-  scene.add(buildForests(rng, heightAt, trackDist));
+  scene.add(mergeStatic(buildCountryside(rng, heightAt, trackDist, grassMask)));
+  scene.add(buildForests(rng, heightAt, trackDist, grassMask));
   const sea = buildSpiritSea(rng, heightAt, trackDist, trackPoint);
+  mergeStatic(sea.bathhouse);
+  mergeStatic(sea.group);
   scene.add(sea.group);
   // Koriko station at the start, a low stone wall along the town side of the track, and lamp posts
   {
     const st = new THREE.Group();
     const sx = -4.6, sz = -6;
     const sy = heightAt(sx, sz);
-    st.add(box(4, 1, 26, lambert(0xb9ad98), sx, sy + 0.5, sz));
-    st.add(box(7, 5, 8, toon(0xf1e4c8), sx - 4.5, sy + 3.5, sz));
-    st.add(mesh(roofGeometry(7, 8, 2.6, 0.5), toon(0xb9573d), sx - 4.5, sy + 6, sz));
-    for (const dz of [-9, 9]) st.add(cyl(0.12, 0.12, 4, toon(0x3f4a50), sx + 1, sy + 3, sz + dz));
-    st.add(box(4.4, 0.18, 22, toon(0x3f4a50), sx + 0.2, sy + 5.0, sz));
-    st.add(box(0.8, 1.6, 0.06, toon(0x2a2a2a), sx + 1.9, sy + 2.6, sz));
+    // platform: stone edge, paving, and a canopy on slim green iron posts (the building itself is part of the town)
+    st.add(box(4.6, 1, 26, lambert(0xb9ad98), sx - 0.3, sy + 0.5, sz));
+    st.add(box(0.5, 0.12, 26, lambert(0xe8e0cc), sx + 1.8, sy + 1.02, sz));
+    const iron = toon(0x2f4a40);
+    for (const dz of [-9, -3, 3, 9]) { st.add(cyl(0.09, 0.11, 4, iron, sx + 1, sy + 3, sz + dz)); st.add(box(0.12, 0.12, 1.2, iron, sx + 1, sy + 4.7, sz + dz).rotateZ(0.6)); }
+    st.add(box(4.8, 0.14, 22, toon(0x3f6a5a), sx - 0.2, sy + 5.0, sz));
+    st.add(box(0.1, 0.35, 22, toon(0xf4efe4), sx + 2.2, sy + 4.85, sz));
     const sign = textTexture('KORIKO', { font: 'bold 54px serif', color: '#f4efe4', bg: '#1f3a6a', w: 256, h: 96 });
     st.add(mesh(new THREE.PlaneGeometry(3.2, 1.2), new THREE.MeshBasicMaterial({ map: sign }), sx + 1.2, sy + 3.6, sz + 3).rotateY(Math.PI / 2));
     st.add(box(1.6, 0.5, 0.5, toon(0x5a4a3a), sx - 0.5, sy + 1.3, sz - 4));
-    scene.add(st);
-    const wallMat = lambert(0xb9ad98);
-    const lampMat = toon(0x3f4a50);
+    scene.add(mergeStatic(st));
+    // low stone wall between the track and the town: one instanced mesh
+    const stoneTex = canvasTexture(256, 96, (g, w, h) => {
+      const r2 = new Rng(8);
+      g.fillStyle = '#8a8070'; g.fillRect(0, 0, w, h);
+      for (let row = 0; row < 3; row++) {
+        let x = row % 2 ? -20 : 0;
+        while (x < w) {
+          const bw = r2.range(34, 56), v = Math.round(r2.range(170, 205));
+          g.fillStyle = `rgb(${v},${v - 8},${v - 20})`;
+          g.fillRect(x + 2, row * 32 + 2, bw - 4, 28);
+          g.fillStyle = 'rgba(255,255,255,0.12)'; g.fillRect(x + 2, row * 32 + 2, bw - 4, 5);
+          x += bw;
+        }
+      }
+    });
+    const wallPl: THREE.Matrix4[] = [];
     for (let z = -20; z > -560; z -= 3) {
       const p = trackPoint(z);
       const x = p.x - 6.5;
       const y = heightAt(x, z);
       if (y < 0.5) continue;
-      const w = box(0.7, 1.1, 3.1, wallMat, x, y + 0.45, z);
-      w.rotation.y = Math.atan2(trackPoint(z - 3).x - p.x, 3) * -1;
-      scene.add(w);
+      const rot = Math.atan2(trackPoint(z - 3).x - p.x, 3) * -1;
+      wallPl.push(new THREE.Matrix4().compose(new THREE.Vector3(x, y + 0.45, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rot), new THREE.Vector3(1, 1, 1)));
     }
+    const wallIm = new THREE.InstancedMesh(new THREE.BoxGeometry(0.7, 1.1, 3.1), new THREE.MeshLambertMaterial({ map: stoneTex }), wallPl.length);
+    wallPl.forEach((m, i) => wallIm.setMatrixAt(i, m));
+    wallIm.instanceMatrix.needsUpdate = true;
+    wallIm.computeBoundingSphere();
+    wallIm.receiveShadow = true; wallIm.castShadow = true;
+    scene.add(wallIm);
+    // street lamps on the sea side: merged into two meshes (iron and glass)
+    const ironParts: THREE.BufferGeometry[] = [], glassParts: THREE.BufferGeometry[] = [];
     for (let z = -40; z > -560; z -= 60) {
       const p = trackPoint(z);
       const x = p.x + 6.2;
       const y = heightAt(x, z);
       if (y < 0.5) continue;
-      const l = new THREE.Group();
-      l.add(cyl(0.08, 0.12, 5, lampMat, 0, 2.5, 0), box(0.5, 0.6, 0.5, lampMat, 0, 5.2, 0), box(0.36, 0.44, 0.36, glow(0xffe0a8, 0.9), 0, 5.2, 0), cone(0.45, 0.35, lampMat, 0, 5.65, 0, 4));
-      l.position.set(x, y, z);
-      scene.add(l);
+      const at = (geo: THREE.BufferGeometry, dy: number) => geo.translate(x, y + dy, z);
+      ironParts.push(at(new THREE.CylinderGeometry(0.08, 0.12, 5, 8), 2.5), at(new THREE.BoxGeometry(0.5, 0.08, 0.5), 4.9), at(new THREE.BoxGeometry(0.5, 0.08, 0.5), 5.45), at(new THREE.ConeGeometry(0.45, 0.35, 4).rotateY(Math.PI / 4), 5.65));
+      glassParts.push(at(new THREE.BoxGeometry(0.4, 0.5, 0.4), 5.2));
     }
+    const lampIron = new THREE.Mesh(mergeGeometries(ironParts.map((g) => g.toNonIndexed()), false)!, toon(0x2f4a40));
+    lampIron.castShadow = true;
+    scene.add(lampIron, new THREE.Mesh(mergeGeometries(glassParts, false)!, glow(0xffe0a8, 0.9)));
   }
   // harbour wall and pier at Koriko
   {
@@ -254,6 +394,51 @@ function build(ctx: WorldContext): BuiltWorld {
     for (let i = 0; i < 6; i++) pier.add(cyl(0.25, 0.3, 2.5, toon(0x5a4a3a), 47 + i * 5, 0.5, -142.3));
     scene.add(pier);
   }
+
+  // station platform and building
+  grassMask.rect(-6.5, -6, 10, 28, 0, 0.5);
+
+  // ---------- grass ----------
+  const grass = new GrassField({
+    heights, xMin: -180, xMax: 170, zMin: TZ0, zMax: TZ1, res: 1,
+    // low-end machines draw half the blades over a shorter distance
+    bladesPerM2: ctx.lowDetail ? 14 : 28, radius: ctx.lowDetail ? 70 : 100,
+    rowRange: (z) => { const i = clamp(Math.floor(z - TZ0), 0, TZ1 - TZ0 - 1); const x = trackRow[i * 2]; return [x - 118, x + 118]; },
+    sample: (x, z, out) => {
+      const y = heightAt(x, z);
+      const d = grassDensity(x, z, y, heights.slope(x, z));
+      out.density = d;
+      if (d <= 0) return;
+      meadow(x, z, tmpCol);
+      out.r = tmpCol.r; out.g = tmpCol.g; out.b = tmpCol.b;
+      // taller swathes in the countryside, shorter lawns in town
+      const town = 1 - smoothstep(-560, -640, z);
+      out.height = lerp(lerp(0.8, 1.4, smoothstep(0.35, 0.7, fbm(x * 0.03 + 50, z * 0.03, 2))), 0.7, town) * lerp(0.35, 1, shortMask.at(x, z));
+    },
+  });
+  scene.add(grass.group);
+  // wildflowers: drifts of daisies and buttercups, with clover and speedwell mixed in, peeking out of the grass
+  const flowerPl: Placement[] = [], flowerKinds: number[] = [];
+  {
+    const frng = new Rng(314);
+    let tries = 0;
+    while (flowerPl.length < 9000 && tries < 60000) {
+      tries++;
+      const z = frng.range(-1340, 30);
+      const x = trackXAt(z) + frng.sign() * frng.range(3.5, 75);
+      // flowers grow in patches
+      const patch = fbm(x * 0.045 + 13, z * 0.045 - 5, 2);
+      if (patch < 0.5 || frng.next() > (patch - 0.5) * 3.2) continue;
+      const y = heightAt(x, z);
+      if (y < 1 || grassDensity(x, z, y, heights.slope(x, z)) < 0.4) continue;
+      flowerPl.push({ x, y: y + frng.range(0.35, 0.75), z, scale: frng.range(0.75, 1.25), rot: 0 });
+      // each patch leans towards one kind of flower
+      const lean = Math.floor(fbm(x * 0.02 - 40, z * 0.02 + 7, 1) * 4) % 4;
+      flowerKinds.push(frng.chance(0.65) ? lean : frng.int(0, 3));
+    }
+  }
+
+  scene.add(flowerField(flowerPl, flowerKinds));
 
   // ---------- vehicle ----------
   const train = buildSeaTrain();
@@ -627,9 +812,9 @@ function build(ctx: WorldContext): BuiltWorld {
 
   // ---------- lighting ----------
   const lighting = makeLighting([
-    { u: 0.0, skyTop: 0x3b7fd8, skyMid: 0xa6d3f5, skyBottom: 0xeaf2f4, fog: 0xd6e6f0, fogDensity: 0.0021, sunDir: [0.45, 0.75, -0.35], sunColor: 0xfff4de, sunIntensity: 2.3, hemiSky: 0xbfe0ff, hemiGround: 0x6f8f5a, hemiIntensity: 0.8, exposure: 1.0, bloom: 0.3, saturation: 1.1 },
-    { u: 0.28, skyTop: 0x4a86d6, skyMid: 0xbcd6f0, skyBottom: 0xf7e0bc, fog: 0xe0e2e0, fogDensity: 0.0022, sunDir: [0.75, 0.45, -0.2], sunColor: 0xffe2b8, sunIntensity: 2.1, hemiSky: 0xbfd8f0, hemiGround: 0x7a8f55, hemiIntensity: 0.75, exposure: 1.0, bloom: 0.32, saturation: 1.1 },
-    { u: 0.4, skyTop: 0x5b6fb5, skyMid: 0xe8a878, skyBottom: 0xffcf95, fog: 0xe8bb95, fogDensity: 0.0028, sunDir: [0.9, 0.16, -0.1], sunColor: 0xffa060, sunIntensity: 1.7, hemiSky: 0xd0a0a0, hemiGround: 0x5a5a40, hemiIntensity: 0.7, exposure: 1.0, bloom: 0.4, saturation: 1.12 },
+    { u: 0.0, skyTop: 0x3b7fd8, skyMid: 0xa6d3f5, skyBottom: 0xeaf2f4, fog: 0xd6e6f0, fogDensity: 0.0021, sunDir: [0.45, 0.75, -0.35], sunColor: 0xfff4de, sunIntensity: 2.3, hemiSky: 0xbfe0ff, hemiGround: 0x6f8f5a, hemiIntensity: 0.8, exposure: 1.0, bloom: 0.3, saturation: 1.1, cloudShadow: 0.38 },
+    { u: 0.28, skyTop: 0x4a86d6, skyMid: 0xbcd6f0, skyBottom: 0xf7e0bc, fog: 0xe0e2e0, fogDensity: 0.0022, sunDir: [0.75, 0.45, -0.2], sunColor: 0xffe2b8, sunIntensity: 2.1, hemiSky: 0xbfd8f0, hemiGround: 0x7a8f55, hemiIntensity: 0.75, exposure: 1.0, bloom: 0.32, saturation: 1.1, cloudShadow: 0.34 },
+    { u: 0.4, skyTop: 0x5b6fb5, skyMid: 0xe8a878, skyBottom: 0xffcf95, fog: 0xe8bb95, fogDensity: 0.0028, sunDir: [0.9, 0.16, -0.1], sunColor: 0xffa060, sunIntensity: 1.7, hemiSky: 0xd0a0a0, hemiGround: 0x5a5a40, hemiIntensity: 0.7, exposure: 1.0, bloom: 0.4, saturation: 1.12, cloudShadow: 0.14 },
     { u: 0.48, skyTop: 0x3c4160, skyMid: 0x707590, skyBottom: 0x968fa8, fog: 0x7c7f92, fogDensity: 0.0052, sunDir: [0.8, 0.2, 0.2], sunColor: 0xb8bccc, sunIntensity: 0.6, hemiSky: 0x9095b5, hemiGround: 0x3a3f42, hemiIntensity: 0.65, exposure: 0.98, bloom: 0.45, saturation: 0.98, sunGlow: 0.12, sunSize: 0.0 },
     { u: 0.575, skyTop: 0x1c2038, skyMid: 0x3a3e5e, skyBottom: 0x5e5a76, fog: 0x4b4e66, fogDensity: 0.0068, sunDir: [0.6, 0.3, 0.3], sunColor: 0x9aa0c0, sunIntensity: 0.35, hemiSky: 0x5a6090, hemiGround: 0x25282c, hemiIntensity: 0.55, exposure: 0.95, bloom: 0.5, saturation: 0.95, stars: 0.2, sunGlow: 0.0, sunSize: 0.0 },
     { u: 0.598, skyTop: 0x06060a, skyMid: 0x08080d, skyBottom: 0x0a0a10, fog: 0x07070b, fogDensity: 0.03, sunDir: [0.6, 0.3, 0.3], sunColor: 0x404050, sunIntensity: 0.1, hemiSky: 0x202030, hemiGround: 0x101014, hemiIntensity: 0.5, exposure: 0.9, bloom: 0.6, saturation: 0.9, sunGlow: 0.0, sunSize: 0.0 },
@@ -682,16 +867,11 @@ function build(ctx: WorldContext): BuiltWorld {
       for (const up of updaters) up(dt, t, ride);
       boats.update(t);
       // materials that need per-frame uniforms
-      water.uniforms.time.value = t;
       const fog = scene.fog as THREE.FogExp2;
-      water.uniforms.fogColor.value.copy(fog.color); water.uniforms.fogDensity.value = fog.density;
-      water.uniforms.skyColor.value.copy(sky.uniforms.midColor.value);
-      water.uniforms.sunDir.value.copy(sky.uniforms.sunDir.value);
       const night = smoothstep(0.42, 0.62, ride.u);
-      water.uniforms.sunColor.value.copy(sky.uniforms.sunColor.value).multiplyScalar(lerp(1, 2.6, night));
-      water.uniforms.shallow.value.setHex(0x4aa3c9).lerp(new THREE.Color(0x27407a), night);
-      water.uniforms.deep.value.setHex(0x1c5f86).lerp(new THREE.Color(0x0b1430), night);
-      for (const gf of [grass, rice]) {
+      sea0.update(t, sky.uniforms, fog, night);
+      grass.update(t, ctx.camera);
+      for (const gf of [rice]) {
         gf.uniforms.time.value = t;
         gf.uniforms.fogColor.value.copy(fog.color); gf.uniforms.fogDensity.value = fog.density;
         gf.uniforms.light.value.copy(hemi.color).multiplyScalar(hemi.intensity * 0.55).add(sunTint.copy(sun.color).multiplyScalar(sun.intensity * 0.32));
@@ -715,7 +895,8 @@ function build(ctx: WorldContext): BuiltWorld {
       const flick = 1.6 + Math.sin(t * 9.3) * 0.12 + Math.sin(t * 17.1) * 0.06;
       for (const l of sea.lanterns) (l.material as THREE.MeshBasicMaterial).color.setHex(0xffb36b).multiplyScalar(flick);
       // clouds slowly drift
-      clouds.position.x = t * 0.6;
+      clouds.group.position.x = t * 0.6;
+      clouds.update(sky.uniforms, fog, sun.intensity);
     },
     onItemLand() { /* subjects handle their own reactions */ },
     onCall() { /* nothing global */ },

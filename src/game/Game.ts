@@ -68,7 +68,7 @@ export class Game {
       skyTop: new THREE.Color(), skyMid: new THREE.Color(), skyBottom: new THREE.Color(), fog: new THREE.Color(), fogDensity: 0.002,
       sunDir: new THREE.Vector3(0, 1, 0), sunColor: new THREE.Color(), sunIntensity: 1, hemiSky: new THREE.Color(), hemiGround: new THREE.Color(),
       hemiIntensity: 1, stars: 0, moon: 0, exposure: 1, bloom: 0.4, saturation: 1, tint: new THREE.Color(1, 1, 1),
-      sunGlow: 0.6, sunSize: 0.02, horizonHeight: 0.08,
+      sunGlow: 0.6, sunSize: 0.02, horizonHeight: 0.08, cloudShadow: 0,
     };
   }
 
@@ -264,6 +264,8 @@ export class Game {
     r.renderer.toneMappingExposure = L.exposure;
     r.bloom.strength = L.bloom;
     r.grade.uniforms.saturation.value = L.saturation;
+    r.fx.uniforms.cloudShadow.value = L.cloudShadow;
+    r.fx.uniforms.sunDir.value.copy(L.sunDir);
     (r.grade.uniforms.tint.value as THREE.Color).copy(L.tint);
   }
 

@@ -1,92 +1,39 @@
 import * as THREE from 'three';
-import { toon, lambert, glow, box, cyl, cone, mesh, roofGeometry, pagodaRoofGeometry, facadeTextures, textTexture, sphere, instancedTrees, scatter, type Placement, canvasTexture, capsule } from '../../engine/Builders';
+import { toon, lambert, glow, box, cyl, cone, mesh, roofGeometry, textTexture, sphere, scatter, type Placement, canvasTexture, capsule } from '../../engine/Builders';
 import { Rng, TAU, lerp } from '../../engine/math';
+import type { ExclusionMask } from '../../engine/Ground';
+import { fluffyForest, fluffyTree, type Blob } from '../../engine/Foliage';
+import { buildKoriko } from './koriko';
+import { buildFarmhouse, buildCottage } from './farmhouse';
+import { buildBathhouse } from './bathhouse';
 
 // ---------- Koriko (Kiki's seaside town) ----------
-export function buildKorikoTown(rng: Rng, heightAt: (x: number, z: number) => number, trackDist: (x: number, z: number) => number) {
+export function buildKorikoTown(_rng: Rng, heightAt: (x: number, z: number) => number, _trackDist: (x: number, z: number) => number, mask: ExclusionMask | undefined, trackX: (z: number) => number) {
   const g = new THREE.Group();
-  const walls = [0xf3e4c6, 0xf6d3b3, 0xe9c6bd, 0xd9e3e8, 0xf0e2a9, 0xe3d1e6, 0xf7efe0];
-  const roofs = [0xb9573d, 0xc66a4b, 0x8f4a39, 0xa8563f, 0x4f7f6e];
-  const facades = [
-    facadeTextures({ wall: '#ffffff', window: '#e9f3ff', frame: '#f8f3e6', rows: 3, cols: 2, lit: 0.15, rng, shutters: '#5f8a6b', sill: true }),
-    facadeTextures({ wall: '#ffffff', window: '#e6f0fa', frame: '#f8f3e6', rows: 4, cols: 3, lit: 0.1, rng, sill: true }),
-    facadeTextures({ wall: '#ffffff', window: '#f0f6ff', frame: '#e8dfd0', rows: 3, cols: 3, lit: 0.2, rng, shutters: '#8a5a4a' }),
-  ];
-  const roofGeoCache = new Map<string, THREE.BufferGeometry>();
-  const house = (x: number, z: number, w: number, d: number, h: number, faceAngle: number, wall: number, roof: number) => {
-    const hg = new THREE.Group();
-    const f = rng.pick(facades);
-    const mat = new THREE.MeshLambertMaterial({ color: wall, map: f.map });
-    const body = box(w, h, d, mat, 0, h / 2, 0);
-    body.castShadow = true;
-    hg.add(body);
-    const key = `${w.toFixed(1)}_${d.toFixed(1)}`;
-    let rg = roofGeoCache.get(key);
-    if (!rg) { rg = roofGeometry(w, d, Math.min(w, d) * 0.5, 0.4); roofGeoCache.set(key, rg); }
-    hg.add(mesh(rg, toon(roof), 0, h, 0));
-    // chimney
-    if (rng.chance(0.6)) hg.add(box(0.6, 1.4, 0.6, toon(0x8a7a6a), w * 0.25, h + 0.9, d * 0.2));
-    hg.position.set(x, heightAt(x, z) - 0.3, z);
-    hg.rotation.y = faceAngle;
-    g.add(hg);
-    return hg;
-  };
-  // hillside blocks on the left of the track (negative x), a few by the water on the right
-  let placed = 0;
-  let tries = 0;
-  const spots: { x: number; z: number }[] = [];
-  while (placed < 70 && tries < 2000) {
-    tries++;
-    const left = rng.chance(0.82);
-    const x = left ? rng.range(-150, -11) : rng.range(12, 42);
-    const z = rng.range(-560, 30);
-    if (trackDist(x, z) < 9.5) continue;
-    if (Math.abs(z + 6) < 16 && x > -16) continue; // station
-    if (!left && heightAt(x, z) < 0.5) continue;
-    if (spots.some((s) => Math.hypot(s.x - x, s.z - z) < 12)) continue;
-    // keep the clock tower square clear
-    if (Math.hypot(x + 46, z + 250) < 22) continue;
-    spots.push({ x, z });
-    const w = rng.range(5, 8), d = rng.range(6, 9), h = rng.range(7, 15);
-    house(x, z, w, d, h, left ? Math.PI / 2 : -Math.PI / 2, rng.pick(walls), rng.pick(roofs));
-    placed++;
-  }
-  // clock tower
-  {
-    const tx = -46, tz = -250;
-    const base = heightAt(tx, tz) - 0.5;
-    const t = new THREE.Group();
-    const stone = toon(0xe6d9bf);
-    const f = facadeTextures({ wall: '#ffffff', window: '#dce8f5', frame: '#efe6d3', rows: 6, cols: 2, lit: 0.1, rng, sill: true });
-    t.add(box(10, 34, 10, new THREE.MeshLambertMaterial({ color: 0xe9dcc4, map: f.map }), 0, 17, 0));
-    t.add(box(12, 3, 12, stone, 0, 35, 0));
-    const clock = textTexture('', { w: 128, h: 128 });
-    void clock;
-    const face = canvasTexture(128, 128, (c) => {
-      c.fillStyle = '#f7f2e4'; c.beginPath(); c.arc(64, 64, 58, 0, TAU); c.fill();
-      c.strokeStyle = '#3a3a3a'; c.lineWidth = 4; c.stroke();
-      c.lineWidth = 5; c.beginPath(); c.moveTo(64, 64); c.lineTo(64, 22); c.moveTo(64, 64); c.lineTo(94, 72); c.stroke();
-      for (let i = 0; i < 12; i++) { const a = (i / 12) * TAU; c.beginPath(); c.arc(64 + Math.cos(a) * 48, 64 + Math.sin(a) * 48, 2.5, 0, TAU); c.fill(); }
-    });
-    for (let i = 0; i < 4; i++) {
-      const m = mesh(new THREE.CircleGeometry(3.2, 24), new THREE.MeshBasicMaterial({ map: face }), 0, 30, 0);
-      const a = (i / 4) * TAU;
-      m.position.set(Math.sin(a) * 5.05, 30, Math.cos(a) * 5.05);
-      m.rotation.y = a;
-      t.add(m);
-    }
-    t.add(mesh(pagodaRoofGeometry(13, 9, 0.1), toon(0x4f7f6e), 0, 36.5, 0));
-    t.add(cyl(0.15, 0.15, 5, toon(0xd8c090), 0, 47, 0));
-    t.add(sphere(0.6, glow(0xffd888, 1.2), 0, 49.5, 0));
-    t.position.set(tx, base, tz);
-    t.children.forEach((c) => (c.castShadow = true));
-    g.add(t);
-    // plaza around it
-    g.add(mesh(new THREE.CylinderGeometry(20, 20, 0.6, 24), lambert(0xd6c9b0), tx, base + 0.1, tz));
+  // terraced rows of townhouses; leave room for the station, the clock tower square and the church
+  const town = buildKoriko({
+    rng: new Rng(1989), heightAt, trackX, mask,
+    keepClear: (row, _x, z) =>
+      (row === 0 && z > -28 && z < 16) ||
+      (row === 1 && z > -274 && z < -226) ||
+      (row === 4 && z > -162 && z < -116),
+    tower: { x: trackX(-250) - 43, z: -250, square: { off0: 31, off1: 47, z0: -228, z1: -272 } },
+    bakeryZ: -384,
+    station: { x: trackX(-6) - 7, y: heightAt(-4.6, -6) + 1.0, z: -6 },
+  });
+  g.add(town.group);
+  // the bakery sign
+  if (town.bakery) {
+    const b = town.bakery;
+    const sign = textTexture('BAKERY', { font: 'bold 44px serif', color: '#3a2a20', bg: '#f7f3ea', w: 256, h: 64 });
+    const sm = mesh(new THREE.PlaneGeometry(4.2, 1.05), new THREE.MeshLambertMaterial({ map: sign }));
+    sm.position.set(b.x + Math.sin(b.rotY) * 0.35, b.y + 3.6, b.z + Math.cos(b.rotY) * 0.35);
+    sm.rotation.y = b.rotY;
+    g.add(sm);
   }
   // church with a spire further up the hill
   {
-    const cx = -120, cz = -140;
+    const cz = -140, cx = trackX(cz) - 111;
     const base = heightAt(cx, cz) - 0.5;
     const c = new THREE.Group();
     c.add(box(12, 12, 24, toon(0xf1e8d4), 0, 6, 0));
@@ -95,24 +42,7 @@ export function buildKorikoTown(rng: Rng, heightAt: (x: number, z: number) => nu
     c.add(cone(4.6, 12, toon(0x4f7f6e), 0, 28, 13, 4));
     c.position.set(cx, base, cz);
     g.add(c);
-  }
-  // bakery by the track with a striped awning
-  {
-    const bx = 16, bz = -390;
-    const base = heightAt(bx, bz) - 0.3;
-    const b = new THREE.Group();
-    b.add(box(9, 7, 8, toon(0xf4e9d8), 0, 3.5, 0));
-    b.add(mesh(roofGeometry(9, 8, 3, 0.4), toon(0xb9573d), 0, 7, 0));
-    const awning = canvasTexture(128, 32, (c) => { for (let i = 0; i < 8; i++) { c.fillStyle = i % 2 ? '#f7f3ea' : '#c94b3f'; c.fillRect(i * 16, 0, 16, 32); } });
-    const aw = mesh(new THREE.PlaneGeometry(8, 2.2), new THREE.MeshLambertMaterial({ map: awning, side: THREE.DoubleSide }), 0, 4.2, -4.9);
-    aw.rotation.x = -0.9 + Math.PI;
-    b.add(aw);
-    b.add(box(5, 3.2, 0.2, glow(0xffe0a8, 0.9), 0, 2.2, -4.05));
-    const sign = textTexture('BAKERY', { font: 'bold 44px serif', color: '#3a2a20', bg: '#f7f3ea', w: 256, h: 64 });
-    b.add(mesh(new THREE.PlaneGeometry(5, 1.2), new THREE.MeshBasicMaterial({ map: sign }), 0, 5.6, -4.05).rotateY(Math.PI));
-    b.position.set(bx, base, bz);
-    b.rotation.y = Math.PI;
-    g.add(b);
+    mask?.rect(cx, cz + 2, 13, 30, 0, 0.5);
   }
   return g;
 }
@@ -139,27 +69,32 @@ export function buildSailboats(rng: Rng, count: number, xMin: number, xMax: numb
 }
 
 // ---------- countryside ----------
-export function buildCountryside(rng: Rng, heightAt: (x: number, z: number) => number, trackDist: (x: number, z: number) => number) {
+export function buildCountryside(_rng: Rng, heightAt: (x: number, z: number) => number, trackDist: (x: number, z: number) => number, mask?: ExclusionMask) {
   const g = new THREE.Group();
-  // Satsuki & Mei's house
+  // the country house among the fields, veranda turned towards the railway
   {
     const hx = 26, hz = -740;
-    const base = heightAt(hx, hz) - 0.3;
-    const h = new THREE.Group();
-    const f = facadeTextures({ wall: '#ffffff', window: '#dbe8f2', frame: '#d9c9a8', rows: 2, cols: 3, lit: 0.2, rng, sill: true });
-    h.add(box(10, 7, 9, new THREE.MeshLambertMaterial({ color: 0xf1e6d2, map: f.map }), 0, 3.5, 0));
-    h.add(mesh(roofGeometry(10, 9, 3.6, 0.6), toon(0xb84a3a), 0, 7, 0));
-    h.add(box(8, 4, 7, toon(0xd9c9a8), 8, 2, 1));
-    h.add(mesh(roofGeometry(8, 7, 2.2, 0.7), toon(0x6f8b6a), 8, 4, 1));
-    h.add(box(1.5, 6, 0.4, toon(0xc9b28a), -3, 3, 4.7)); // porch post
-    h.add(box(3, 2.4, 0.2, glow(0xffe4b0, 0.6), 0, 2.4, 4.6));
-    h.position.set(hx, base, hz);
-    h.rotation.y = Math.PI * 0.05;
-    h.traverse((c) => { if ((c as THREE.Mesh).isMesh) c.castShadow = true; });
+    const rotY = -Math.PI / 2 + 0.5;
+    const h = buildFarmhouse();
+    h.position.set(hx, heightAt(hx, hz) - 0.1, hz);
+    h.rotation.y = rotY;
     g.add(h);
-    // a small vegetable patch and a fence
-    for (let i = 0; i < 9; i++) g.add(box(0.12, 1.1, 0.12, toon(0xb8a78a), hx - 9 + i * 2.2, base + 0.55, hz + 8));
-    g.add(box(18, 0.1, 0.1, toon(0xb8a78a), hx, base + 0.95, hz + 8));
+    mask?.rect(hx + Math.cos(rotY) * 2.5, hz - Math.sin(rotY) * 2.5, 21, 14, rotY, 1.2);
+    // a vegetable patch with a bamboo fence beside the house
+    const fx = hx + 12, fz = hz + 6;
+    const fence = new THREE.Group();
+    const bamboo = toon(0xb8a778);
+    for (let i = 0; i < 10; i++) fence.add(box(0.1, 1.1, 0.1, bamboo, -9 + i * 2, 0.55, 5));
+    fence.add(box(18, 0.08, 0.08, bamboo, 0, 0.95, 5), box(18, 0.08, 0.08, bamboo, 0, 0.5, 5));
+    const soil = toon(0x6a5238);
+    for (let r = 0; r < 5; r++) fence.add(box(16, 0.25, 0.9, soil, 0, 0.05, -4 + r * 1.8));
+    const leaf = toon(0x4f8a3a);
+    const lrng = new Rng(55);
+    for (let r = 0; r < 5; r++) for (let k = 0; k < 14; k++) fence.add(sphere(lrng.range(0.25, 0.4), leaf, -7.5 + k * 1.15 + lrng.range(-0.1, 0.1), 0.35, -4 + r * 1.8, 7, 5));
+    fence.position.set(fx, heightAt(fx, fz), fz);
+    fence.rotation.y = rotY;
+    g.add(fence);
+    mask?.rect(fx, fz, 19, 12, rotY, 0.5);
   }
   // telephone poles along the right of the track
   {
@@ -203,17 +138,25 @@ export function buildCountryside(rng: Rng, heightAt: (x: number, z: number) => n
       branch.rotation.z = Math.cos(a) * 1.0; branch.rotation.x = -Math.sin(a) * 1.0;
       t.add(branch);
     }
-    const canopyMat = toon(0x4e8a3f);
-    const blobs = [[0, 34, 0, 19], [12, 30, 4, 12], [-13, 31, -3, 13], [4, 30, -12, 11], [-3, 29, 12, 12], [9, 38, -8, 9], [-9, 39, 7, 9]];
-    for (const [x, y, z, r] of blobs) {
-      const b = mesh(new THREE.IcosahedronGeometry(r, 1), canopyMat, x, y, z);
-      b.scale.y = 0.8;
-      b.castShadow = true;
-      t.add(b);
-    }
+    // the canopy: one huge soft crown made of many smaller clouds of leaves
+    const crng = new Rng(1988);
+    const blobs: Blob[] = [
+      { c: new THREE.Vector3(0, 33, 0), r: new THREE.Vector3(17, 11, 17) },
+      { c: new THREE.Vector3(13, 29, 5), r: new THREE.Vector3(10, 7.5, 10) },
+      { c: new THREE.Vector3(-14, 30, -3), r: new THREE.Vector3(11, 8, 11) },
+      { c: new THREE.Vector3(4, 29, -14), r: new THREE.Vector3(10, 7, 10) },
+      { c: new THREE.Vector3(-4, 28, 13), r: new THREE.Vector3(10, 7.5, 10) },
+      { c: new THREE.Vector3(9, 39, -7), r: new THREE.Vector3(8, 6, 8) },
+      { c: new THREE.Vector3(-9, 40, 6), r: new THREE.Vector3(8, 6, 8) },
+      { c: new THREE.Vector3(1, 44, 1), r: new THREE.Vector3(7, 5, 7) },
+      { c: new THREE.Vector3(18, 25, -6), r: new THREE.Vector3(6, 4.5, 6) },
+      { c: new THREE.Vector3(-17, 25, 9), r: new THREE.Vector3(6, 4.5, 6) },
+    ];
+    t.add(fluffyTree(blobs, 0x4a8a3c, crng, { density: 0.16, cardScale: 0.55 }));
     t.position.set(tx, base - 1, tz);
     trunk.castShadow = true;
     g.add(t);
+    mask?.circle(tx, tz, 8);
     // torii at the base of the hill facing the track
     const torii = new THREE.Group();
     const red = toon(0xc23a2a);
@@ -221,6 +164,7 @@ export function buildCountryside(rng: Rng, heightAt: (x: number, z: number) => n
     torii.add(box(8, 0.5, 0.6, toon(0x2a2a2a), 0, 7.2, 0), box(6.4, 0.4, 0.4, red, 0, 6.1, 0));
     const tox = -62, toz = -880;
     torii.position.set(tox, heightAt(tox, toz), toz);
+    mask?.path([{ x: tox, z: toz }, { x: -97, z: -894 }], 2.4);
     torii.rotation.y = Math.PI / 2 + 0.3;
     g.add(torii);
     // stone lanterns along the approach
@@ -252,6 +196,8 @@ export function buildCountryside(rng: Rng, heightAt: (x: number, z: number) => n
     s.add(plate);
     s.position.set(sx, y, sz);
     g.add(s);
+    mask?.circle(sx + 1, sz - 1, 3.2);
+    mask?.path([{ x: 12, z: -1140 }, { x: 18, z: -1137 }], 2.2);
     // jizo statues with red bibs
     for (let i = 0; i < 6; i++) {
       const jx = 12 + i * 1.2, jz = -1140 + i * 0.6;
@@ -270,19 +216,22 @@ export function buildCountryside(rng: Rng, heightAt: (x: number, z: number) => n
 }
 
 /** Trees for the whole world, chosen by region. */
-export function buildForests(rng: Rng, heightAt: (x: number, z: number) => number, trackDist: (x: number, z: number) => number) {
+export function buildForests(rng: Rng, heightAt: (x: number, z: number) => number, trackDist: (x: number, z: number) => number, mask?: ExclusionMask) {
   const g = new THREE.Group();
-  const okLand = (min: number) => (x: number, z: number) => trackDist(x, z) > min && heightAt(x, z) > 0.6;
-  // Koriko: cypress on the hill, round trees in gardens
-  g.add(instancedTrees({ trunk: 0x5a4636, canopy: [0x2f6b46, 0x3b7a4f, 0x2a5f40], shape: 'cone' }, scatter(rng, 90, -220, -12, -600, 40, (x, z) => okLand(10)(x, z) && Math.hypot(x + 46, z + 250) > 24, heightAt, [0.9, 1.6]), rng, true));
-  g.add(instancedTrees({ trunk: 0x6a5040, canopy: [0x58a34a, 0x6ab35a, 0x4d9646], shape: 'round' }, scatter(rng, 60, -200, 44, -600, 40, (x, z) => okLand(12)(x, z), heightAt, [0.8, 1.3]), rng, true));
+  // clear of the track, above water, and not on a street, house or yard
+  const okLand = (min: number) => (x: number, z: number) => trackDist(x, z) > min && heightAt(x, z) > 0.6 && (!mask || (mask.at(x, z) > 0.95 && mask.at(x + 2, z) > 0.9 && mask.at(x - 2, z) > 0.9 && mask.at(x, z + 2) > 0.9 && mask.at(x, z - 2) > 0.9));
+  // Koriko: dark conifers on the hill, round trees in gardens
+  g.add(fluffyForest({ shape: 'conifer', trunk: 0x5a4636, leaves: [0x2f6b46, 0x3b7a4f, 0x2a5f40] }, scatter(rng, 90, -220, -12, -600, 40, (x, z) => okLand(10)(x, z) && Math.hypot(x + 46, z + 250) > 24, heightAt, [0.9, 1.5]), rng, { castShadow: true }));
+  g.add(fluffyForest({ shape: 'round', trunk: 0x6a5040, leaves: [0x5a9a44, 0x6aa84c, 0x4e8e40] }, scatter(rng, 60, -200, 44, -600, 40, (x, z) => okLand(12)(x, z), heightAt, [0.8, 1.25]), rng, { castShadow: true }));
   // countryside: broad trees, groves, poplars along fields
-  g.add(instancedTrees({ trunk: 0x6a5040, canopy: [0x4f9a3c, 0x62ad4a, 0x3f8a36, 0x7bb85a], shape: 'broad' }, scatter(rng, 160, -260, 200, -1340, -600, (x, z) => okLand(14)(x, z) && Math.hypot(x + 112, z + 900) > 30 && Math.hypot(x - 26, z + 740) > 16, heightAt, [0.9, 1.5]), rng, true));
-  g.add(instancedTrees({ trunk: 0x6a5040, canopy: [0x3f8a36, 0x4f9a3c], shape: 'poplar' }, scatter(rng, 60, -240, 200, -1340, -600, (x, z) => okLand(16)(x, z), heightAt, [0.9, 1.4]), rng, false));
+  g.add(fluffyForest({ shape: 'broad', trunk: 0x5e4838, leaves: [0x4c8d3a, 0x5a9a42, 0x3f7f36, 0x6ea24c] }, scatter(rng, 160, -260, 200, -1340, -600, (x, z) => okLand(14)(x, z) && Math.hypot(x + 112, z + 900) > 30 && Math.hypot(x - 26, z + 740) > 16, heightAt, [0.85, 1.4]), rng, { castShadow: true, variants: 4 }));
+  g.add(fluffyForest({ shape: 'poplar', trunk: 0x6a5040, leaves: [0x3f8436, 0x4c9240] }, scatter(rng, 60, -240, 200, -1340, -600, (x, z) => okLand(16)(x, z), heightAt, [0.9, 1.35]), rng, { castShadow: false }));
   // dense grove around the camphor hill
-  g.add(instancedTrees({ trunk: 0x5a4636, canopy: [0x2f6b46, 0x3b7a4f, 0x35704a], shape: 'round' }, scatter(rng, 70, -170, -50, -960, -840, (x, z) => okLand(12)(x, z) && Math.hypot(x + 112, z + 900) > 22 && Math.hypot(x + 112, z + 900) < 62, heightAt, [0.8, 1.4]), rng, true));
+  g.add(fluffyForest({ shape: 'round', trunk: 0x4f3e30, leaves: [0x2f6b40, 0x3b7a48, 0x35704a] }, scatter(rng, 70, -170, -50, -960, -840, (x, z) => okLand(12)(x, z) && Math.hypot(x + 112, z + 900) > 22 && Math.hypot(x + 112, z + 900) < 62, heightAt, [0.8, 1.35]), rng, { castShadow: true }));
+  // the kodama's island: a dense old wood with a clearing for the tree spirits
+  g.add(fluffyForest({ shape: 'broad', trunk: 0x3a2e28, leaves: [0x2a4a3a, 0x335a44, 0x2f5240] }, scatter(rng, 46, 18, 100, -2092, -2008, (x, z) => okLand(9)(x, z) && Math.hypot(x - 58, z + 2050) < 36 && Math.hypot(x - 52, z + 2050) > 10, heightAt, [1.0, 1.7]), rng, { castShadow: true }));
   // spirit sea islands: dark pines
-  g.add(instancedTrees({ trunk: 0x3a2e28, canopy: [0x1e3a34, 0x24443a, 0x1a3330], shape: 'cone' }, scatter(rng, 90, -200, 200, -2330, -1440, (x, z) => okLand(9)(x, z) && Math.hypot(x + 70, z + 1750) > 34, heightAt, [0.9, 1.7]), rng, true));
+  g.add(fluffyForest({ shape: 'conifer', trunk: 0x3a2e28, leaves: [0x1e3a34, 0x24443a, 0x1a3330] }, scatter(rng, 90, -200, 200, -2330, -1440, (x, z) => okLand(9)(x, z) && Math.hypot(x + 70, z + 1750) > 34, heightAt, [0.9, 1.6]), rng, { castShadow: true }));
   return g;
 }
 
@@ -315,19 +264,50 @@ export function buildSpiritSea(rng: Rng, heightAt: (x: number, z: number) => num
     post.position.set(x, 0, z);
     g.add(post);
   }
-  // platforms: simple concrete slabs with a bench, a roof and lanterns
+  // platforms: stone-faced slabs standing in the water, a pitched shelter on slim posts, a name board and lanterns
+  const stoneTex = canvasTexture(256, 128, (c, w, h) => {
+    const r2 = new Rng(31);
+    c.fillStyle = '#5f5a52'; c.fillRect(0, 0, w, h);
+    for (let row = 0; row < 4; row++) {
+      let x = row % 2 ? -24 : 0;
+      while (x < w) {
+        const bw = r2.range(40, 64), v = Math.round(r2.range(120, 160));
+        c.fillStyle = `rgb(${v},${v - 4},${v - 12})`; c.fillRect(x + 2, row * 32 + 2, bw - 4, 28);
+        c.fillStyle = 'rgba(255,255,255,0.08)'; c.fillRect(x + 2, row * 32 + 2, bw - 4, 4);
+        x += bw;
+      }
+    }
+    c.fillStyle = 'rgba(40,60,50,0.5)'; c.fillRect(0, h - 26, w, 26);
+  });
+  stoneTex.wrapS = stoneTex.wrapT = THREE.RepeatWrapping;
+  const stoneMat = new THREE.MeshLambertMaterial({ map: stoneTex });
+  const pavingMat = lambert(0x9d978c), edgeMat = lambert(0xe6e0cf), roofMat = toon(0x33413c), ironMat = toon(0x2a2f2c);
   const platform = (z: number, side: number, len = 16, roof = true) => {
     const p = trackPoint(z);
     const x = p.x + side * 5.2;
     const pg = new THREE.Group();
-    pg.add(box(4.5, 1.0, len, lambert(0x8f8b83), 0, 0.5, 0));
-    pg.add(box(4.5, 0.12, len, lambert(0xa9a49a), 0, 1.06, 0));
+    const body = new THREE.Mesh(new THREE.BoxGeometry(4.5, 3.2, len), stoneMat);
+    const uv = body.geometry.attributes.uv as THREE.BufferAttribute;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * len / 4, uv.getY(i) * 0.8);
+    body.position.y = -0.5;
+    pg.add(body);
+    pg.add(box(4.5, 0.12, len, pavingMat, 0, 1.06, 0));
+    pg.add(box(0.35, 0.13, len, edgeMat, -side * 2.0, 1.07, 0));
     if (roof) {
-      for (const dz of [-len / 2 + 2, len / 2 - 2]) pg.add(cyl(0.12, 0.12, 4, toon(0x3f4a50), side * 1.5, 3.1, dz));
-      pg.add(box(4.2, 0.2, len, toon(0x3f4a50), side * 0.4, 5.1, 0));
-      pg.add(lantern(side * 1.5, 4.2, -len / 2 + 2, 0.9), lantern(side * 1.5, 4.2, len / 2 - 2, 0.9));
+      for (const dz of [-len / 2 + 2, 0, len / 2 - 2]) pg.add(cyl(0.1, 0.12, 3.9, ironMat, side * 1.4, 3.05, dz));
+      const r = mesh(roofGeometry(3.6, len - 1, 1.1, 0.35), roofMat, side * 0.6, 5.0, 0);
+      pg.add(r);
+      pg.add(lantern(side * 1.4, 4.4, -len / 2 + 2, 0.9), lantern(side * 1.4, 4.4, len / 2 - 2, 0.9));
     }
-    pg.add(box(2, 0.5, 0.5, toon(0x5a4a3a), side * 1.6, 1.4, 0)); // bench
+    // station name board on two posts
+    const nb = new THREE.Group();
+    nb.add(cyl(0.06, 0.06, 2.2, ironMat, -0.9, 1.1, 0), cyl(0.06, 0.06, 2.2, ironMat, 0.9, 1.1, 0));
+    nb.add(box(2.4, 0.7, 0.08, edgeMat, 0, 2.0, 0));
+    nb.add(box(1.6, 0.12, 0.09, ironMat, 0, 2.05, 0));
+    nb.position.set(side * 0.9, 1.1, len / 2 - 1.2);
+    nb.rotation.y = Math.PI / 2;
+    pg.add(nb);
+    pg.add(box(2, 0.12, 0.6, toon(0x5a4a3a), side * 1.6, 1.55, 0), box(0.12, 0.45, 0.5, ironMat, side * 1.6 - 0.8, 1.3, 0), box(0.12, 0.45, 0.5, ironMat, side * 1.6 + 0.8, 1.3, 0)); // bench
     pg.position.set(x, 0, z);
     g.add(pg);
     return { x, z, y: 1.12, group: pg };
@@ -341,32 +321,11 @@ export function buildSpiritSea(rng: Rng, heightAt: (x: number, z: number) => num
   {
     const bx = -70, bz = -1750;
     const base = heightAt(bx, bz);
-    const _red = toon(0xb3372c); void _red;
-    const greenRoof = toon(0x2f5d4f);
-    const cream = toon(0xefe3c6);
-    const f = facadeTextures({ wall: '#ffffff', window: '#ffd28a', frame: '#e8d0a0', rows: 3, cols: 8, lit: 0.85, rng });
-    const wallMat = new THREE.MeshLambertMaterial({ color: 0xb3372c, map: f.map, emissive: 0xffffff, emissiveMap: f.emissiveMap, emissiveIntensity: 0.95 });
-    const wallMatSide = new THREE.MeshLambertMaterial({ color: 0xb3372c, map: f.map, emissive: 0xffffff, emissiveMap: f.emissiveMap, emissiveIntensity: 0.95 });
-    const tiers: [number, number, number][] = [[44, 9, 30], [38, 8, 26], [32, 8, 22], [24, 7, 18], [16, 7, 12]];
-    let y = 0;
-    for (const [w, h, d] of tiers) {
-      const mats = [wallMatSide, wallMatSide, cream, cream, wallMat, wallMat];
-      const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mats);
-      b.position.set(0, y + h / 2, 0);
-      bath.add(b);
-      const r = mesh(new THREE.BoxGeometry(w + 4, 1.2, d + 4), greenRoof, 0, y + h + 0.5, 0);
-      bath.add(r);
-      // eave lanterns
-      for (let i = -w / 2 + 3; i <= w / 2 - 3; i += 6) bath.add(lantern(i, y + h - 0.5, d / 2 + 2.3, 0.8));
-      y += h + 1.2;
-    }
-    bath.add(mesh(pagodaRoofGeometry(18, 7, 0.3), greenRoof, 0, y, 0));
-    bath.add(cyl(0.3, 0.3, 6, toon(0xd8c090), 0, y + 8, 0));
-    // the big sign
-    const signTex = canvasTexture(128, 128, (c) => { c.fillStyle = '#8f2a20'; c.fillRect(0, 0, 128, 128); c.fillStyle = '#ffd88a'; c.font = 'bold 96px serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('油', 64, 70); });
-    bath.add(mesh(new THREE.PlaneGeometry(7, 7), new THREE.MeshBasicMaterial({ map: signTex }), 0, 30, 11.2));
-    // chimney
-    bath.add(cyl(1.6, 2, 26, toon(0x6a4a3a), -16, 13, -8));
+    const house = buildBathhouse(lantern);
+    bath.add(house.group);
+    // the big sign on the fourth tier
+    const signTex = canvasTexture(128, 128, (c) => { c.fillStyle = '#8f2a20'; c.fillRect(0, 0, 128, 128); c.strokeStyle = '#e8c070'; c.lineWidth = 6; c.strokeRect(6, 6, 116, 116); c.fillStyle = '#ffd88a'; c.font = 'bold 88px serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('油', 64, 70); });
+    bath.add(mesh(new THREE.PlaneGeometry(5, 5), new THREE.MeshBasicMaterial({ map: signTex, color: 0xdddddd }), 0, 30.8, 9.08));
     // red bridge out over the water towards the track
     const bridge = new THREE.Group();
     bridge.add(box(6, 0.6, 40, toon(0xc0392b), 0, 3.4, 0));
@@ -392,10 +351,7 @@ export function buildSpiritSea(rng: Rng, heightAt: (x: number, z: number) => num
     const cx = 26, cz = -2295;
     const base = heightAt(cx, cz);
     const c = new THREE.Group();
-    c.add(box(9, 5, 8, toon(0xd8c8a8), 0, 2.5, 0));
-    c.add(mesh(roofGeometry(9, 8, 4.5, 0.6), toon(0x5a6f5a), 0, 5, 0));
-    c.add(box(2.2, 2, 0.2, glow(0xffd58a, 1.4), -2, 2.6, 4.05), box(2.2, 2, 0.2, glow(0xffd58a, 1.4), 2, 2.6, 4.05));
-    c.add(cyl(0.5, 0.6, 3, toon(0x6a5a4a), 3, 6.5, -1));
+    c.add(buildCottage());
     // garden fence and gate
     for (let i = 0; i < 14; i++) c.add(box(0.15, 1.2, 0.15, toon(0xb8a78a), -8 + i * 1.25, 0.6, 7));
     c.add(box(17, 0.1, 0.1, toon(0xb8a78a), 0, 1.0, 7));

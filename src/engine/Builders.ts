@@ -188,12 +188,14 @@ export interface TerrainOpts {
   height: (x: number, z: number) => number;
   color: (x: number, z: number, y: number, slope: number, out: THREE.Color) => void;
   chunk?: number;
+  /** defaults to a vertex-coloured Lambert material */
+  material?: THREE.Material;
 }
 /** Chunked heightfield with vertex colours. */
 export function buildTerrain(o: TerrainOpts) {
   const group = new THREE.Group();
   const chunk = o.chunk ?? 300;
-  const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const mat = o.material ?? new THREE.MeshLambertMaterial({ vertexColors: true });
   const c = new THREE.Color();
   for (let z0 = o.zMin; z0 < o.zMax; z0 += chunk) {
     const z1 = Math.min(o.zMax, z0 + chunk);
@@ -521,3 +523,193 @@ export function scatter(rng: Rng, count: number, xMin: number, xMax: number, zMi
 
 export const hills = (x: number, z: number, scale = 0.012, amp = 14) => (fbm(x * scale, z * scale, 4) - 0.45) * amp;
 export { clamp, smoothstep, lerp };
+
+// ---------- detailed track ----------
+function gravelTexture(seed = 17) {
+  const rng = new Rng(seed);
+  return canvasTexture(256, 256, (g, w, h) => {
+    g.fillStyle = '#6f675c'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 2600; i++) {
+      const x = rng.range(0, w), y = rng.range(0, h), r = rng.range(1.5, 4.5);
+      const v = Math.round(rng.range(95, 185));
+      const warm = rng.range(-10, 14);
+      for (const ox of [0, w, -w]) for (const oy of [0, h, -h]) {
+        if (x + ox < -6 || x + ox > w + 6 || y + oy < -6 || y + oy > h + 6) continue;
+        g.fillStyle = 'rgba(30,25,20,0.35)';
+        g.beginPath(); g.ellipse(x + ox + 0.8, y + oy + 1, r, r * 0.8, 0, 0, Math.PI * 2); g.fill();
+        g.fillStyle = `rgb(${v + warm},${v},${v - warm})`;
+        g.beginPath(); g.ellipse(x + ox, y + oy, r, r * rng.range(0.6, 0.9), rng.range(0, 3), 0, Math.PI * 2); g.fill();
+      }
+    }
+  }, [1, 1]);
+}
+function sleeperTexture(seed = 19) {
+  const rng = new Rng(seed);
+  return canvasTexture(128, 32, (g, w, h) => {
+    g.fillStyle = '#6b5440'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 26; i++) {
+      g.strokeStyle = `rgba(${rng.chance(0.5) ? '40,28,18' : '140,115,90'},${rng.range(0.15, 0.4)})`;
+      g.lineWidth = rng.range(0.6, 1.6);
+      const y = rng.range(0, h);
+      g.beginPath(); g.moveTo(0, y); g.bezierCurveTo(w * 0.3, y + rng.range(-3, 3), w * 0.7, y + rng.range(-3, 3), w, y + rng.range(-2, 2)); g.stroke();
+    }
+    for (let i = 0; i < 3; i++) { g.fillStyle = 'rgba(30,20,12,0.5)'; g.beginPath(); g.ellipse(rng.range(10, w - 10), rng.range(6, h - 6), rng.range(2, 4), rng.range(1, 2), 0, 0, Math.PI * 2); g.fill(); }
+  });
+}
+
+/**
+ * Track with a raised gravel bed that slopes down to the ground on both sides, textured sleepers,
+ * and rails swept from a real rail profile with a bright running surface.
+ */
+export function buildDetailedTrack(curve: THREE.Curve<THREE.Vector3>, opts: { gauge?: number; sleeperEvery?: number; bedDrop?: number } = {}) {
+  const gauge = opts.gauge ?? 1.5;
+  const group = new THREE.Group();
+  const len = curve.getLength();
+  const segs = Math.ceil(len / 1.2);
+  const up = new THREE.Vector3(0, 1, 0);
+  const pts: THREE.Vector3[] = [], sides: THREE.Vector3[] = [];
+  for (let i = 0; i <= segs; i++) {
+    const u = i / segs;
+    const p = curve.getPointAt(u), t = curve.getTangentAt(u);
+    pts.push(p); sides.push(new THREE.Vector3().crossVectors(t, up).normalize());
+  }
+  // gravel bed: flat top between the sleepers' ends, then shoulders down to the ground
+  {
+    const drop = opts.bedDrop ?? 0.5;
+    const half = gauge / 2 + 0.75;
+    const prof: [number, number][] = [[-half - 1.1, -drop], [-half, -0.02], [0, 0.03], [half, -0.02], [half + 1.1, -drop]];
+    const pos: number[] = [], uv: number[] = [], idx: number[] = [];
+    let dist = 0;
+    for (let i = 0; i <= segs; i++) {
+      if (i > 0) dist += pts[i].distanceTo(pts[i - 1]);
+      prof.forEach(([s, y], k) => {
+        const v = pts[i].clone().addScaledVector(sides[i], s);
+        pos.push(v.x, v.y + y, v.z);
+        uv.push((s + half + 1.1) / 2.2, dist / 2.2);
+        if (i < segs && k < prof.length - 1) { const a = i * prof.length + k; idx.push(a, a + prof.length, a + 1, a + 1, a + prof.length, a + prof.length + 1); }
+      });
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    if ((g.attributes.normal as THREE.BufferAttribute).getY(2) < 0) { for (let i = 0; i < idx.length; i += 3) { const t = idx[i + 1]; idx[i + 1] = idx[i + 2]; idx[i + 2] = t; } g.setIndex(idx); g.computeVertexNormals(); }
+    const bed = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: gravelTexture() }));
+    bed.receiveShadow = true;
+    group.add(bed);
+  }
+  // sleepers
+  {
+    const every = opts.sleeperEvery ?? 1.6;
+    const count = Math.floor(len / every);
+    const geo = new THREE.BoxGeometry(gauge + 1.0, 0.14, 0.42);
+    const tex = sleeperTexture();
+    const im = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ map: tex }), count);
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), look = new THREE.Matrix4(), s = new THREE.Vector3(1, 1, 1);
+    const rng = new Rng(23);
+    const c = new THREE.Color();
+    for (let i = 0; i < count; i++) {
+      const u = (i + 0.5) / count;
+      const p = curve.getPointAt(u), t = curve.getTangentAt(u);
+      look.lookAt(new THREE.Vector3(), t, up);
+      q.setFromRotationMatrix(look).multiply(new THREE.Quaternion().setFromAxisAngle(up, rng.range(-0.03, 0.03)));
+      m4.compose(p.clone().add(new THREE.Vector3(0, 0.07, 0)), q, s);
+      im.setMatrixAt(i, m4);
+      im.setColorAt(i, c.setScalar(rng.range(0.78, 1.08)));
+    }
+    im.instanceMatrix.needsUpdate = true;
+    im.instanceColor!.needsUpdate = true;
+    im.computeBoundingSphere();
+    im.receiveShadow = true;
+    group.add(im);
+  }
+  // rails: a swept I-profile, bright on the running surface
+  {
+    const profile: [number, number][] = [[-0.07, 0], [0.07, 0], [0.07, 0.022], [0.014, 0.034], [0.014, 0.1], [0.038, 0.11], [0.038, 0.15], [-0.038, 0.15], [-0.038, 0.11], [-0.014, 0.1], [-0.014, 0.034], [-0.07, 0.022]];
+    const steel = new THREE.Color(0.78, 0.78, 0.8), rust = new THREE.Color(0.36, 0.25, 0.19);
+    for (const off of [-gauge / 2, gauge / 2]) {
+      const pos: number[] = [], nrm: number[] = [], col: number[] = [], idx: number[] = [];
+      const P = profile.length;
+      for (let i = 0; i <= segs; i++) {
+        const base = pts[i].clone().addScaledVector(sides[i], off).add(new THREE.Vector3(0, 0.14, 0));
+        // duplicate each profile edge so faces are flat-shaded
+        for (let k = 0; k < P; k++) {
+          const [ax, ay] = profile[k], [bx, by] = profile[(k + 1) % P];
+          const nx = by - ay, ny = -(bx - ax);
+          const nl = Math.hypot(nx, ny) || 1;
+          const n = sides[i].clone().multiplyScalar(nx / nl).addScaledVector(up, ny / nl);
+          const top = ay >= 0.149 && by >= 0.149;
+          const cc = top ? steel : rust;
+          for (const [px, py] of [[ax, ay], [bx, by]]) {
+            const v = base.clone().addScaledVector(sides[i], px).addScaledVector(up, py);
+            pos.push(v.x, v.y, v.z); nrm.push(n.x, n.y, n.z); col.push(cc.r, cc.g, cc.b);
+          }
+        }
+        if (i < segs) for (let k = 0; k < P; k++) {
+          const a = i * P * 2 + k * 2, b = a + P * 2;
+          idx.push(a, b, a + 1, a + 1, b, b + 1);
+        }
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+      g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      g.setIndex(idx);
+      const rail = new THREE.Mesh(g, new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 70, specular: 0x777777, side: THREE.DoubleSide }));
+      rail.receiveShadow = true;
+      group.add(rail);
+    }
+  }
+  return group;
+}
+
+/** Materials that would draw identically get the same signature, so separately created copies can share a draw call. */
+function materialSignature(m: THREE.Material) {
+  const a = m as THREE.Material & { color?: THREE.Color; emissive?: THREE.Color; emissiveIntensity?: number; map?: THREE.Texture | null; emissiveMap?: THREE.Texture | null; gradientMap?: THREE.Texture | null; vertexColors?: boolean; specular?: THREE.Color; shininess?: number; metalness?: number; roughness?: number };
+  if ((m as THREE.ShaderMaterial).isShaderMaterial || m.customProgramCacheKey !== THREE.Material.prototype.customProgramCacheKey) return m.uuid;
+  return [m.type, a.color?.getHexString(), a.emissive?.getHexString(), a.emissiveIntensity, a.map?.uuid, a.emissiveMap?.uuid, a.gradientMap?.uuid, a.vertexColors, a.specular?.getHexString(), a.shininess, a.metalness, a.roughness, m.transparent, m.opacity, m.side, m.alphaTest, m.depthWrite, m.blending].join('|');
+}
+
+/**
+ * Bakes the static meshes under `root` into one mesh per material (and attribute layout), so a prop built
+ * from dozens of primitives costs one draw call. The root object itself stays in place, so references to it
+ * (for example as a raycast occluder) keep working. Meshes marked `userData.keep = true`, instanced meshes,
+ * meshes with a custom depth material, and materials used only once are left alone.
+ */
+export function mergeStatic(root: THREE.Object3D) {
+  root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const buckets = new Map<string, THREE.Mesh[]>();
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || (m as THREE.InstancedMesh).isInstancedMesh || Array.isArray(m.material) || m.customDepthMaterial || m.userData.keep) return;
+    const g = m.geometry;
+    if ((g as THREE.InstancedBufferGeometry).isInstancedBufferGeometry || g.morphAttributes.position) return;
+    let hidden = false;
+    for (let p: THREE.Object3D | null = m; p && p !== root; p = p.parent) if (!p.visible) hidden = true;
+    if (hidden) return;
+    const key = `${materialSignature(m.material as THREE.Material)}|${Object.keys(g.attributes).sort().join(',')}|${m.castShadow ? 1 : 0}${m.receiveShadow ? 1 : 0}|${m.renderOrder}`;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key)!.push(m);
+  });
+  const mtx = new THREE.Matrix4();
+  for (const list of buckets.values()) {
+    if (list.length < 2) continue;
+    const geos = list.map((m) => {
+      mtx.multiplyMatrices(inv, m.matrixWorld);
+      const g = (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()).applyMatrix4(mtx);
+      return g;
+    });
+    const merged = mergeGeometries(geos, false);
+    geos.forEach((g) => g.dispose());
+    if (!merged) continue;
+    const first = list[0];
+    const out = new THREE.Mesh(merged, first.material);
+    out.castShadow = first.castShadow; out.receiveShadow = first.receiveShadow; out.renderOrder = first.renderOrder;
+    out.userData.keep = true;
+    for (const m of list) m.parent?.remove(m);
+    root.add(out);
+  }
+  return root;
+}

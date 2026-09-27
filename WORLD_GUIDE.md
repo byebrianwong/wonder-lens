@@ -31,6 +31,16 @@ Every asset is procedural: geometry from primitives, textures from canvas, audio
 ## Building blocks (`src/engine/Builders.ts`)
 `toon(color)`, `lambert(color)`, `glow(color, intensity)` (emissive-looking, blooms), `sphere/box/cyl/cone/capsule/ellipsoid(...)`, `roofGeometry`, `pagodaRoofGeometry`, `canvasTexture(w, h, draw)`, `facadeTextures({...})` (walls with windows + emissive map), `textTexture`, `PathField` (distance to the track, for flattening terrain), `buildTerrain({...})` (chunked heightfield with vertex colours), `buildTrack(curve, opts)` (rails + sleepers), `ribbonGeometry(curve, width, segs)` (roads, canals), `waterMaterial({...})`, `treeGeometry/instancedTrees(style, placements)`, `instanced(geo, mat, placements, colorFn)`, `grassField(placements, opts)`, `cloudField(rng, placements)`, `scatter(...)`, `hills(x, z)`.
 Particles (`src/engine/Particles.ts`): `Puffs` (bursts), `Drift` (drifting sprites: petals, snow, dust, fireflies), `Rain`.
+
+Higher-quality building blocks (used by the Ghibli world; any world can use them):
+- `HeightGrid` (`src/engine/HeightGrid.ts`): samples your height function once on the terrain grid. Pass `height: (x, z) => grid.sample(x, z)` to `buildTerrain` and place everything with `grid.sample`, so objects sit exactly on the visible ground. `grid.texture()` gives shaders the same heights.
+- `GrassField` (`src/engine/Grass.ts`): dense wind-blown grass drawn only around the camera. You give it a `sample(x, z, out)` function that returns colour, density (0 = none) and height. Use an `ExclusionMask` to keep grass off roads, floors and buildings.
+- `ExclusionMask`, `paintedDetailTexture`, `addGroundDetail` (`src/engine/Ground.ts`): a 2D mask you draw rectangles, circles and paths into; a painterly ground texture; and a shader patch that adds that texture (and optional dirt lanes from a mask) to a terrain material.
+- `fluffyForest`, `fluffyTree`, `flowerField` (`src/engine/Foliage.ts`): trees whose canopies are made of camera-facing leaf cards, and meadow flowers. Forests are split into stretches along z so off-screen trees are skipped.
+- `CumulusField` (`src/engine/Clouds.ts`): large soft clouds. Call `update(sky.uniforms, fog, sun.intensity)` every frame.
+- `SeaMaterial` (`src/engine/Water.ts`): water that reads the terrain height to show shallows, shore foam, sky reflection and sun glitter. Call `update(...)` every frame.
+- `buildDetailedTrack` and `mergeStatic` (`src/engine/Builders.ts`): a track with a gravel bed and shaped rails; and a helper that merges a static prop's meshes into one mesh per material, which cuts draw calls a lot.
+- Lighting keys accept `cloudShadow` (0..1): soft cloud shadows that drift over the ground (drawn in a post pass from the depth buffer).
 Deterministic randomness: `new Rng(seed)` from `src/engine/math.ts` (`range`, `int`, `pick`, `chance`, `sign`), `fbm`/`noise2`.
 
 ## Gotchas learned the hard way
@@ -38,6 +48,7 @@ Deterministic randomness: `new Rng(seed)` from `src/engine/math.ts` (`range`, `i
 - `Object3D.position` is read-only; use `.position.set(...)`, never `Object.assign(obj, { position })`.
 - Any NaN in a fragment shader blackens the whole frame through bloom. Use `clamp(x, 0.0, 1.0)` before `pow`, never `smoothstep(a, a, x)`.
 - Keep triangle counts sane: instanced meshes for trees/props, merged geometry for clouds, `SphereGeometry(r, 14, 10)` style segment counts. Target 60 fps on a laptop.
+- Draw calls matter as much as triangles. A prop built from 40 primitives is 40 draw calls (80 with shadows) until you run it through `mergeStatic`. One big instanced mesh that spans the whole ride is never culled; split it into stretches along z.
 - Only a few `PointLight`s per world (2-6), placed at hero spots.
 - Every mesh near the camera at the start should look good: the vehicle is always in frame.
 - The camera can look ±150° yaw and -55°/+65° pitch: put things behind and above the rider too.
