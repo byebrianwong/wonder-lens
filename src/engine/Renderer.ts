@@ -44,25 +44,69 @@ const GradeShader = {
   `,
 };
 
-/** Clears NaN / negative pixels before bloom; one bad fragment would otherwise blacken the whole frame. */
-const SanitizeShader = {
-  uniforms: { tDiffuse: { value: null as THREE.Texture | null } },
+/**
+ * Runs right after the scene render, while depth is still available:
+ * clears NaN / negative pixels (one bad fragment would otherwise blacken the whole frame through bloom)
+ * and darkens the ground under slowly drifting cloud shadows, found by rebuilding world positions from depth.
+ */
+const SceneFxShader = {
+  uniforms: {
+    tDiffuse: { value: null as THREE.Texture | null },
+    tDepth: { value: null as THREE.Texture | null },
+    projInv: { value: new THREE.Matrix4() },
+    camWorld: { value: new THREE.Matrix4() },
+    time: { value: 0 },
+    cloudShadow: { value: 0 },
+    sunDir: { value: new THREE.Vector3(0, 1, 0) },
+  },
   vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
   fragmentShader: /* glsl */ `
-    uniform sampler2D tDiffuse; varying vec2 vUv;
+    uniform sampler2D tDiffuse; uniform sampler2D tDepth; uniform mat4 projInv; uniform mat4 camWorld;
+    uniform float time; uniform float cloudShadow; uniform vec3 sunDir;
+    varying vec2 vUv;
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float noise(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f*f*(3.0-2.0*f);
+      return mix(mix(hash(i), hash(i+vec2(1,0)), u.x), mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), u.x), u.y); }
     void main(){
       vec4 c = texture2D(tDiffuse, vUv);
       if (any(isnan(c)) || any(isinf(c))) c = vec4(0.0, 0.0, 0.0, 1.0);
-      gl_FragColor = vec4(clamp(c.rgb, vec3(0.0), vec3(64.0)), 1.0);
+      vec3 col = clamp(c.rgb, vec3(0.0), vec3(64.0));
+      if (cloudShadow > 0.001) {
+        float d = texture2D(tDepth, vUv).r;
+        if (d < 0.99999) {
+          vec4 v = projInv * vec4(vUv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+          vec3 wp = (camWorld * vec4(v.xyz / v.w, 1.0)).xyz;
+          // project along the sun so shadows fall where the light comes from; drift with the wind
+          vec2 p = (wp.xz - sunDir.xz / max(sunDir.y, 0.2) * wp.y) * 0.0065 + vec2(time * 0.006, time * 0.0025);
+          float n = noise(p) * 0.6 + noise(p * 2.1 + 5.3) * 0.3 + noise(p * 4.7 - 2.1) * 0.1;
+          float sh = smoothstep(0.52, 0.66, n) * cloudShadow;
+          col *= mix(vec3(1.0), vec3(0.7, 0.74, 0.86), sh);
+        }
+      }
+      gl_FragColor = vec4(col, 1.0);
     }
   `,
 };
+
+class SceneFxPass extends ShaderPass {
+  camera: THREE.Camera | null = null;
+  constructor() { super(SceneFxShader); }
+  render(renderer: THREE.WebGLRenderer, writeBuffer: THREE.WebGLRenderTarget, readBuffer: THREE.WebGLRenderTarget, deltaTime: number, maskActive: boolean) {
+    this.uniforms.tDepth.value = readBuffer.depthTexture;
+    if (this.camera) {
+      (this.uniforms.projInv.value as THREE.Matrix4).copy((this.camera as THREE.PerspectiveCamera).projectionMatrixInverse);
+      (this.uniforms.camWorld.value as THREE.Matrix4).copy(this.camera.matrixWorld);
+    }
+    super.render(renderer, writeBuffer, readBuffer, deltaTime, maskActive);
+  }
+}
 
 export class Renderer {
   readonly renderer: THREE.WebGLRenderer;
   readonly composer: EffectComposer;
   readonly bloom: UnrealBloomPass;
   readonly grade: ShaderPass;
+  readonly fx: SceneFxPass;
   readonly renderPass: RenderPass;
   readonly canvas: HTMLCanvasElement;
   private pixelRatio: number;
@@ -86,11 +130,12 @@ export class Renderer {
     this.renderer.setPixelRatio(this.pixelRatio);
 
     const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
-    const target = new THREE.WebGLRenderTarget(size.x, size.y, { samples: 4, type: THREE.HalfFloatType });
+    const target = new THREE.WebGLRenderTarget(size.x, size.y, { samples: 4, type: THREE.HalfFloatType, depthTexture: new THREE.DepthTexture(size.x, size.y) });
     this.composer = new EffectComposer(this.renderer, target);
     this.renderPass = new RenderPass(new THREE.Scene(), new THREE.PerspectiveCamera());
     this.composer.addPass(this.renderPass);
-    this.composer.addPass(new ShaderPass(SanitizeShader));
+    this.fx = new SceneFxPass();
+    this.composer.addPass(this.fx);
     // threshold sits just under 1.0 so plain white surfaces stay clean and only emissive "glow" materials bloom
     this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.42, 0.55, 0.97);
     this.composer.addPass(this.bloom);
@@ -104,6 +149,7 @@ export class Renderer {
   setScene(scene: THREE.Scene, camera: THREE.Camera) {
     this.renderPass.scene = scene;
     this.renderPass.camera = camera;
+    this.fx.camera = camera;
   }
 
   resize() {
@@ -127,7 +173,7 @@ export class Renderer {
     this.frameAvg = this.frameAvg * 0.95 + dtMs * 0.05;
     this.governorCooldown -= dtMs;
     if (this.governorCooldown > 0) return;
-    if (this.frameAvg > 24 && this.pixelRatio > 0.7) {
+    if (this.frameAvg > 20 && this.pixelRatio > 0.7) {
       this.pixelRatio = Math.max(0.7, this.pixelRatio - 0.25);
       this.governorCooldown = 2500;
       this.resize();
@@ -140,6 +186,7 @@ export class Renderer {
 
   render(time: number) {
     this.grade.uniforms.time.value = time;
+    this.fx.uniforms.time.value = time;
     this.composer.render();
   }
 }

@@ -37,6 +37,8 @@ export interface LightingState {
   sunGlow: number;
   sunSize: number;
   horizonHeight: number;
+  /** strength of drifting cloud shadows on the ground, 0..1 */
+  cloudShadow: number;
 }
 
 export interface WorldContext {

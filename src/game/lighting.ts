@@ -11,6 +11,8 @@ export interface LightKey {
   stars?: number; moon?: number; exposure?: number; bloom?: number; saturation?: number; tint?: number;
   /** sky sun disc glow (0 hides the sun, e.g. rain or night) */
   sunGlow?: number; sunSize?: number; horizonHeight?: number;
+  /** drifting cloud shadows on the ground (0 = none) */
+  cloudShadow?: number;
 }
 
 const ca = new THREE.Color(), cb = new THREE.Color();
@@ -36,5 +38,6 @@ export function makeLighting(keys: LightKey[]) {
     out.exposure = mixN(a.exposure, b.exposure, 1); out.bloom = mixN(a.bloom, b.bloom, 0.4); out.saturation = mixN(a.saturation, b.saturation, 1);
     mixC(a.tint ?? 0xffffff, b.tint ?? 0xffffff, out.tint);
     out.sunGlow = mixN(a.sunGlow, b.sunGlow, 0.6); out.sunSize = mixN(a.sunSize, b.sunSize, 0.02); out.horizonHeight = mixN(a.horizonHeight, b.horizonHeight, 0.08);
+    out.cloudShadow = mixN(a.cloudShadow, b.cloudShadow, 0);
   };
 }
