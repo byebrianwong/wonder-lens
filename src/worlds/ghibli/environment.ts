@@ -57,9 +57,11 @@ export function buildSailboats(rng: Rng, count: number, xMin: number, xMax: numb
   const hullMat = new THREE.MeshLambertMaterial({ map: hullPlanks(0x4b5a6a, '#c8a040') }), sailMat = new THREE.MeshLambertMaterial({ map: sailCloth(), side: THREE.DoubleSide });
   const deckMat = new THREE.MeshLambertMaterial({ map: deckPlanks(0x9a7a56) });
   const mastMat = new THREE.MeshLambertMaterial({ map: woodGrain(0x8a6a4a, 319) });
-  // box faces are +x, -x, +y (deck), -y, +z, -z
-  const hullMats = [hullMat, hullMat, deckMat, hullMat, hullMat, hullMat];
-  /** A box hull with a pointed bow (+z) and sides that narrow towards the keel. */
+  const hullMats = [hullMat, deckMat];
+  /**
+   * A box hull with a pointed bow (+z) and sides that narrow towards the keel. The faces are regrouped into
+   * two draw groups, sides then deck (a box's default six groups would cost six draw calls per boat).
+   */
   const hullGeo = (w: number, h: number, d: number) => {
     const geo = boxUV(new THREE.BoxGeometry(w, h, d, 2, 1, 4), 2, h);
     const pos = geo.attributes.position as THREE.BufferAttribute;
@@ -69,6 +71,13 @@ export function buildSailboats(rng: Rng, count: number, xMin: number, xMax: numb
       pos.setX(i, pos.getX(i) * bow * (y < 0 ? 0.55 : 1));
     }
     geo.computeVertexNormals();
+    // box face groups are +x, -x, +y (the deck), -y, +z, -z
+    const index = Array.from(geo.index!.array), sides: number[] = [], deck: number[] = [];
+    geo.groups.forEach((gr, k) => (k === 2 ? deck : sides).push(...index.slice(gr.start, gr.start + gr.count)));
+    geo.setIndex([...sides, ...deck]);
+    geo.clearGroups();
+    geo.addGroup(0, sides.length, 0);
+    geo.addGroup(sides.length, deck.length, 1);
     return geo;
   };
   const boats: { g: THREE.Group; phase: number }[] = [];
