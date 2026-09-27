@@ -1,12 +1,13 @@
 import type { Meta } from '@storybook/html-vite';
 import * as THREE from 'three';
-import { asset, DEFAULT_ARGS, STAGE_ARG_TYPES, type StageArgs } from '../../stories/stage';
+import { asset, DEFAULT_ARGS, STAGE_ARG_TYPES, STAGE_PARAMETERS, type StageArgs } from '../../stories/stage';
 import { buildZubrowkaExpress, lampPosts, PAL, signPost, topiary } from './environment';
 
 export default {
   title: 'Anderson/Buildings and props',
   args: DEFAULT_ARGS,
   argTypes: STAGE_ARG_TYPES,
+  parameters: STAGE_PARAMETERS,
 } satisfies Meta<StageArgs>;
 
 export const ZubrowkaExpress = asset(buildZubrowkaExpress);

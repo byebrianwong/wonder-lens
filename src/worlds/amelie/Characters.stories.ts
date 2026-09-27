@@ -1,6 +1,6 @@
 import type { Meta } from '@storybook/html-vite';
 import { Rng } from '../../engine/math';
-import { asset, DEFAULT_ARGS, STAGE_ARG_TYPES, type StageArgs } from '../../stories/stage';
+import { asset, DEFAULT_ARGS, STAGE_ARG_TYPES, STAGE_PARAMETERS, type StageArgs } from '../../stories/stage';
 import {
   makeAmelie, makeBlindPair, makeBlubber, makeBusker, makeCarousel, makeCat, makeDufayel, makeFinale, makeGnome, makeGrocers,
   makeLovers, makeNino, makePigeons,
@@ -10,6 +10,7 @@ export default {
   title: 'Amelie/Characters',
   args: { ...DEFAULT_ARGS, time: 1 },
   argTypes: STAGE_ARG_TYPES,
+  parameters: STAGE_PARAMETERS,
 } satisfies Meta<StageArgs>;
 
 // Settings match how AmelieWorld.ts builds each character.

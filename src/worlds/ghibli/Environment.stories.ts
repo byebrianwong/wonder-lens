@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Meta } from '@storybook/html-vite';
 import { cyl, glow, mesh, sphere, toon } from '../../engine/Builders';
 import { Rng } from '../../engine/math';
-import { asset, DEFAULT_ARGS, STAGE_ARG_TYPES, type StageArgs } from '../../stories/stage';
+import { asset, DEFAULT_ARGS, STAGE_ARG_TYPES, STAGE_PARAMETERS, type StageArgs } from '../../stories/stage';
 import { buildBathhouse } from './bathhouse';
 import { buildCottage, buildFarmhouse } from './farmhouse';
 import { buildSailboats, buildSeaTrain } from './environment';
@@ -11,6 +11,7 @@ export default {
   title: 'Ghibli/Buildings and vehicles',
   args: DEFAULT_ARGS,
   argTypes: STAGE_ARG_TYPES,
+  parameters: STAGE_PARAMETERS,
 } satisfies Meta<StageArgs>;
 
 /** The paper lantern buildSpiritSea hangs on the bathhouse (copied from environment.ts). */

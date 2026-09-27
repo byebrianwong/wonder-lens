@@ -2,12 +2,13 @@ import type { Meta } from '@storybook/html-vite';
 import { fluffyForest, flowerField, type FluffyStyle } from './Foliage';
 import { Rng } from './math';
 import type { Placement } from './Builders';
-import { asset, DEFAULT_ARGS, STAGE_ARG_TYPES, type StageArgs } from '../stories/stage';
+import { asset, DEFAULT_ARGS, STAGE_ARG_TYPES, STAGE_PARAMETERS, type StageArgs } from '../stories/stage';
 
 export default {
   title: 'Engine/Nature',
   args: DEFAULT_ARGS,
   argTypes: STAGE_ARG_TYPES,
+  parameters: STAGE_PARAMETERS,
 } satisfies Meta<StageArgs>;
 
 /** Three trees in a row, so each canopy variant shows. Styles match the Ghibli forests. */

@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/html-vite';
 import { rideView, whenDrawn, type RideViewOptions } from '../stories/ride';
+import { STAGE_PARAMETERS } from '../stories/stage';
 import { AmelieWorld } from './amelie/AmelieWorld';
 import { AndersonWorld } from './anderson/AndersonWorld';
 import { GhibliWorld } from './ghibli/GhibliWorld';
@@ -15,6 +16,7 @@ import type { WorldDef } from '../game/types';
  */
 export default {
   title: 'Worlds/Ride views',
+  parameters: STAGE_PARAMETERS,
 } satisfies Meta<RideViewOptions>;
 
 type Story = StoryObj<RideViewOptions>;

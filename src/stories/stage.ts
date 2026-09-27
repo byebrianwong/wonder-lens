@@ -47,6 +47,15 @@ export interface StageArgs {
 
 export const DEFAULT_ARGS: StageArgs = { light: 'day', yaw: 28, pitch: 12, distance: 1, time: 0, animate: false };
 
+/**
+ * Chromatic settings for every 3D story. Chromatic's default diffThreshold (0.063) ignored a
+ * 5% change in Totoro's fur colour (tested 2026-09-27, build 3). These stories draw the same
+ * pixels on every run (160 of 161 snapshots were identical between builds 1 and 2; the other
+ * differed by 1 level on 123 pixels), so a much stricter threshold is safe. 0.02 flags a
+ * brightness change of about 2% or more.
+ */
+export const STAGE_PARAMETERS = { chromatic: { diffThreshold: 0.02 } };
+
 /** Storybook controls for StageArgs. */
 export const STAGE_ARG_TYPES: Partial<ArgTypes<StageArgs>> = {
   light: { control: 'inline-radio', options: Object.keys(LIGHTS) },
