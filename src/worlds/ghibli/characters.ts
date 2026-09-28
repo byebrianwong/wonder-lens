@@ -98,6 +98,9 @@ export function makeTotoro(o: TotoroOpts = {}) {
   g.scale.setScalar(scale);
   // animation state
   let blink = 3, blinkT = 0, roarT = 0, jumpT = 0, breathe = 0;
+  // own seed, so blink timing doesn't shift when other code draws random numbers; the scale
+  // is part of the seed so the three Totoros don't blink in step
+  const blinkRng = new Rng(7 + Math.round(scale * 100));
   const baseY = 0;
   const ch: Character & { roar(): void; jump(): void } = {
     group: g,
@@ -107,7 +110,7 @@ export function makeTotoro(o: TotoroOpts = {}) {
       breathe = Math.sin(t * 1.4) * 0.018;
       body.scale.set(1.55 * (1 - breathe * 0.6), 1.9 * (1 + breathe), 1.4 * (1 - breathe * 0.6));
       blink -= dt;
-      if (blink <= 0) { blink = 2.5 + Math.random() * 3.5; blinkT = 0.16; }
+      if (blink <= 0) { blink = 2.5 + blinkRng.next() * 3.5; blinkT = 0.16; }
       if (blinkT > 0) { blinkT -= dt; const s = blinkT > 0.08 ? 0.1 : 1; eyes.forEach((e, i) => e.scale.y = i % 2 === 0 ? s : s); }
       else eyes.forEach((e) => e.scale.y = 1);
       // roar: mouth opens, head back, body inflates

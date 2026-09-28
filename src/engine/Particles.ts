@@ -1,12 +1,22 @@
 import * as THREE from 'three';
+import { Rng } from './math';
+
+/*
+ * Each particle system draws from its own seeded generator instead of Math.random.
+ * three.js calls Math.random every time it creates an object, material or texture, so
+ * with Math.random any change to a world's props moved the rain and fireflies too.
+ * With a private seed, a system's particles depend only on its own settings.
+ */
 
 /** Pool of soft puffs used for landings, sprouting trees and reaction bursts. */
 export class Puffs {
   readonly group = new THREE.Group();
   private pool: { mesh: THREE.Mesh; vel: THREE.Vector3; life: number; max: number; grow: number }[] = [];
   private mat: THREE.MeshBasicMaterial;
+  private rng: Rng;
 
-  constructor(color = 0xffffff, count = 48) {
+  constructor(color = 0xffffff, count = 48, seed = 1) {
+    this.rng = new Rng(seed);
     this.mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, depthWrite: false });
     const geo = new THREE.SphereGeometry(0.35, 10, 8);
     for (let i = 0; i < count; i++) {
@@ -23,9 +33,10 @@ export class Puffs {
       p.mesh.visible = true;
       p.mesh.position.copy(pos);
       p.mesh.scale.setScalar(0.2 * size);
-      p.vel.set((Math.random() - 0.5) * spread, Math.random() * up + 0.5, (Math.random() - 0.5) * spread);
-      p.life = p.max = 0.6 + Math.random() * 0.5;
-      p.grow = (1.5 + Math.random()) * size;
+      const r = this.rng;
+      p.vel.set((r.next() - 0.5) * spread, r.next() * up + 0.5, (r.next() - 0.5) * spread);
+      p.life = p.max = 0.6 + r.next() * 0.5;
+      p.grow = (1.5 + r.next()) * size;
       const m = p.mesh.material as THREE.MeshBasicMaterial;
       if (color !== undefined) m.color.set(color);
       m.opacity = 0.85;
@@ -62,7 +73,9 @@ export class Drift {
   private wobble: number;
   intensity = 1;
 
-  constructor(opts: { count: number; color: THREE.ColorRepresentation; size: number; box: THREE.Vector3; speed: THREE.Vector3; wobble?: number; opacity?: number; texture?: THREE.Texture; blending?: THREE.Blending }) {
+  /** `seed` defaults to `count`, so two systems of different sizes don't share a pattern. */
+  constructor(opts: { count: number; color: THREE.ColorRepresentation; size: number; box: THREE.Vector3; speed: THREE.Vector3; wobble?: number; opacity?: number; texture?: THREE.Texture; blending?: THREE.Blending; seed?: number }) {
+    const rng = new Rng(opts.seed ?? opts.count);
     this.count = opts.count;
     this.box = opts.box;
     this.speed = opts.speed;
@@ -70,10 +83,10 @@ export class Drift {
     this.positions = new Float32Array(this.count * 3);
     this.seeds = new Float32Array(this.count);
     for (let i = 0; i < this.count; i++) {
-      this.positions[i * 3] = (Math.random() - 0.5) * this.box.x;
-      this.positions[i * 3 + 1] = (Math.random() - 0.5) * this.box.y;
-      this.positions[i * 3 + 2] = (Math.random() - 0.5) * this.box.z;
-      this.seeds[i] = Math.random() * 100;
+      this.positions[i * 3] = (rng.next() - 0.5) * this.box.x;
+      this.positions[i * 3 + 1] = (rng.next() - 0.5) * this.box.y;
+      this.positions[i * 3 + 2] = (rng.next() - 0.5) * this.box.z;
+      this.seeds[i] = rng.next() * 100;
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
@@ -151,7 +164,9 @@ export class Rain {
   private box = new THREE.Vector3(60, 30, 60);
   intensity = 0;
   private material: THREE.LineBasicMaterial;
-  constructor(count = 900) {
+  private rng: Rng;
+  constructor(count = 900, seed = count) {
+    this.rng = new Rng(seed);
     this.count = count;
     this.positions = new Float32Array(count * 6);
     for (let i = 0; i < count; i++) this.reset(i, true);
@@ -162,10 +177,11 @@ export class Rain {
     this.lines.frustumCulled = false;
   }
   private reset(i: number, randomY = false) {
-    const x = (Math.random() - 0.5) * this.box.x;
-    const y = randomY ? (Math.random() - 0.5) * this.box.y : this.box.y / 2;
-    const z = (Math.random() - 0.5) * this.box.z;
-    const len = 0.6 + Math.random() * 0.9;
+    const r = this.rng;
+    const x = (r.next() - 0.5) * this.box.x;
+    const y = randomY ? (r.next() - 0.5) * this.box.y : this.box.y / 2;
+    const z = (r.next() - 0.5) * this.box.z;
+    const len = 0.6 + r.next() * 0.9;
     this.positions.set([x, y, z, x + 0.08, y - len, z], i * 6);
   }
   update(dt: number, anchor: THREE.Vector3) {
