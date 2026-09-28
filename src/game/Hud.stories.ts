@@ -50,7 +50,16 @@ export const PhotoCardsStacked = hud((h) => {
   h.showPhoto(sceneryPhoto());
   h.showPhoto(photo('noface', { score: 2210, stars: 4, bonuses: ['Offering gold', 'Legendary sighting'] }));
 });
-export const SubjectReacts = hud((h) => { h.centerMessage('Totoro reacts!'); h.tagSubject(subjects.totoro); });
+export const SubjectReacts = hud((h) => { h.centerMessage('Totoro · Rain-shaking jump'); h.tagSubject(subjects.totoro); });
+/** A special moment is in the viewfinder: the reticle lights up and names it, so the player knows to take the shot. */
+export const SpecialMoment = hud((h) => {
+  h.centerMessage('Totoro · The big roar, +2 more');
+  h.tagSubject(subjects.totoro, 'The big roar');
+  h.setToolHints(true, true);
+  h.setProgress(0.48);
+});
+/** The acorn and ocarina tools glow when the subject in the viewfinder would react to them. */
+export const ToolHints = hud((h) => { h.tagSubject(subjects.noface); h.setToolHints(true, true); h.setProgress(0.66); });
 export const LockHint = hud((h) => h.showLockHint(true));
 export const RelaxRide = hud((h) => { h.setMinimal(true); h.setFilm(Infinity, 24); h.caption('The sea of spirits'); });
 export const Touch: Story = {

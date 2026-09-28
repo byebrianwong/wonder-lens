@@ -22,7 +22,7 @@ const subject = (s: FakeSubject) => s as Subject;
 export const subjects = {
   totoro: subject({ id: 'totoro', name: 'Totoro', from: 'My Neighbor Totoro', base: 1500, rarity: 'legendary', hint: 'Waits in the rain at the Inari-mae bus stop. Throw an acorn and he jumps; play the ocarina and he roars.' }),
   catbus: subject({ id: 'catbus', name: 'The Catbus', from: 'My Neighbor Totoro', base: 1250, rarity: 'rare', hint: 'Comes racing across the fields at dusk and pauses at the bus stop.' }),
-  kiki: subject({ id: 'kiki', name: 'Kiki', from: "Kiki's Delivery Service", base: 950, rarity: 'rare', hint: 'Flies alongside the train as it leaves Koriko. Play the ocarina and she waves.' }),
+  kiki: subject({ id: 'kiki', name: 'Kiki', from: "Kiki's Delivery Service", base: 950, rarity: 'rare', hint: 'Flies alongside the train as it leaves Koriko. Play the ocarina and she waves; toss an acorn at the broom and it wobbles.' }),
   noface: subject({ id: 'noface', name: 'No-Face', from: 'Spirited Away', base: 1350, rarity: 'legendary', hint: 'Stands silently on the first platform in the sea. Call and he offers gold; throw something and he swallows it.' }),
   bathhouse: subject({ id: 'bathhouse', name: 'The bathhouse', from: 'Spirited Away', base: 900, rarity: 'common', hint: 'Lit up across the water, halfway through the night sea.' }),
   laputa: subject({ id: 'laputa', name: 'Laputa', from: 'Castle in the Sky', base: 1000, rarity: 'legendary', hint: 'Look high above the clouds near the end of the line.' }),

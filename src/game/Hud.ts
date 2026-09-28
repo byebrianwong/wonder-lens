@@ -30,6 +30,8 @@ export class Hud {
   private lockHintShown = false;
   private captionTimer = 0;
   private hintTimer = 14;
+  private centerTimer = 0;
+  private toolHints = '';
   minimal = false;
   /** Keep toasts, photo cards and centre messages on screen instead of timing them out. Storybook sets this so snapshots are stable. */
   persist = false;
@@ -115,16 +117,36 @@ export class Hud {
     this.centerMsg.textContent = text;
     this.centerMsg.classList.add('show');
     if (this.persist) return;
-    setTimeout(() => this.centerMsg.classList.remove('show'), 1500);
+    clearTimeout(this.centerTimer);
+    this.centerTimer = window.setTimeout(() => this.centerMsg.classList.remove('show'), 2200);
   }
-  /** Name shown under the reticle when a subject is near the centre. */
-  tagSubject(s: Subject | null) {
-    const txt = s ? `${s.name}<span class="from">${s.from}</span>` : '';
+  /**
+   * Name shown under the reticle when a subject is near the centre. `moment` is the label of a special
+   * moment it is in right now; the reticle lights up so the player knows this is the shot to take.
+   */
+  tagSubject(s: Subject | null, moment = '') {
+    const txt = s ? `${s.name}<span class="from">${s.from}</span>${moment ? `<span class="moment">${moment}</span>` : ''}` : '';
     if (txt !== this.lastTag) {
       this.lastTag = txt;
       this.subjectTag.innerHTML = txt;
       this.subjectTag.classList.toggle('show', !!s);
+      this.reticle.classList.toggle('moment', !!s && !!moment);
     }
+  }
+  /** Light up the throw and call tools when using them would make the subject in the viewfinder react. */
+  setToolHints(item: boolean, call: boolean) {
+    const key = `${item}${call}`;
+    if (key === this.toolHints) return;
+    this.toolHints = key;
+    this.throwCd.classList.toggle('hint', item);
+    this.callCd.classList.toggle('hint', call);
+  }
+  /** A short press animation on a tool, so a keyboard throw or call gets the same feedback as a tap. */
+  fireTool(tool: 'item' | 'call') {
+    const b = tool === 'item' ? this.throwCd : this.callCd;
+    b.classList.remove('fired');
+    void b.offsetWidth; // restart the animation
+    b.classList.add('fired');
   }
   showPhoto(r: PhotoResult) {
     const card = el('div', 'card', this.cards);
@@ -164,7 +186,7 @@ export class Hud {
     }
   }
   showHints() { this.hintEl.classList.remove('fade'); this.hintTimer = 8; }
-  destroy() { this.root.remove(); }
+  destroy() { clearTimeout(this.centerTimer); this.root.remove(); }
   get titleElement() { return this.titleEl; }
   get reticleElement() { return this.reticle; }
 }

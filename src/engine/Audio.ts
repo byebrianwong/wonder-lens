@@ -464,6 +464,19 @@ export class AudioEngine {
       o.connect(og).connect(this.sfxBus); o.start(t); o.stop(t + 0.16);
     }
   }
+  /** A light wooden knock when a thrown item strikes a character. */
+  bonk() {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(760, t); o.frequency.exponentialRampToValueAtTime(380, t + 0.09);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.3, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+    o.connect(g).connect(this.sfxBus); g.connect(this.reverbSend); o.start(t); o.stop(t + 0.14);
+    const s = this.noiseSource(false);
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2200; bp.Q.value = 1.5;
+    const ng = ctx.createGain(); ng.gain.setValueAtTime(0.25, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.03);
+    s.connect(bp).connect(ng).connect(this.sfxBus); s.start(t); s.stop(t + 0.05);
+  }
   /** The "call" instrument for a world. */
   call(kind: 'ocarina' | 'whistle' | 'accordion') {
     if (!this.ctx || !this.profile) return;
