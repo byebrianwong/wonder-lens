@@ -6,6 +6,9 @@
 # - fetch-depth: 0 gives Chromatic the full git history it uses to find baselines.
 # - Visual changes do not fail the job. They show up as the "UI Tests" status on
 #   the commit, and someone accepts or denies them in Chromatic.
+# - TurboSnap (onlyChanged) snapshots only the stories whose code changed since
+#   the last build and copies the rest. Changes to Storybook config, to files that
+#   .storybook/preview.ts imports, or to package versions still re-test everything.
 # Needs the CHROMATIC_PROJECT_TOKEN repository secret (Chromatic: Manage > Configure).
 name: "Chromatic"
 
@@ -29,3 +32,4 @@ jobs:
         uses: chromaui/action@latest
         with:
           projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          onlyChanged: true
