@@ -1,8 +1,8 @@
 /**
  * Dev-only character gallery: open /gallery.html while the dev server runs.
- * Shows one Ghibli character (or the sea train) at a time under the ride's own lighting, so painted
+ * Shows one character (or the world's vehicle) at a time under the ride's own lighting, so painted
  * textures and materials can be checked up close. Drag to orbit, wheel to zoom.
- * URL: ?c=<name>&u=<ride progress for the lighting>&yaw=&pitch=&dist=
+ * URL: ?w=<ghibli | anderson>&c=<name>&u=<ride progress for the lighting>&yaw=&pitch=&dist=
  * From the console: view('catbus', { u: 0.4, yaw: 0.6, pitch: 0.2, dist: 14 }).
  */
 import * as THREE from 'three';
@@ -14,11 +14,14 @@ import type { LightingState } from '../game/types';
 import { LIGHT_KEYS } from '../worlds/ghibli/GhibliWorld';
 import { buildSeaTrain } from '../worlds/ghibli/environment';
 import * as C from '../worlds/ghibli/characters';
+import { LIGHT_KEYS as ANDERSON_KEYS } from '../worlds/anderson/AndersonWorld';
+import { buildZubrowkaExpress } from '../worlds/anderson/environment';
+import * as A from '../worlds/anderson/characters';
 
 interface Entry { make: () => { group: THREE.Object3D; update?: (dt: number, t: number) => void; act?: () => void; follow?: () => THREE.Vector3 }; y: number; dist: number; u?: number }
 
 const rng = () => new Rng(7);
-const ENTRIES: Record<string, Entry> = {
+const GHIBLI: Record<string, Entry> = {
   totoro: { make: () => { const c = C.makeTotoro({ umbrella: true }); return { ...c, act: () => c.roar() }; }, y: 2.8, dist: 12 },
   chu: { make: () => { const c = C.makeTotoro({ color: 0x5f7fa8, belly: 0xe8e2d0, scale: 0.62, chevrons: false, bag: true }); return c; }, y: 1.8, dist: 7 },
   chibi: { make: () => C.makeTotoro({ color: 0xf4f1ea, belly: -1, scale: 0.34, chevrons: false, leaf: true }), y: 1.0, dist: 4 },
@@ -47,6 +50,33 @@ const ENTRIES: Record<string, Entry> = {
   train: { make: () => { const t = buildSeaTrain(); return { group: t.group }; }, y: 1.8, dist: 16 },
 };
 
+const ANDERSON: Record<string, Entry> = {
+  gustave: { make: () => { const c = A.makeGustaveZero(); return { ...c, act: () => c.bow() }; }, y: 1.2, dist: 5 },
+  agatha: { make: () => { const c = A.makeAgatha(); return { ...c, act: () => c.catchBox() }; }, y: 1.0, dist: 3.5 },
+  fox: { make: () => { const c = A.makeMrFox(); return { ...c, act: () => c.whistleClick() }; }, y: 1.0, dist: 4.5 },
+  kylie: { make: () => { const c = A.makeKylie(); return { ...c, act: () => c.zoneOut() }; }, y: 0.8, dist: 3 },
+  samsuzy: { make: () => { const c = A.makeSamSuzy(); return { ...c, act: () => c.moonrise() }; }, y: 0.8, dist: 3.5 },
+  scouts: { make: () => { const c = A.makeScouts(7, rng()); return { ...c, act: () => c.salute() }; }, y: 0.8, dist: 10 },
+  alien: { make: () => { const c = A.makeAlien(); c.group.visible = true; return { group: c.group }; }, y: 1.8, dist: 7 },
+  ufo: { make: () => { const c = A.makeUfo(); return { ...c, act: () => c.setBeam(true, 12) }; }, y: 0, dist: 16 },
+  belafonte: { make: () => A.makeBelafonte(), y: 3, dist: 50 },
+  zissou: { make: () => { const c = A.makeTeamZissou(5, rng()); return { ...c, act: () => c.point() }; }, y: 1.0, dist: 8 },
+  pele: { make: () => { const c = A.makePele(); return { ...c, act: () => c.play() }; }, y: 0.8, dist: 3.5 },
+  shark: { make: () => { const c = A.makeJaguarShark(); c.surface(); return c; }, y: 0, dist: 22 },
+  sub: { make: () => { const c = A.makeDeepSearch(); return { ...c, act: () => c.surface() }; }, y: 0.5, dist: 12 },
+  roadrunner: { make: () => { const c = A.makeRoadrunner(); return { ...c, act: () => c.dance() }; }, y: 0.5, dist: 2.5 },
+  crabs: { make: () => A.makeSugarCrabs(6, rng(), 0.6), y: 0.2, dist: 5 },
+  van: { make: () => { const c = A.makeMendlsVan(); return { ...c, act: () => c.flash() }; }, y: 1.2, dist: 9 },
+  train: { make: () => { const t = buildZubrowkaExpress(); return { group: t.group }; }, y: 2, dist: 16 },
+};
+
+const WORLD = new URLSearchParams(location.search).get('w') === 'anderson' ? 'anderson' : 'ghibli';
+const ENTRIES = WORLD === 'anderson' ? ANDERSON : GHIBLI;
+/** Lighting presets for the buttons: [label, ride progress]. */
+const PRESETS: ReadonlyArray<readonly [string, number]> = WORLD === 'anderson'
+  ? [['alps', 0.1], ['wood', 0.35], ['desert', 0.6], ['sea', 0.84], ['sundown', 0.99]]
+  : [['day', 0], ['afternoon', 0.28], ['dusk', 0.4], ['rain', 0.5], ['night', 0.7]];
+
 const canvas = document.getElementById('view') as HTMLCanvasElement;
 const renderer = new Renderer(canvas);
 const camera = new THREE.PerspectiveCamera(45, renderer.aspect, 0.1, 3000);
@@ -70,7 +100,7 @@ ground.receiveShadow = true;
 scene.add(ground);
 renderer.setScene(scene, camera);
 
-const lighting = makeLighting(LIGHT_KEYS.map((k) => ({ ...k })));
+const lighting = makeLighting((WORLD === 'anderson' ? ANDERSON_KEYS : LIGHT_KEYS).map((k) => ({ ...k })));
 const L: LightingState = {
   skyTop: new THREE.Color(), skyMid: new THREE.Color(), skyBottom: new THREE.Color(), fog: new THREE.Color(), fogDensity: 0.002,
   sunDir: new THREE.Vector3(0, 1, 0), sunColor: new THREE.Color(), sunIntensity: 1, hemiSky: new THREE.Color(), hemiGround: new THREE.Color(),
@@ -79,9 +109,10 @@ const L: LightingState = {
 };
 
 const params = new URLSearchParams(location.search);
-const state = { focus: null as null | [number, number, number], name: params.get('c') ?? 'totoro', u: Number(params.get('u') ?? 0), yaw: Number(params.get('yaw') ?? 0.5), pitch: Number(params.get('pitch') ?? 0.12), dist: 0, paused: false };
+const firstEntry = Object.keys(ENTRIES)[0];
+const state = { focus: null as null | [number, number, number], name: params.get('c') ?? firstEntry, u: Number(params.get('u') ?? 0), yaw: Number(params.get('yaw') ?? 0.5), pitch: Number(params.get('pitch') ?? 0.12), dist: 0, paused: false };
 let current: ReturnType<Entry['make']> | null = null;
-let entry: Entry = ENTRIES[state.name] ?? ENTRIES.totoro;
+let entry: Entry = ENTRIES[state.name] ?? ENTRIES[firstEntry];
 state.dist = Number(params.get('dist') ?? 0) || entry.dist;
 
 function applyLight(u: number) {
@@ -104,7 +135,7 @@ function applyLight(u: number) {
 
 function show(name: string) {
   if (current) scene.remove(current.group);
-  entry = ENTRIES[name] ?? ENTRIES.totoro;
+  entry = ENTRIES[name] ?? ENTRIES[firstEntry];
   state.name = name;
   current = entry.make();
   current.group.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; } });
@@ -121,7 +152,7 @@ function buildBar() {
     b.onclick = () => { state.dist = ENTRIES[n].dist; state.focus = null; show(n); };
     bar.appendChild(b);
   }
-  for (const [label, u] of [['day', 0], ['afternoon', 0.28], ['dusk', 0.4], ['rain', 0.5], ['night', 0.7]] as const) {
+  for (const [label, u] of PRESETS) {
     const b = document.createElement('button');
     b.textContent = label; if (Math.abs(state.u - u) < 0.001) b.className = 'on';
     b.onclick = () => { state.u = u; buildBar(); };

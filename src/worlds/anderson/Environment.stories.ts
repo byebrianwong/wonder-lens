@@ -1,7 +1,9 @@
 import type { Meta } from '@storybook/html-vite';
 import * as THREE from 'three';
 import { asset, DEFAULT_ARGS, STAGE_ARG_TYPES, STAGE_PARAMETERS, type StageArgs } from '../../stories/stage';
-import { buildZubrowkaExpress, lampPosts, PAL, signPost, topiary } from './environment';
+import { Rng } from '../../engine/math';
+import { boyWithAppleEasel, buildStation, buildZubrowkaExpress, courtesan, dispatchKiosk, lampPosts, palmTree, PAL, signPost, topiary, whitmanLuggageTrolley } from './environment';
+import { buildGrandBudapest } from './hotel';
 
 export default {
   title: 'Anderson/Buildings and props',
@@ -31,3 +33,10 @@ export const LampPosts = asset(() => {
   g.add(lampPosts([{ x: 2, y: 0, z: 0, scale: 1, rot: 0 }], { height: 3.4, color: 0x2f4a3a, lamp: 0xffd48a, head: 'lantern' }));
   return g;
 }, { light: 'dusk' });
+export const GrandBudapestHotel = asset(buildGrandBudapest, { yaw: 20, pitch: 10 });
+export const NebelsbadStation = asset(() => buildStation('NEBELSBAD', 'Republic of Zubrowka', 0, () => 0, () => ({ x: 0, y: 0.45 }), { wall: 0xf6efe2, trim: PAL.burgundy, roof: PAL.burgundy, len: 34, houseSide: -1, seed: 31 }).group, { yaw: 40, pitch: 18 });
+export const WhitmanLuggage = asset(whitmanLuggageTrolley, { yaw: 35 });
+export const BoyWithApple = asset(boyWithAppleEasel, { yaw: 10, pitch: 4 });
+export const CourtesanAuChocolat = asset(() => courtesan(1), { pitch: 20 });
+export const FrenchDispatchKiosk = asset(dispatchKiosk, { yaw: 20 });
+export const PalmTree = asset(() => palmTree(new Rng(3), 0.15), { pitch: 8 });

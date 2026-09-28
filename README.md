@@ -9,7 +9,7 @@ style: zoom, throw things, call out, and catch the moments that make each world 
 Worlds:
 
 - **The Sea Train** (Studio Ghibli): leave Koriko by the sea, cross Totoro's countryside in the rain, ride the flooded railway past the bathhouse under the stars.
-- **The Zubrowka Express** (Wes Anderson): symmetrical pastel dioramas from the Grand Budapest Hotel to the Belafonte.
+- **The Zubrowka Express** (Wes Anderson): symmetrical pastel dioramas, from the Grand Budapest Hotel and Gabelmeister's Peak through Camp Ivanhoe and Asteroid City to the Belafonte at sundown.
 - **Montmartre by Moped** (Amélie): green and gold Paris at night, from the Café des 2 Moulins to the Canal Saint-Martin.
 
 Everything is drawn and synthesised in the browser: geometry from primitives, textures from canvas, music and

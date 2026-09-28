@@ -22,6 +22,8 @@ export interface FluffyStyle {
   size?: number;
   /** card density multiplier (default 1) */
   density?: number;
+  /** 0..1: snow lying on the upward-facing leaf cards (default none) */
+  snow?: number;
 }
 
 export interface Blob { c: THREE.Vector3; r: THREE.Vector3 }
@@ -88,20 +90,34 @@ const CARD_VERTEX = /* glsl */ `
   gl_Position = projectionMatrix * mvPosition;
 `;
 
-function patchCards(material: THREE.Material, key: string) {
+/** Snow on a card: white, keeping the leaf texture's light and dark so the clumps still read. */
+const SNOW_FRAGMENT = /* glsl */ `
+  #include <color_fragment>
+  #ifdef USE_MAP
+    float snowShade = clamp((sampledDiffuseColor.g - 0.45) / 0.42, 0.0, 1.0);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.9, 0.93, 1.0) * (0.78 + 0.22 * snowShade), vSnow);
+  #endif
+`;
+
+function patchCards(material: THREE.Material, key: string, snow = false) {
   material.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec2 cardCorner;')
-      .replace('#include <project_vertex>', `#include <project_vertex>\n${CARD_VERTEX}`);
+      .replace('#include <common>', `#include <common>\nattribute vec2 cardCorner;${snow ? '\nattribute float cardSnow; varying float vSnow;' : ''}`)
+      .replace('#include <project_vertex>', `#include <project_vertex>\n${CARD_VERTEX}${snow ? '\nvSnow = cardSnow;' : ''}`);
+    if (snow) {
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying float vSnow;')
+        .replace('#include <color_fragment>', SNOW_FRAGMENT);
+    }
   };
   material.customProgramCacheKey = () => key;
 }
 
-/** Material for camera-facing leaf cards. */
-export function foliageMaterial() {
+/** Material for camera-facing leaf cards. With `snow`, cards carrying a `cardSnow` weight turn white. */
+export function foliageMaterial(snow = false) {
   const tex = leafClusterTexture();
   const mat = new THREE.MeshToonMaterial({ map: tex, alphaTest: 0.5, vertexColors: true, gradientMap: foliageRamp(), side: THREE.DoubleSide });
-  patchCards(mat, 'foliage-cards-v1');
+  patchCards(mat, snow ? 'foliage-cards-snow-v1' : 'foliage-cards-v1', snow);
   const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: tex, alphaTest: 0.5 });
   patchCards(depth, 'foliage-cards-depth-v1');
   return { material: mat, depth };
@@ -111,9 +127,9 @@ export function foliageMaterial() {
  * Cards spread through a set of blobs. Returns a geometry whose vertices sit at card centres and carry
  * cardCorner offsets; the shader expands them. Cards deeper inside a blob are darker.
  */
-export function canopyGeometry(blobs: Blob[], rng: Rng, opts: { density?: number; cardScale?: number; center?: THREE.Vector3 } = {}) {
+export function canopyGeometry(blobs: Blob[], rng: Rng, opts: { density?: number; cardScale?: number; center?: THREE.Vector3; snow?: number } = {}) {
   const center = opts.center ?? blobs.reduce((a, b) => a.add(b.c), new THREE.Vector3()).multiplyScalar(1 / blobs.length);
-  const pos: number[] = [], nrm: number[] = [], col: number[] = [], uv: number[] = [], corner: number[] = [], idx: number[] = [];
+  const pos: number[] = [], nrm: number[] = [], col: number[] = [], uv: number[] = [], corner: number[] = [], idx: number[] = [], snow: number[] = [];
   const d = new THREE.Vector3(), p = new THREE.Vector3(), n = new THREE.Vector3(), n2 = new THREE.Vector3();
   let v = 0;
   for (const b of blobs) {
@@ -132,7 +148,10 @@ export function canopyGeometry(blobs: Blob[], rng: Rng, opts: { density?: number
       const size = (0.36 * rAvg + 0.2) * (opts.cardScale ?? 1) * rng.range(0.8, 1.2);
       const shade = (0.78 + 0.22 * depth) * rng.range(0.94, 1.05);
       const rot = rng.range(0, Math.PI * 2), cs = Math.cos(rot), sn = Math.sin(rot);
+      // snow settles on the outer cards that face the sky
+      const sw = opts.snow ? THREE.MathUtils.smoothstep(n.y, 0.2, 0.7) * THREE.MathUtils.smoothstep(depth, 0.55, 0.85) * opts.snow * rng.range(0.75, 1) : 0;
       for (const [cx, cy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+        snow.push(sw);
         pos.push(p.x, p.y, p.z);
         nrm.push(n.x, n.y, n.z);
         col.push(shade, shade, shade);
@@ -149,6 +168,7 @@ export function canopyGeometry(blobs: Blob[], rng: Rng, opts: { density?: number
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setAttribute('cardCorner', new THREE.Float32BufferAttribute(corner, 2));
+  if (opts.snow) g.setAttribute('cardSnow', new THREE.Float32BufferAttribute(snow, 1));
   g.setIndex(idx);
   // cards extend past their centres; pad the bounds so culling does not clip them
   g.computeBoundingSphere();
@@ -224,7 +244,7 @@ export function treeLayout(shape: FluffyShape, rng: Rng, size = 1) {
 export function fluffyForest(style: FluffyStyle, placements: Placement[], rng: Rng, opts: { castShadow?: boolean; variants?: number } = {}) {
   const group = new THREE.Group();
   if (!placements.length) return group;
-  const { material, depth } = foliageMaterial();
+  const { material, depth } = foliageMaterial(!!style.snow);
   const barkMat = new THREE.MeshToonMaterial({ color: style.trunk, gradientMap: foliageRamp() });
   const variants = opts.variants ?? 3;
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
@@ -234,7 +254,7 @@ export function fluffyForest(style: FluffyStyle, placements: Placement[], rng: R
   const layouts: Array<{ canopy: THREE.BufferGeometry; wood: THREE.BufferGeometry | null }> = [];
   for (let vi = 0; vi < variants; vi++) {
     const layout = treeLayout(style.shape, rng, style.size ?? 1);
-    layouts.push({ canopy: canopyGeometry(layout.blobs, rng, { density: style.density }), wood: layout.wood });
+    layouts.push({ canopy: canopyGeometry(layout.blobs, rng, { density: style.density, snow: style.snow }), wood: layout.wood });
   }
   const chunks = new Map<number, Array<{ pl: Placement; i: number }>>();
   placements.forEach((pl, i) => { const k = Math.floor(pl.z / CHUNK); if (!chunks.has(k)) chunks.set(k, []); chunks.get(k)!.push({ pl, i }); });
