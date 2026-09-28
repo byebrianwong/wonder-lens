@@ -517,7 +517,8 @@ export function makeDufayel() {
       c.fillStyle = hat; c.beginPath(); c.ellipse(x, y - 6, 9, 3.5, 0, 0, TAU); c.fill();
     }
     c.fillStyle = '#e63b2e'; c.fillRect(50, 66, 24, 10); c.fillStyle = '#6fb84a'; c.beginPath(); c.arc(74, 70, 4, 0, TAU); c.fill();
-    c.fillStyle = 'rgba(255,255,255,0.35)'; for (let i = 0; i < 40; i++) c.fillRect(Math.random() * w, h * 0.65 + Math.random() * h * 0.3, 4, 1.5);
+    const glints = new Rng(19); // seeded, so the painting is the same every ride
+    c.fillStyle = 'rgba(255,255,255,0.35)'; for (let i = 0; i < 40; i++) c.fillRect(glints.next() * w, h * 0.65 + glints.next() * h * 0.3, 4, 1.5);
   });
   const canvasMesh = mesh(new THREE.PlaneGeometry(0.9, 0.68), new THREE.MeshLambertMaterial({ map: painting, emissive: 0x555555, emissiveMap: painting }), 0, 1.2, 0.05);
   canvasMesh.rotation.x = -0.08;
@@ -573,12 +574,13 @@ export function makeCat() {
   for (const s of [-1, 1]) g.add(ellipsoid(0.05, 0.04, 0.08, white, s * 0.09, 0.04, 0.16, 8, 5));
   const tail = capsule(0.028, 0.34, fur, 0.12, 0.08, -0.2); tail.rotation.x = 1.2; tail.rotation.z = -0.6; g.add(tail);
   let blink = 2;
+  const rng = new Rng(23); // own seed, so blink timing doesn't shift when other code draws random numbers
   const ch: Character = {
     group: g,
     update(dt, t) {
       tail.rotation.z = -0.6 + Math.sin(t * 1.4) * 0.35; tail.rotation.x = 1.2 + Math.sin(t * 0.9) * 0.15;
       head.rotation.y = Math.sin(t * 0.35) * 0.5; head.rotation.z = Math.sin(t * 0.6) * 0.08;
-      blink -= dt; if (blink <= 0) blink = 3 + Math.random() * 4;
+      blink -= dt; if (blink <= 0) blink = 3 + rng.next() * 4;
       const s = blink < 0.12 ? 0.15 : 1;
       for (const e of eyes) e.scale.y = s;
     },
@@ -676,6 +678,7 @@ export function makeBlubber() {
   g.add(fish);
   const start = new THREE.Vector3(), end = new THREE.Vector3();
   let leapT = 0, hopT = 0, nextHop = 4, yaw = 0;
+  const rng = new Rng(29); // own seed, so each hop's direction doesn't shift when other code draws random numbers
   const LEAP = 1.7;
   const ch: Character & { leap(landing: THREE.Vector3): void; up(): boolean } = {
     group: g,
@@ -702,7 +705,7 @@ export function makeBlubber() {
         return;
       }
       nextHop -= dt;
-      if (nextHop <= 0 && hopT <= 0) { hopT = 0.9; nextHop = 5 + Math.random() * 5; yaw = Math.random() * TAU; }
+      if (nextHop <= 0 && hopT <= 0) { hopT = 0.9; nextHop = 5 + rng.next() * 5; yaw = rng.next() * TAU; }
       if (hopT > 0) {
         hopT -= dt;
         const k = clamp(1 - hopT / 0.9, 0, 1);
