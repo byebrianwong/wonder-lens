@@ -1,0 +1,31 @@
+# Publishes Storybook to Chromatic and compares every story with its accepted
+# baseline. This follows Chromatic's recommended GitHub Actions setup
+# (chromatic.com/docs/github-actions):
+# - It runs on push, not pull_request. A pull_request run tests GitHub's
+#   temporary merge commit, which can make Chromatic pick the wrong baseline.
+# - fetch-depth: 0 gives Chromatic the full git history it uses to find baselines.
+# - Visual changes do not fail the job. They show up as the "UI Tests" status on
+#   the commit, and someone accepts or denies them in Chromatic.
+# Needs the CHROMATIC_PROJECT_TOKEN repository secret (Chromatic: Manage > Configure).
+name: "Chromatic"
+
+on: push
+
+jobs:
+  chromatic:
+    name: Run Chromatic
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.20.0
+      - name: Install dependencies
+        run: npm ci
+      - name: Run Chromatic
+        uses: chromaui/action@latest
+        with:
+          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
