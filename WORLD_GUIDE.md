@@ -24,7 +24,10 @@ Every asset is procedural: geometry from primitives, textures from canvas, audio
 `new Subject({ id, name, from, group, radius, base, rarity, hint, poses, centerOffset, facing, onItem, onCall, update, maxDistance, reactRange })`.
 - `base` points: landmarks 300-900, characters 500-1500 (legendary ~1300-1500).
 - `poses`: named special moments with a score multiplier (1.4-2.0) and a label shown on the photo card. Trigger with `subject.setPose('name', seconds)` from `onItem`/`onCall`/scripted moments.
-- `onItem(pos, dist)` fires when a thrown item lands within `reactRange` (default 14). `onCall(dist)` fires for subjects within 90 units of the camera. Return `true` if the subject reacted.
+- `onItem(pos, dist)` fires when a thrown item lands within `reactRange` (default 14), or with `dist` 0 when the item strikes the subject in mid-air. `onCall(dist)` fires for subjects within 90 units of the camera. Return `true` if the subject reacted. After reacting to an item a subject ignores items for 1.2 s, so a quick second throw does not restart its animation.
+- Throws are aimed for the player. If a subject with `onItem` is near the reticle and within 80 units, the item follows the arc that reaches it, leading it if it moves. Otherwise the item lands on the ground, water or large scenery under the reticle. So `radius` matters: it sets how easy the subject is to aim at and the sphere a thrown item hits.
+- `crowd: true` is for a group spread over an area (a flock, a school, a troop): items aimed at it come down on the ground among them (the height of the group's origin, so a deck or platform works) and never hit them in mid-air.
+- `swallows: true` makes an item that hits the subject disappear instead of bouncing off.
 - Toggle `subject.active` (and `group.visible`) for subjects that only exist in part of the ride, so they are not scored or tagged elsewhere.
 - Characters face local +z. Use `group.lookAt(target)` to orient. For "facing the camera" bonus supply `facing: () => forwardVector`.
 

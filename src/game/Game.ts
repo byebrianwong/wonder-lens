@@ -7,7 +7,8 @@ import { damp } from '../engine/math';
 import type { BuiltWorld, LightingState, WorldDef } from './types';
 import { Ride } from './Ride';
 import { CameraRig } from './CameraRig';
-import { Items } from './Items';
+import { Items, THROW_RANGE, flightTime, type Surface, type ThrowTarget } from './Items';
+import type { Subject } from './Subject';
 import { Hud } from './Hud';
 import { scorePhoto, snapshotCanvas, type PhotoResult } from './Photo';
 import { Album, summarize } from './Album';
@@ -27,6 +28,12 @@ export interface GameOptions {
 }
 
 const FILM_MAX = 24;
+/** seconds between throws */
+const THROW_COOLDOWN = 0.45;
+/** seconds between calls; a little longer than the call's own tune */
+const CALL_COOLDOWN = 2.4;
+/** subjects within this distance of the camera hear the call */
+const CALL_RANGE = 90;
 
 /** One ride through one world: owns the loop, the camera, the photo state and the HUD. */
 export class Game {
@@ -63,6 +70,10 @@ export class Game {
   fps = 60;
   private idle = 0;
   private autoLook = new THREE.Vector3();
+  /** smoothed world velocity of each active subject, so throws can lead moving targets */
+  private motion = new Map<Subject, { last: THREE.Vector3; vel: THREE.Vector3 }>();
+  private stepVel = new THREE.Vector3();
+  private instM = new THREE.Matrix4();
 
   constructor(o: GameOptions) {
     this.o = o;
@@ -77,7 +88,7 @@ export class Game {
     console.info(`[window seat] ${def.id} built in ${(performance.now() - t0).toFixed(0)} ms`);
     this.ride = new Ride(this.world.curve, this.world.speed, this.world.vehicle);
     (window as any).__dbg = { world: this.world, ride: this.ride, game: this, rig: this.rig };
-    this.items = new Items(this.world, (pos, water) => this.onLand(pos, water));
+    this.items = new Items(this.world, (pos, surface, spent) => this.onLand(pos, surface, spent), (s, pos) => this.onHit(s, pos));
     this.puffs = new Puffs();
     this.world.scene.add(this.puffs.group);
     this.hud = new Hud(this.o.ui, def.title, def.itemName, def.callName, def.accent, this.o.input.isTouch);
@@ -118,30 +129,146 @@ export class Game {
   }
   private throwItem() {
     if (this.paused || !this.running || this.throwCd > 0) return;
-    this.throwCd = 1.1;
-    this.items.throwFrom(this.rig.camera);
+    this.throwCd = THROW_COOLDOWN;
+    this.items.throwFrom(this.rig.camera, this.throwTarget());
     this.o.audio.throwWhoosh();
+    this.hud.fireTool('item');
   }
   private call() {
     if (this.paused || !this.running || this.callCd > 0) return;
-    this.callCd = 3.2;
+    this.callCd = CALL_COOLDOWN;
     this.o.audio.call(this.o.def.callKind);
+    this.hud.fireTool('call');
     const pos = this.rig.camera.getWorldPosition(this.tmp.clone());
     this.world.onCall(pos, this.ride.state);
-    let reacted: string[] = [];
-    for (const s of this.world.subjects) if (s.tryCall(pos, 90)) reacted.push(s.name);
+    const before = this.poses();
+    const reacted = this.world.subjects.filter((s) => s.tryCall(pos, CALL_RANGE));
     if (reacted.length) {
       setTimeout(() => this.o.audio.react(1.1), 350);
-      this.hud.centerMessage(`${reacted[0]} noticed!`);
+      this.announce(before, reacted);
     }
   }
-  private onLand(pos: THREE.Vector3, water: boolean) {
+  private onLand(pos: THREE.Vector3, surface: Surface, spent: boolean) {
+    const water = surface === 'water';
+    if (spent) {
+      // an item that already hit someone just drops
+      this.puffs.burst(pos, 4, water ? 0xcfe8ff : 0xe8dcc8, 1.2, 1.2, 0.6);
+      return;
+    }
     this.puffs.burst(pos, water ? 12 : 8, water ? 0xcfe8ff : 0xe8dcc8, water ? 3 : 2, water ? 3.5 : 2);
     this.o.audio.thump(water ? 'water' : 'ground');
     this.world.onItemLand(pos);
-    for (const s of this.world.subjects) {
-      if (s.tryItem(pos)) { setTimeout(() => this.o.audio.react(0.9), 200); this.hud.centerMessage(`${s.name} reacts!`); }
+    const before = this.poses();
+    const reacted = this.world.subjects.filter((s) => s.tryItem(pos));
+    if (reacted.length) {
+      setTimeout(() => this.o.audio.react(0.9), 200);
+      this.announce(before, reacted);
     }
+  }
+  /** A thrown item struck a character in mid-air. */
+  private onHit(s: Subject, pos: THREE.Vector3) {
+    const before = this.poses();
+    const reacted = s.hitByItem(pos);
+    this.puffs.burst(pos, 6, 0xfff4dc, 2.4, 2.2, 0.7);
+    this.o.audio.bonk();
+    if (reacted) {
+      setTimeout(() => this.o.audio.react(0.9), 120);
+      this.announce(before, [s]);
+    }
+    return reacted;
+  }
+
+  /** Each subject's pose and pose timer, to spot which ones a reaction set off. */
+  private poses() {
+    return new Map(this.world.subjects.map((s) => [s, { pose: s.pose, timer: s.poseTimer }]));
+  }
+  /**
+   * Say what just happened, naming the special moment so the player knows what to photograph.
+   * When several subjects react, the one nearest the reticle is named.
+   */
+  private announce(before: Map<Subject, { pose: string; timer: number }>, reacted: Subject[]) {
+    const moments = this.world.subjects.filter((s) => {
+      const b = before.get(s);
+      return s.pose !== 'idle' && (!b || s.pose !== b.pose || s.poseTimer > b.timer + 1e-6);
+    });
+    const cam = this.rig.camera;
+    const rank = (s: Subject) => {
+      this.ndc.copy(s.center(this.tmp)).project(cam);
+      const onScreen = this.ndc.z < 1 && Math.abs(this.ndc.x) < 1 && Math.abs(this.ndc.y) < 1;
+      return onScreen ? Math.hypot(this.ndc.x, this.ndc.y) : 10 - s.base / 1000;
+    };
+    const byRank = (list: Subject[]) => list.map((s) => ({ s, r: rank(s) })).sort((a, b) => a.r - b.r).map((x) => x.s);
+    const named = byRank(moments.length ? moments : reacted);
+    const top = named[0];
+    const others = new Set([...moments, ...reacted]).size - 1;
+    const text = top.pose !== 'idle' && top.poseLabel ? `${top.name} · ${top.poseLabel}` : `${top.name} noticed you`;
+    this.hud.centerMessage(others > 0 ? `${text}, +${others} more` : text);
+  }
+
+  /** Where a throw goes: at the character under the reticle if one would react, else at the ground, water or wall it points at. */
+  private throwTarget(): ThrowTarget | null {
+    const cam = this.rig.camera;
+    const s = this.scanReticle().throwable;
+    if (s) {
+      const point = s.crowd ? s.groundPoint(new THREE.Vector3()) : s.center(new THREE.Vector3());
+      // lead a moving target: aim where it will be when the item gets there
+      const m = this.motion.get(s);
+      if (m) {
+        let t = flightTime(cam.position.distanceTo(point));
+        t = flightTime(cam.position.distanceTo(this.tmp.copy(point).addScaledVector(m.vel, t)));
+        point.addScaledVector(m.vel, t);
+      }
+      return { point, kind: s.crowd ? 'floor' : 'body' };
+    }
+    return this.surfaceUnderReticle();
+  }
+
+  /** The first ground, water or large piece of scenery along the view, within throwing range. */
+  private surfaceUnderReticle(): ThrowTarget | null {
+    const cam = this.rig.camera;
+    const w = this.world;
+    const o = cam.position;
+    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+    const floorAt = (p: THREE.Vector3) => Math.max(w.groundHeight(p.x, p.z), w.waterLevel);
+    // march along the view over the height field and water, then narrow down the crossing
+    const p = new THREE.Vector3();
+    let ground: THREE.Vector3 | null = null;
+    let prev = 0;
+    for (let t = 1; t <= THROW_RANGE; t += 0.75) {
+      p.copy(o).addScaledVector(dir, t);
+      if (p.y <= floorAt(p)) {
+        let a = prev, b = t;
+        for (let k = 0; k < 8; k++) {
+          const mid = (a + b) / 2;
+          p.copy(o).addScaledVector(dir, mid);
+          if (p.y <= floorAt(p)) b = mid; else a = mid;
+        }
+        ground = o.clone().addScaledVector(dir, b);
+        ground.y = floorAt(ground);
+        break;
+      }
+      prev = t;
+    }
+    // buildings and big scenery in the way
+    this.ray.set(o, dir);
+    this.ray.near = 0.5;
+    this.ray.far = ground ? ground.distanceTo(o) + 0.5 : THROW_RANGE;
+    const hit = w.occluders.length ? this.ray.intersectObjects(w.occluders, true)[0] : undefined;
+    if (hit && hit.distance > 3) {
+      const n = new THREE.Vector3(0, 1, 0);
+      if (hit.face) {
+        n.copy(hit.face.normal);
+        const im = hit.object as THREE.InstancedMesh;
+        if (im.isInstancedMesh && hit.instanceId !== undefined) { im.getMatrixAt(hit.instanceId, this.instM); n.transformDirection(this.instM); }
+        n.transformDirection(hit.object.matrixWorld);
+      }
+      // mostly upward-facing: a roof, a deck, a hillside; otherwise the side of something
+      return n.y > 0.6 ? { point: hit.point.clone(), kind: 'floor' } : { point: hit.point.clone(), kind: 'wall', normal: n };
+    }
+    if (ground) return ground.distanceTo(o) > 3 ? { point: ground, kind: 'floor' } : null;
+    // looking down at ground further than we can throw: send it as far as we can along the view
+    if (dir.y < -0.02) return { point: o.clone().addScaledVector(dir, THROW_RANGE), kind: 'body' };
+    return null;
   }
 
   togglePause() {
@@ -249,6 +376,7 @@ export class Game {
     this.o.audio.setVehicleSpeed(st.speedMult);
     this.world.update(dt, st);
     for (const s of this.world.subjects) s.update(dt, st);
+    this.trackMotion(dt);
     this.autoCamera(dt, inp);
     this.rig.update(dt, inp, this.world.cameraAnchor, this.time);
     this.items.update(dt);
@@ -265,11 +393,18 @@ export class Game {
     this.hud.update(dt);
     this.hud.setZoom(this.rig.zoom01);
     this.hud.setProgress(st.u);
-    this.hud.setCooldowns(this.throwCd / 1.1, this.callCd / 3.2);
+    this.hud.setCooldowns(this.throwCd / THROW_COOLDOWN, this.callCd / CALL_COOLDOWN);
     this.captions(st.u);
     this.hud.showLockHint(inp.mode === 'lock' && !inp.pointerLocked && !inp.isTouch && this.time > 1.5 && !this.ride.finished);
     this.lastTag += dt;
-    if (this.lastTag > 0.12) { this.lastTag = 0; this.hud.tagSubject(this.nearestCentered()); }
+    if (this.lastTag > 0.12) {
+      this.lastTag = 0;
+      const { tagged, throwable } = this.scanReticle();
+      this.hud.tagSubject(tagged, tagged && tagged.pose !== 'idle' ? tagged.poseLabel : '');
+      // light up the tools that would make the subject in the viewfinder do something
+      const callable = !!tagged && tagged.reactsToCall && tagged.center(this.tmp).distanceTo(this.rig.camera.position) < CALL_RANGE;
+      this.hud.setToolHints(!!throwable && throwable.itemReady, callable);
+    }
     // fades
     this.fade = damp(this.fade, this.fadeTarget, this.fadeTarget > this.fade ? 4 : 2.2, dt);
     r.grade.uniforms.fade.value = this.fade;
@@ -330,29 +465,63 @@ export class Game {
     }
   }
 
-  private nearestCentered() {
+  /**
+   * What is in the viewfinder: `tagged` is the subject nearest the centre, whose name the HUD shows;
+   * `throwable` is the one a thrown item would be aimed at, a subject that reacts to items and is within
+   * throwing range. Big subjects count from the edge of their silhouette, so they are easy to aim at.
+   */
+  private scanReticle(): { tagged: Subject | null; throwable: Subject | null } {
     const cam = this.rig.camera;
-    let best: import('./Subject').Subject | null = null;
-    let bestD = 0.28;
+    cam.updateMatrixWorld(); // the rig moved it this frame; project() needs the new view
+    const halfTan = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
+    let tagged: Subject | null = null, tagD = 0.28;
+    let throwable: Subject | null = null, throwD = 0.3;
     for (const s of this.world.subjects) {
       if (!s.active) continue;
       s.center(this.tmp);
       const dist = this.tmp.distanceTo(cam.position);
-      if (dist > s.maxDistance * 0.8) continue;
       this.ndc.copy(this.tmp).project(cam);
       if (this.ndc.z > 1 || this.ndc.z < -1) continue;
       const d = Math.hypot(this.ndc.x, this.ndc.y);
-      if (d < bestD) { bestD = d; best = s; }
+      if (dist <= s.maxDistance * 0.8 && d < tagD) { tagD = d; tagged = s; }
+      if (s.reactsToItems && dist > 2 && dist <= THROW_RANGE) {
+        // when the reticle is inside two silhouettes, the one whose centre is nearer wins
+        const edge = Math.max(0, d - s.radius / (dist * halfTan)) + d * 0.2;
+        if (edge < throwD) { throwD = edge; throwable = s; }
+      }
     }
-    if (best && this.world.occluders.length) {
-      best.center(this.tmp);
-      const dir = this.tmp.clone().sub(cam.position);
-      const len = dir.length();
-      this.ray.set(cam.position, dir.normalize());
-      this.ray.near = 0.5; this.ray.far = Math.max(0.6, len - best.radius * 0.6);
-      if (this.ray.intersectObjects(this.world.occluders, true).length) return null;
+    const hidden = new Map<Subject, boolean>();
+    const occluded = (s: Subject) => {
+      if (!this.world.occluders.length) return false;
+      let h = hidden.get(s);
+      if (h === undefined) {
+        const dir = s.center(this.tmp).sub(cam.position);
+        const len = dir.length();
+        this.ray.set(cam.position, dir.normalize());
+        this.ray.near = 0.5; this.ray.far = Math.max(0.6, len - s.radius * 0.6);
+        h = this.ray.intersectObjects(this.world.occluders, true).length > 0;
+        hidden.set(s, h);
+      }
+      return h;
+    };
+    if (tagged && occluded(tagged)) tagged = null;
+    if (throwable && occluded(throwable)) throwable = null;
+    return { tagged, throwable };
+  }
+
+  /** Follow each active subject's centre from frame to frame to estimate how fast it is moving. */
+  private trackMotion(dt: number) {
+    if (dt <= 0) return;
+    const k = 1 - Math.exp(-dt * 8);
+    for (const s of this.world.subjects) {
+      if (!s.active) { this.motion.delete(s); continue; }
+      const c = s.center(this.tmp);
+      const m = this.motion.get(s);
+      if (!m) { this.motion.set(s, { last: c.clone(), vel: new THREE.Vector3() }); continue; }
+      const step = this.stepVel.subVectors(c, m.last).divideScalar(dt);
+      m.vel.lerp(step, k);
+      m.last.copy(c);
     }
-    return best;
   }
 
   private takePhoto() {

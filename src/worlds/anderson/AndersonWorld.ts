@@ -468,7 +468,7 @@ function build(ctx: WorldContext): BuiltWorld {
     hint: 'Troop 55 marching in perfect file along the trail on the left. Whistle and they salute as one.',
     poses: { salute: { label: 'Salute in unison', mult: 1.7 }, halt: { label: 'Halt!', mult: 1.4 } }, centerOffset: new THREE.Vector3(0, 0.8, -3.5),
     onCall: () => { scouts.salute(); scoutsSubject.setPose('salute', 2.8); return true; },
-    onItem: () => { scouts.halt(); scoutsSubject.setPose('halt', 2.4); return true; }, reactRange: 18, maxDistance: 130,
+    onItem: () => { scouts.halt(); scoutsSubject.setPose('halt', 2.4); return true; }, reactRange: 18, maxDistance: 130, crowd: true,
   });
   subjects.push(scoutsSubject);
   const scoutWin = span(scoutsSubject, scouts.group, -780, -1170);
@@ -633,7 +633,7 @@ function build(ctx: WorldContext): BuiltWorld {
     hint: 'Five in light blue with red beanies, in a row on the deck. Whistle and they all point at the sea together.',
     poses: { point: { label: 'Team Zissou', mult: 1.8 }, salute: { label: 'Salute', mult: 1.5 } }, centerOffset: new THREE.Vector3(0, 1.2, 0), facing: fwd(crew.group),
     onCall: () => { crew.point(); crewSubject.setPose('point', 3.6); return true; },
-    onItem: () => { crew.salute(); crewSubject.setPose('salute', 2.4); return true; }, reactRange: 26, maxDistance: 150,
+    onItem: () => { crew.salute(); crewSubject.setPose('salute', 2.4); return true; }, reactRange: 26, maxDistance: 150, crowd: true,
   });
   subjects.push(crewSubject);
   const pele = makePele();

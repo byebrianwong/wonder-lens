@@ -198,18 +198,65 @@ export function makeCatbus() {
     g.add(sphere(0.28, mouseMat, s * 0.9, 2.6, -3.5));
     g.add(sphere(0.07, glow(0xff5a4a, 2), s * 0.9 + s * 0.05, 2.7, -3.75));
   }
-  const ch: Character = {
+  // the grin: a band of painted teeth lying on the head, wrapping round the front and curling up into the
+  // cheeks, so it can be seen from the side as the Catbus runs past
+  const MOUTH_Y = 1.72;
+  const grinGeo = new THREE.BufferGeometry();
+  {
+    const N = 48, TH = 1.45, CY = 2.15, RX = 1.55, RYZ = 1.4;
+    const pos: number[] = [], nrm: number[] = [], uv: number[] = [], idx: number[] = [];
+    for (let i = 0; i <= N; i++) {
+      const k = (i / N) * 2 - 1;
+      const th = k * TH;
+      const mid = MOUTH_Y + 0.28 * k * k;
+      const h = 0.25 * (1 - 0.5 * k * k);
+      for (const [j, y] of [[0, mid - h], [1, mid + h]]) {
+        // a point just outside the head's ellipsoid at this height and angle, and the surface normal there
+        const s = Math.sqrt(Math.max(0, 1 - ((y - CY) / RYZ) ** 2)) * 1.015;
+        const x = RX * s * Math.sin(th), z = RYZ * s * Math.cos(th);
+        const n = new THREE.Vector3(x / RX ** 2, (y - CY) / RYZ ** 2, z / RYZ ** 2).normalize();
+        pos.push(x, y - MOUTH_Y, z + 3.55); nrm.push(n.x, n.y, n.z); uv.push(i / N, j);
+      }
+      if (i < N) { const a = i * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+    }
+    grinGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    grinGeo.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+    grinGeo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    grinGeo.setIndex(idx);
+  }
+  const teeth = canvasTexture(512, 64, (c, w, h) => {
+    c.fillStyle = '#2e1418'; c.fillRect(0, 0, w, h);
+    c.fillStyle = '#f4efe2'; c.fillRect(10, 13, w - 20, h - 26);
+    c.fillStyle = 'rgba(120,100,90,0.55)'; c.fillRect(10, h / 2 - 1, w - 20, 2);
+    for (let x = 10 + 21; x < w - 10; x += 21) c.fillRect(x, 13, 2, h - 26);
+    c.fillStyle = 'rgba(255,255,255,0.35)'; c.fillRect(10, 13, w - 20, 5);
+  });
+  const grin = mesh(grinGeo, charToon({ map: teeth, emissive: 0x1a1414, rim: 0.1 }), 0, MOUTH_Y, 0);
+  grin.visible = false;
+  g.add(grin);
+  let grinT = 0;
+  const ch: Character & { running: boolean; grin(): void } = {
     group: g,
+    /** false while it waits at a stop: the legs come to rest */
+    running: true,
+    grin() { grinT = 3; },
     update(dt, t) {
-      void dt;
       legs.forEach((l, i) => {
         const ph = t * 14 + (i % 6) * 1.1 + (i >= 6 ? Math.PI : 0);
-        l.rotation.x = Math.sin(ph) * 0.55;
-        l.position.y = 0.75 + Math.max(0, Math.cos(ph)) * 0.25;
+        l.rotation.x = ch.running ? Math.sin(ph) * 0.55 : damp(l.rotation.x, 0, 8, dt);
+        l.position.y = ch.running ? 0.75 + Math.max(0, Math.cos(ph)) * 0.25 : damp(l.position.y, 0.75, 8, dt);
       });
-      body.position.y = 2.0 + Math.sin(t * 14) * 0.05;
-      head.position.y = 2.15 + Math.sin(t * 14 + 0.5) * 0.06;
+      const bob = ch.running ? 1 : 0.2;
+      body.position.y = 2.0 + Math.sin(t * 14) * 0.05 * bob;
+      head.position.y = 2.15 + Math.sin(t * 14 + 0.5) * 0.06 * bob;
       tail.rotation.z = Math.sin(t * 3) * 0.5;
+      // the grin spreads out from the middle of the face, holds, and shrinks back; squeezed sideways,
+      // the band sinks into the head, so only its middle shows while it grows
+      grinT = Math.max(0, grinT - dt);
+      const open = clamp(grinT * 4, 0, 1) * clamp((3 - grinT) * 4, 0, 1);
+      grin.visible = open > 0.01;
+      grin.scale.set(open, 0.5 + 0.5 * open, 1);
+      grin.position.y = head.position.y - 2.15 + MOUTH_Y;
     },
   };
   return ch;
@@ -291,9 +338,12 @@ export function makeKiki() {
       }
       if (startleT > 0) {
         startleT -= dt;
-        jiji.position.y = 0.05 + Math.sin(clamp(1 - startleT, 0, 1) * Math.PI) * 0.6;
+        const k = clamp(1 - startleT, 0, 1);
+        jiji.position.y = 0.05 + Math.sin(k * Math.PI) * 0.6;
         jiji.scale.y = 1.15;
-      } else { jiji.position.y = 0.05; jiji.scale.y = 1; }
+        // Kiki rocks from side to side on the broom and settles again
+        kiki.rotation.z = Math.sin(k * Math.PI * 3) * 0.3 * (1 - k);
+      } else { jiji.position.y = 0.05; jiji.scale.y = 1; kiki.rotation.z = damp(kiki.rotation.z, 0, 8, dt); }
     },
   };
   return ch;

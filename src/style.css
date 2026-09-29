@@ -89,9 +89,18 @@ kbd { display: inline-block; font-family: var(--sans); font-size: 0.72em; paddin
 .reticle .bl { left: 0; bottom: 0; border-right: none; border-top: none; }
 .reticle .br { right: 0; bottom: 0; border-left: none; border-top: none; }
 .reticle .dot { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.9); transform: translate(-50%, -50%); box-shadow: 0 0 0 4px rgba(255,255,255,0.12); }
+.reticle .corner, .reticle .dot { transition: border-color 0.2s, background 0.2s, transform 0.2s; }
+/* a special moment is in the viewfinder: take the shot */
+.reticle.moment .corner { border-color: #ffd98a; border-width: 2.5px; filter: drop-shadow(0 0 3px rgba(0,0,0,0.45)) drop-shadow(0 0 6px rgba(255,200,110,0.55)); }
+.reticle.moment .tl { transform: translate(6px, 6px); }
+.reticle.moment .tr { transform: translate(-6px, 6px); }
+.reticle.moment .bl { transform: translate(6px, -6px); }
+.reticle.moment .br { transform: translate(-6px, -6px); }
+.reticle.moment .dot { background: #ffd98a; }
 .subject-tag { position: absolute; left: 50%; top: calc(50% + min(19vw, 23vh) + 14px); transform: translate(-50%, 6px); font-size: 0.95rem; letter-spacing: 0.04em; text-shadow: 0 1px 8px rgba(0,0,0,0.7); opacity: 0; transition: opacity 0.25s, transform 0.25s; white-space: nowrap; text-align: center; }
 .subject-tag.show { opacity: 1; transform: translate(-50%, 0); }
 .subject-tag .from { display: block; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.2em; color: var(--accent); margin-top: 2px; }
+.subject-tag .moment { display: block; margin-top: 6px; font-family: var(--serif); font-style: italic; font-size: 1.05rem; letter-spacing: 0.02em; color: #ffd98a; }
 .hud-top { position: absolute; left: var(--pad); right: var(--pad); top: var(--pad); display: flex; justify-content: space-between; align-items: flex-start; }
 .world-title { font-family: var(--serif); font-size: 1.05rem; letter-spacing: 0.04em; opacity: 0.75; text-shadow: 0 1px 8px rgba(0,0,0,0.6); }
 .caption { font-family: var(--serif); font-style: italic; font-size: clamp(1.2rem, 2.4vw, 1.9rem); margin-top: 4px; opacity: 0; transform: translateY(6px); transition: opacity 0.8s, transform 0.8s; text-shadow: 0 2px 14px rgba(0,0,0,0.7); }
@@ -107,7 +116,7 @@ kbd { display: inline-block; font-family: var(--sans); font-size: 0.72em; paddin
 .toast.show { opacity: 1; transform: translateY(0); }
 .toast.discover { border-color: var(--accent); }
 .toast.warn { border-color: #ffb27a; }
-.center-msg { position: absolute; left: 50%; top: calc(50% - min(19vw, 23vh) - 34px); transform: translate(-50%, 0); font-family: var(--serif); font-style: italic; font-size: 1.2rem; opacity: 0; transition: opacity 0.3s; text-shadow: 0 1px 10px rgba(0,0,0,0.7); }
+.center-msg { position: absolute; left: 50%; top: calc(50% - min(19vw, 23vh) - 34px); transform: translate(-50%, 0); width: max-content; max-width: calc(100% - 32px); text-align: center; font-family: var(--serif); font-style: italic; font-size: 1.2rem; opacity: 0; transition: opacity 0.3s; text-shadow: 0 1px 10px rgba(0,0,0,0.7); }
 .center-msg.show { opacity: 1; }
 .lock-hint { position: absolute; left: 50%; bottom: calc(50% - min(19vw, 23vh) - 50px); transform: translateX(-50%); font-size: 0.9rem; letter-spacing: 0.06em; padding: 8px 16px; border-radius: 999px; background: rgba(10,12,18,0.5); border: 1px solid rgba(255,255,255,0.2); opacity: 0; transition: opacity 0.4s; white-space: nowrap; }
 .lock-hint.show { opacity: 1; }
@@ -122,6 +131,10 @@ kbd { display: inline-block; font-family: var(--sans); font-size: 0.72em; paddin
 .tool { position: relative; overflow: hidden; display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 12px; background: rgba(10,12,18,0.45); border: 1px solid rgba(255,255,255,0.14); font-size: 0.8rem; min-width: 110px; }
 .tool-fill { position: absolute; inset: 0; background: rgba(255,255,255,0.14); transform-origin: left; transform: scaleX(0); }
 .tool.ready { border-color: rgba(255,255,255,0.35); }
+/* the subject in the viewfinder would react to this tool */
+.tool.hint { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 16px -2px var(--accent); }
+.tool.fired { animation: tool-fired 0.28s ease-out; }
+@keyframes tool-fired { 0% { transform: scale(0.92); background: rgba(255,255,255,0.3); } 100% { transform: scale(1); } }
 .tool-key { position: relative; font-size: 0.72rem; padding: 2px 6px; border-radius: 5px; background: rgba(255,255,255,0.14); }
 .tool-name { position: relative; text-transform: capitalize; }
 .progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255,255,255,0.1); }
