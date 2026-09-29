@@ -497,10 +497,10 @@ function build(ctx: WorldContext): BuiltWorld {
   const kikiState = { closeT: 0, prev: new THREE.Vector3() };
   const kikiSubject = new Subject({
     id: 'kiki', name: 'Kiki', from: "Kiki's Delivery Service", group: kiki.group, radius: 1.3, base: 950, rarity: 'rare',
-    hint: 'Flies alongside the train as it leaves Koriko. Play the ocarina and she waves.',
-    poses: { wave: { label: 'Waving hello', mult: 1.7 } }, centerOffset: new THREE.Vector3(0, 1.0, 0.2), facing: fwd(kiki.group),
+    hint: 'Flies alongside the train as it leaves Koriko. Play the ocarina and she waves; toss an acorn at the broom and it wobbles.',
+    poses: { wave: { label: 'Waving hello', mult: 1.7 }, swerve: { label: 'Wobbling broom', mult: 1.4 } }, centerOffset: new THREE.Vector3(0, 1.0, 0.2), facing: fwd(kiki.group),
     onCall: () => { kiki.wave(); kikiSubject.setPose('wave', 2.5); kikiState.closeT = 4; return true; },
-    onItem: () => { kiki.startle(); jijiSubject.setPose('startled', 1.2); return true; }, reactRange: 12,
+    onItem: () => { kiki.startle(); kikiSubject.setPose('swerve', 1.2); jijiSubject.setPose('startled', 1.2); return true; }, reactRange: 12,
   });
   const jijiSubject = new Subject({
     id: 'jiji', name: 'Jiji', from: "Kiki's Delivery Service", group: kiki.group, radius: 0.45, base: 520,
@@ -650,7 +650,7 @@ function build(ctx: WorldContext): BuiltWorld {
     id: 'catbus', name: 'The Catbus', from: 'My Neighbor Totoro', group: catbus.group, radius: 4.5, base: 1250, rarity: 'rare',
     hint: 'Comes racing across the fields at dusk and pauses at the bus stop.',
     poses: { stop: { label: 'At the bus stop', mult: 1.5 }, grin: { label: 'Big grin', mult: 1.7 } }, centerOffset: new THREE.Vector3(0, 2.2, 2.5), facing: fwd(catbus.group),
-    onCall: () => { if (busState.u < 0.35 || busState.u > 0.6) return false; busState.waited -= 2; catbusSubject.setPose('grin', 3); return true; }, maxDistance: 200,
+    onCall: () => { if (busState.u < 0.35 || busState.u > 0.6) return false; busState.waited -= 2; catbus.grin(); catbusSubject.setPose('grin', 3); return true; }, maxDistance: 200,
   });
   subjects.push(catbusSubject);
   updaters.push((dt, t, ride) => {
@@ -667,7 +667,8 @@ function build(ctx: WorldContext): BuiltWorld {
     catbus.group.position.set(p.x, heightAt(p.x, p.z) + 0.2, p.z);
     const ahead = busPath.getPointAt(Math.min(1, busState.u + 0.01));
     catbus.group.lookAt(ahead.x, catbus.group.position.y, ahead.z);
-    if (!atStop) catbus.update(dt, t);
+    catbus.running = !atStop;
+    catbus.update(dt, t);
   });
   // fireflies in the fields at dusk
   const fireflies = new Drift({ count: 220, color: 0xd6ff6a, size: 0.3, box: new THREE.Vector3(90, 8, 90), speed: new THREE.Vector3(0.3, 0.1, 0), wobble: 1.4, opacity: 0.9, blending: THREE.AdditiveBlending });
@@ -696,7 +697,7 @@ function build(ctx: WorldContext): BuiltWorld {
     hint: 'Stands silently on the first platform in the sea. Call and he offers gold; throw something and he swallows it.',
     poses: { offer: { label: 'Offering gold', mult: 1.9 }, gulp: { label: 'Gulp', mult: 1.8 } }, centerOffset: new THREE.Vector3(0, 2.9, 0), facing: fwd(noFace.group),
     onCall: () => { noFace.offer(); noFaceSubject.setPose('offer', 4); return true; },
-    onItem: () => { noFace.gulp(); noFaceSubject.setPose('gulp', 1.6); return true; }, reactRange: 14, maxDistance: 130,
+    onItem: () => { noFace.gulp(); noFaceSubject.setPose('gulp', 1.6); return true; }, reactRange: 14, maxDistance: 130, swallows: true,
   });
   subjects.push(noFaceSubject);
   updaters.push((dt, t, ride) => { const a = ride.u > 0.6 && ride.u < 0.76; noFace.group.visible = a; noFaceSubject.active = a; if (a) noFace.update(dt, t); });
@@ -711,7 +712,7 @@ function build(ctx: WorldContext): BuiltWorld {
     hint: 'A crowd of them hopping on a jetty. They swarm anything you throw and jump when you call.',
     poses: { swarm: { label: 'Swarming', mult: 1.7 }, jump: { label: 'All jump', mult: 1.4 } }, centerOffset: new THREE.Vector3(0, 0.6, 0),
     onItem: (pos) => { soot.swarmTo(pos); sootSubject.setPose('swarm', 5); return true; },
-    onCall: () => { soot.jump(); sootSubject.setPose('jump', 1.2); return true; }, reactRange: 16, maxDistance: 120,
+    onCall: () => { soot.jump(); sootSubject.setPose('jump', 1.2); return true; }, reactRange: 16, maxDistance: 120, crowd: true,
   });
   subjects.push(sootSubject);
   updaters.push((dt, t, ride) => { const a = ride.u > 0.62 && ride.u < 0.78; soot.group.visible = a; sootSubject.active = a; if (a) soot.update(dt, t); });
@@ -750,7 +751,7 @@ function build(ctx: WorldContext): BuiltWorld {
     id: 'ponyo', name: 'Ponyo & her sisters', from: 'Ponyo', group: ponyo.group, radius: 4, base: 820, rarity: 'rare',
     hint: 'Little fish-girls racing along the waves on the right. Throw something into the water and they leap.',
     poses: { leap: { label: 'Leaping', mult: 1.8 } }, centerOffset: new THREE.Vector3(0, 0.6, 0),
-    onItem: () => { ponyo.leap(); ponyoSubject.setPose('leap', 1.4); return true; }, reactRange: 18, maxDistance: 120,
+    onItem: () => { ponyo.leap(); ponyoSubject.setPose('leap', 1.4); return true; }, reactRange: 18, maxDistance: 120, crowd: true,
   });
   subjects.push(ponyoSubject);
   updaters.push((dt, t, ride) => {
@@ -837,6 +838,8 @@ function build(ctx: WorldContext): BuiltWorld {
       g.add(sphere(0.16, toon(0x8a5a2b), 0, 0, 0, 10, 8));
       g.add(cyl(0.12, 0.17, 0.08, toon(0x5a3a1a), 0, 0.14, 0, 8));
       g.add(cyl(0.02, 0.02, 0.1, toon(0x3a2a1a), 0, 0.22, 0, 5));
+      // a little larger than life so it can be followed in flight
+      g.scale.setScalar(1.5);
       return g;
     },
     ambience: {

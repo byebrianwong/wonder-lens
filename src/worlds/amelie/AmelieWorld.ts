@@ -346,7 +346,7 @@ function build(ctx: WorldContext): BuiltWorld {
     id: 'pigeons', name: 'Pigeons', from: FROM, group: pigeons.group, radius: 2.4, base: 300,
     hint: 'Pecking at crumbs on the right. A stone sends them up in a flurry.',
     poses: { scatter: { label: 'Scatter!', mult: 1.8 } }, centerOffset: new THREE.Vector3(0, 0.5, 0),
-    onItem: () => { pigeons.scatter(); pigeonSubject.setPose('scatter', 1.8); return true; }, reactRange: 12, maxDistance: 90,
+    onItem: () => { pigeons.scatter(); pigeonSubject.setPose('scatter', 1.8); return true; }, reactRange: 12, maxDistance: 90, crowd: true,
   });
   subjects.push(pigeonSubject);
   updaters.push((dt, t, ride) => { const a = ride.u < uAt(-360); setActive(pigeonSubject, a); if (a) pigeons.update(dt, t); });

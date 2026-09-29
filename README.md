@@ -46,6 +46,10 @@ Snap ride: 24 shots per world. Every photo is scored on which subjects are in it
 whether they are facing you, and whether you caught a special moment. The album at the end keeps your best shot of
 each subject, like the professor's review in Pokémon Snap.
 
+Throws go where the reticle points: at a character that reacts to them (up to 80 units away), or else at the ground
+or water under the reticle. The throw and call buttons light up when the character in the viewfinder would react, and
+the reticle turns gold and names the moment while a special moment is on.
+
 Relax ride: no HUD, unlimited film, and after a few seconds without input the camera drifts on its own towards
 whatever is worth looking at.
 
