@@ -37,13 +37,14 @@ export const GhibliSwampBottom = view(GhibliWorld, 7);
 
 export const AndersonNebelsbad = view(AndersonWorld, 0);
 export const AndersonGrandBudapest = view(AndersonWorld, 1);
-export const AndersonAutumnWood = view(AndersonWorld, 2);
-export const AndersonCampIvanhoe = view(AndersonWorld, 3);
-export const AndersonAsteroidCity = view(AndersonWorld, 4);
-export const AndersonCrater = view(AndersonWorld, 5);
-export const AndersonCauseway = view(AndersonWorld, 6);
-export const AndersonBelafonte = view(AndersonWorld, 7);
-export const AndersonPortAuPatois = view(AndersonWorld, 8);
+export const AndersonGabelmeistersPeak = view(AndersonWorld, 2);
+export const AndersonAutumnWood = view(AndersonWorld, 3);
+export const AndersonCampIvanhoe = view(AndersonWorld, 4);
+export const AndersonAsteroidCity = view(AndersonWorld, 5);
+export const AndersonCrater = view(AndersonWorld, 6);
+export const AndersonCauseway = view(AndersonWorld, 7);
+export const AndersonBelafonte = view(AndersonWorld, 8);
+export const AndersonPortAuPatois = view(AndersonWorld, 9);
 
 export const AmelieRueLepic = view(AmelieWorld, 0);
 export const AmelieCafe = view(AmelieWorld, 1);

@@ -28,7 +28,19 @@ export class SeaMaterial {
     uNight: { value: 0 },
   };
 
-  constructor(heights: HeightGrid) {
+  private dayDeep: THREE.Color;
+  private dayShallow: THREE.Color;
+  private nightDeep: THREE.Color;
+  private nightShallow: THREE.Color;
+
+  /** Colours default to the Ghibli sea; `waterY` is the surface height the depth is measured from. */
+  constructor(heights: HeightGrid, o: { deep?: THREE.ColorRepresentation; shallow?: THREE.ColorRepresentation; sand?: THREE.ColorRepresentation; nightDeep?: THREE.ColorRepresentation; nightShallow?: THREE.ColorRepresentation; waterY?: number } = {}) {
+    this.dayDeep = new THREE.Color(o.deep ?? 0x14507a);
+    this.dayShallow = new THREE.Color(o.shallow ?? 0x3fb3b8);
+    this.nightDeep = new THREE.Color(o.nightDeep ?? 0x0a1330);
+    this.nightShallow = new THREE.Color(o.nightShallow ?? 0x1d3f66);
+    if (o.sand !== undefined) this.uniforms.uSand.value.set(o.sand);
+    this.uniforms.uWaterY.value = o.waterY ?? 0;
     this.uniforms.uHeightMap.value = heights.texture();
     this.uniforms.uHeightInfo.value.set(heights.xMin, heights.zMin, heights.res, 0);
     this.material = new THREE.ShaderMaterial({
@@ -120,7 +132,7 @@ export class SeaMaterial {
     u.uFogColor.value.copy(fog.color);
     u.uFogDensity.value = fog.density;
     u.uNight.value = night;
-    u.uDeep.value.setHex(0x14507a).lerp(new THREE.Color(0x0a1330), night);
-    u.uShallow.value.setHex(0x3fb3b8).lerp(new THREE.Color(0x1d3f66), night);
+    u.uDeep.value.copy(this.dayDeep).lerp(this.nightDeep, night);
+    u.uShallow.value.copy(this.dayShallow).lerp(this.nightShallow, night);
   }
 }
