@@ -703,7 +703,7 @@ function build(ctx: WorldContext): BuiltWorld {
   const crabSubject = new Subject({
     id: 'sugarcrabs', name: 'Sugar crabs', from: 'The Life Aquatic', group: crabs.group, radius: 1.6, base: 600, rarity: 'rare',
     hint: "Crabs that happen to look like candy, scuttling on the submarine's jetty to the left. Throw something and they rush to it.",
-    poses: { swarm: { label: 'Scuttling to it', mult: 1.6 } }, centerOffset: new THREE.Vector3(0, 0.3, 0), maxDistance: 60, reactRange: 12,
+    poses: { swarm: { label: 'Scuttling to it', mult: 1.6 } }, centerOffset: new THREE.Vector3(0, 0.3, 0), maxDistance: 60, reactRange: 12, crowd: true,
     onItem: (pos) => { crabs.swarmTo(pos); crabSubject.setPose('swarm', 4); return true; },
   });
   subjects.push(crabSubject);
