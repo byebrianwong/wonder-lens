@@ -13,6 +13,12 @@ export interface Catbus extends Character {
   stride: number;
   /** a world point for the head to turn towards, or null */
   lookTarget: THREE.Vector3 | null;
+  /** when true the head turns towards `lookTarget` even while running (a ridden Catbus looking at the sights) */
+  lookWhileRunning: boolean;
+  /** the destination board on top of the head */
+  sign: THREE.Group;
+  /** how far the body is lifted by the gallop this frame */
+  readonly lift: number;
   grin(): void;
 }
 
@@ -201,7 +207,8 @@ export function makeCatbus(): Catbus {
   const look = new LookAt(0.6, 0.25);
   let gait = 0, grinT = 0;
   const ch: Catbus = {
-    group: g, running: true, stride: 0, lookTarget: null,
+    group: g, running: true, stride: 0, lookTarget: null, lookWhileRunning: false, sign,
+    get lift() { return B.root.position.y; },
     grin() { grinT = 3; },
     update(dt, t) {
       const run = clamp(sp.run.update(ch.running ? 1 : 0, dt), 0, 1.2);
@@ -219,7 +226,7 @@ export function makeCatbus(): Catbus {
       B.front.rotation.x = Math.sin(gait) * 0.06 * run;
       B.back.rotation.x = -Math.sin(gait) * 0.06 * run;
       B.mid.rotation.z = Math.sin(gait * 0.5) * 0.03 * run;
-      const [ly, lp] = look.update(B.head, ch.running ? null : ch.lookTarget, dt);
+      const [ly, lp] = look.update(B.head, ch.running && !ch.lookWhileRunning ? null : ch.lookTarget, dt);
       B.head.rotation.set(sp.headX.update(Math.sin(gait + 0.6) * 0.05 * run, dt) + lp, ly, sp.headZ.update(Math.sin(t * 0.7) * 0.05, dt));
       ears.forEach((e, i) => { e.rotation.x = -0.1 - 0.35 * run + Math.sin(t * 1.3 + i) * 0.05; });
       // tail streams out behind when running and curls lazily when waiting

@@ -22,6 +22,12 @@ export interface Totoro extends Character {
   lookTarget: THREE.Vector3 | null;
   /** seconds of the roar left (0 when not roaring) */
   readonly roarTime: number;
+  /**
+   * Optional pose for moments the stock animations do not cover (flying on a spinning top, playing an
+   * ocarina). Arm angles replace the computed ones (index 0 is the -x arm); `mouth` (0..1) keeps the mouth
+   * at least that open; `lean` tips the chest forward (+) or back (-). Null for the normal animation.
+   */
+  pose: { out?: [number, number]; up?: [number, number]; mouth?: number; lean?: number } | null;
 }
 
 const ROAR = 2.6, JUMP = 1.45, HOP = 0.5;
@@ -333,7 +339,7 @@ export function makeTotoro(o: TotoroOpts = {}): Totoro {
 
   const ch: Totoro = {
     group: g,
-    walk: 0, stride: 0, lookTarget: null,
+    walk: 0, stride: 0, lookTarget: null, pose: null,
     get roarTime() { return roarT >= 0 ? ROAR - roarT : 0; },
     roar() { roarT = 0; },
     jump(onLand) { jumpT = 0; landCb = onLand ?? null; landed = false; },
@@ -407,6 +413,14 @@ export function makeTotoro(o: TotoroOpts = {}): Totoro {
         sy += Math.sin(k * Math.PI) * 0.06 - envelope(hopT, HOP * 0.85, HOP * 0.95, HOP, HOP * 1.4) * 0.08;
         for (let i = 0; i < 2; i++) { out[i] += Math.sin(k * Math.PI) * 0.6; }
         if (hopT > HOP * 1.4) hopT = -1;
+      }
+
+      if (ch.pose) {
+        const p = ch.pose;
+        if (p.out) { out[0] = p.out[0]; out[1] = p.out[1]; }
+        if (p.up) { up[0] = p.up[0]; up[1] = p.up[1]; }
+        if (p.mouth !== undefined) mouthT = Math.max(mouthT, p.mouth);
+        if (p.lean) chestX += p.lean;
       }
 
       // ---- springs ----
