@@ -80,6 +80,13 @@ export interface BuiltWorld {
    * radians (default 1.4) and is full at the turn limit.
    */
   lookBackLean?: { out: number; up: number; from?: number };
+  /**
+   * Optional: a speed multiplier along the ride (u in 0..1), on top of `speed` and the rider's own faster or
+   * slower. Below 1 the ride lingers (a small room, a character worth watching); above 1 it rushes (a flight).
+   * Keep it between about 0.4 and 1.6, and change it gently: the ride eases towards it, but a sudden step
+   * still reads as a jolt.
+   */
+  speedAt?(u: number): number;
   dispose(): void;
 }
 

@@ -88,6 +88,7 @@ export class Game {
     if (this.world.lookBackLean) Object.assign(this.rig.lean, this.world.lookBackLean);
     console.info(`[window seat] ${def.id} built in ${(performance.now() - t0).toFixed(0)} ms`);
     this.ride = new Ride(this.world.curve, this.world.speed, this.world.vehicle);
+    if (this.world.speedAt) this.ride.profile = (u) => this.world.speedAt!(u);
     (window as any).__dbg = { world: this.world, ride: this.ride, game: this, rig: this.rig };
     this.items = new Items(this.world, (pos, surface, spent) => this.onLand(pos, surface, spent), (s, pos) => this.onHit(s, pos));
     this.puffs = new Puffs();
@@ -102,6 +103,11 @@ export class Game {
     this.hud.setFilm(this.film, FILM_MAX);
     renderer.setScene(this.world.scene, this.rig.camera);
     renderer.resize();
+    // compile every shader while the loading card is still up, including things that only appear later in the ride
+    const tc = performance.now();
+    this.applyLighting(0);
+    await renderer.precompile(this.world.scene, this.rig.camera);
+    console.info(`[window seat] ${def.id} shaders compiled in ${(performance.now() - tc).toFixed(0)} ms`);
     audio.setProfile(this.world.ambience);
     this.bindInput();
     this.o.input.enabled = true;

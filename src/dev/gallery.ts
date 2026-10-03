@@ -2,7 +2,7 @@
  * Dev-only character gallery: open /gallery.html while the dev server runs.
  * Shows one character (or the world's vehicle) at a time under the ride's own lighting, so painted
  * textures and materials can be checked up close. Drag to orbit, wheel to zoom.
- * URL: ?w=<ghibli | anderson>&c=<name>&u=<ride progress for the lighting>&yaw=&pitch=&dist=
+ * URL: ?w=<ghibli | anderson | amelie>&c=<name>&u=<ride progress for the lighting>&yaw=&pitch=&dist=
  * From the console: view('catbus', { u: 0.4, yaw: 0.6, pitch: 0.2, dist: 14 }).
  */
 import * as THREE from 'three';
@@ -17,6 +17,10 @@ import * as C from '../worlds/ghibli/characters';
 import { LIGHT_KEYS as ANDERSON_KEYS } from '../worlds/anderson/AndersonWorld';
 import { buildZubrowkaExpress } from '../worlds/anderson/environment';
 import * as A from '../worlds/anderson/characters';
+import { GALLERY_KEYS as AMELIE_KEYS } from '../worlds/amelie/AmelieWorld';
+import * as M from '../worlds/amelie/characters';
+import { buildMoped } from '../worlds/amelie/moped';
+import { makeCarousel } from '../worlds/amelie/sets/butte';
 
 interface Entry { make: () => { group: THREE.Object3D; update?: (dt: number, t: number) => void; act?: () => void; follow?: () => THREE.Vector3 }; y: number; dist: number; u?: number }
 
@@ -73,11 +77,37 @@ const ANDERSON: Record<string, Entry> = {
   train: { make: () => { const t = buildZubrowkaExpress(); return { group: t.group }; }, y: 2, dist: 16 },
 };
 
-const WORLD = new URLSearchParams(location.search).get('w') === 'anderson' ? 'anderson' : 'ghibli';
-const ENTRIES = WORLD === 'anderson' ? ANDERSON : GHIBLI;
+/** Amélie's people: each looks at the gallery camera, and `act` sets off its reaction. */
+const watch = <T extends { group: THREE.Object3D; update: (dt: number, t: number) => void; lookTarget: THREE.Vector3 | null }>(c: T, act?: () => void) => ({ group: c.group, act, update: (dt: number, t: number) => { c.lookTarget = camera.position; c.update(dt, t); } });
+const AMELIE: Record<string, Entry> = {
+  amelie: { make: () => { const c = M.makeAmelieWaitress(); return watch(c, () => c.wave()); }, y: 1.3, dist: 3.4 },
+  ameliegiggle: { make: () => { const c = M.makeAmelieWaitress(); return watch(c, () => c.giggle()); }, y: 1.3, dist: 3.4 },
+  ameliecanal: { make: () => { const c = M.makeAmelieSkipping(); return watch(c, () => c.skip()); }, y: 1.1, dist: 4, u: 0.7 },
+  nino: { make: () => { const c = M.makeNinoTelescope(); return watch(c, () => c.show()); }, y: 1.1, dist: 4, u: 0.55 },
+  ninocrouch: { make: () => { const c = M.makeNinoCrouch(); return watch(c, () => c.rise()); }, y: 0.8, dist: 4, u: 0.7 },
+  lucien: { make: () => { const c = M.makeLucien(); return watch(c, () => c.endive()); }, y: 1.2, dist: 3.6 },
+  collignon: { make: () => { const c = M.makeCollignon(); return watch(c, () => c.scowl()); }, y: 1.2, dist: 3.6 },
+  georgette: { make: () => { const c = M.makeGeorgette(); return watch(c, () => c.swoon()); }, y: 1.2, dist: 3.6, u: 0.2 },
+  joseph: { make: () => { const c = M.makeJoseph(); return watch(c, () => c.record()); }, y: 1.0, dist: 3.6, u: 0.2 },
+  dufayel: { make: () => { const c = M.makeDufayel(); return watch(c, () => c.turn()); }, y: 1.0, dist: 4, u: 0.4 },
+  blind: { make: () => { const c = M.makeBlindPair(); return watch(c, () => c.laugh()); }, y: 1.1, dist: 4.5 },
+  stranger: { make: () => { const c = M.makeStranger(); return watch(c, () => c.stare()); }, y: 1.2, dist: 3.6, u: 0.7 },
+  busker: { make: () => { const c = M.makeBusker(); return watch(c, () => c.play()); }, y: 1.2, dist: 3.6, u: 0.7 },
+  lovers: { make: () => { const c = M.makeLovers(); return watch(c, () => c.kiss()); }, y: 0.9, dist: 4, u: 0.7 },
+  gnome: { make: () => { const c = M.makeGnome(); return watch(c, () => c.tipHat()); }, y: 0.45, dist: 2.2 },
+  pigeons: { make: () => { const c = M.makePigeons(9, rng(), 2.2); return watch(c, () => c.scatter()); }, y: 0.4, dist: 6 },
+  blubber: { make: () => { const c = M.makeBlubber(); c.group.position.y = 1.4; return watch(c, () => c.leap()); }, y: 1.2, dist: 7, u: 0.7 },
+  riders: { make: () => { const c = M.makeRiders(); return watch(c, () => c.lean()); }, y: 1.1, dist: 4.5, u: 1 },
+  carousel: { make: () => { const c = makeCarousel(rng()); return { group: c.group, update: c.update, act: () => c.lightsOn() }; }, y: 6, dist: 34, u: 0.55 },
+  moped: { make: () => ({ group: buildMoped().group }), y: 0.8, dist: 3.5 },
+};
+
+const WORLD = new URLSearchParams(location.search).get('w') === 'anderson' ? 'anderson' : new URLSearchParams(location.search).get('w') === 'amelie' ? 'amelie' : 'ghibli';
+const ENTRIES = WORLD === 'anderson' ? ANDERSON : WORLD === 'amelie' ? AMELIE : GHIBLI;
 /** Lighting presets for the buttons: [label, ride progress]. */
 const PRESETS: ReadonlyArray<readonly [string, number]> = WORLD === 'anderson'
   ? [['alps', 0.1], ['wood', 0.35], ['desert', 0.6], ['sea', 0.84], ['sundown', 0.99]]
+  : WORLD === 'amelie' ? [['morning', 0], ['café', 0.2], ['sunset', 0.4], ['blue hour', 0.55], ['night', 0.7], ['sunrise', 1]]
   : [['day', 0], ['afternoon', 0.28], ['dusk', 0.4], ['rain', 0.5], ['night', 0.7]];
 
 const canvas = document.getElementById('view') as HTMLCanvasElement;
@@ -103,7 +133,7 @@ ground.receiveShadow = true;
 scene.add(ground);
 renderer.setScene(scene, camera);
 
-const lighting = makeLighting((WORLD === 'anderson' ? ANDERSON_KEYS : LIGHT_KEYS).map((k) => ({ ...k })));
+const lighting = makeLighting((WORLD === 'anderson' ? ANDERSON_KEYS : WORLD === 'amelie' ? AMELIE_KEYS : LIGHT_KEYS).map((k) => ({ ...k })));
 const L: LightingState = {
   skyTop: new THREE.Color(), skyMid: new THREE.Color(), skyBottom: new THREE.Color(), fog: new THREE.Color(), fogDensity: 0.002,
   sunDir: new THREE.Vector3(0, 1, 0), sunColor: new THREE.Color(), sunIntensity: 1, hemiSky: new THREE.Color(), hemiGround: new THREE.Color(),

@@ -21,6 +21,8 @@ export class Ride {
   finished = false;
   /** the object that moves along the track */
   vehicle: THREE.Object3D;
+  /** the world's speed multiplier along the ride, if it has one (see BuiltWorld.speedAt) */
+  profile: ((u: number) => number) | null = null;
 
   constructor(curve: THREE.CatmullRomCurve3, baseSpeed: number, vehicle: THREE.Object3D) {
     this.curve = curve;
@@ -44,8 +46,9 @@ export class Ride {
     const endEase = clamp(remaining / 30, 0.3, 1);
     const target = this.speedTarget * startEase * endEase;
     this.speedMult = damp(this.speedMult, target, 1.6, dt);
-    st.speedMult = this.speedMult;
-    st.s += this.baseSpeed * this.speedMult * dt;
+    const k = this.profile ? this.profile(st.u) : 1;
+    st.speedMult = this.speedMult * k;
+    st.s += this.baseSpeed * st.speedMult * dt;
     if (st.s >= this.length - 0.6) { st.s = this.length - 0.6; this.finished = true; this.speedMult = 0; st.speedMult = 0; }
     this.place(st.s / this.length, dt);
   }
