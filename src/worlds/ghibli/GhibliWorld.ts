@@ -5,6 +5,7 @@ import { makeLighting, type LightKey } from '../../game/lighting';
 import { Sky } from '../../engine/Sky';
 import { Drift, Rain } from '../../engine/Particles';
 import { Rng, clamp, damp, fbm, lerp, smoothstep, TAU } from '../../engine/math';
+import { Heading, Spring } from '../../engine/Rig';
 import { PathField, buildTerrain, buildDetailedTrack, mergeStatic, grassField, toon, glow, sphere, cyl, box, lambert, mesh, textTexture, canvasTexture, type Placement } from '../../engine/Builders';
 import { HeightGrid } from '../../engine/HeightGrid';
 import { SeaMaterial } from '../../engine/Water';
@@ -474,6 +475,16 @@ function build(ctx: WorldContext): BuiltWorld {
   noFaceAboard.group.visible = false;
   train.interior.add(noFaceAboard.group);
   const updaters: Array<(dt: number, t: number, ride: RideState) => void> = [];
+  // the train's actual velocity, measured from frame to frame, for characters that fly along with it
+  const trainVel = new THREE.Vector3(), lastRidePos = new THREE.Vector3();
+  let rideSeen = false;
+  updaters.push((dt, _t, ride) => {
+    if (rideSeen && dt > 0 && lastRidePos.distanceTo(ride.position) < 30) trainVel.subVectors(ride.position, lastRidePos).divideScalar(dt);
+    else trainVel.set(0, 0, 0);
+    lastRidePos.copy(ride.position); rideSeen = true;
+  });
+  /** the camera's world position, refreshed by the updaters that need it */
+  const camPos = new THREE.Vector3(), camDir = new THREE.Vector3();
   const place = (g: THREE.Object3D, x: number, z: number, yOff = 0, rotY = 0) => { g.position.set(x, heightAt(x, z) + yOff, z); g.rotation.y = rotY; scene.add(g); };
   const fwd = (g: THREE.Object3D) => () => new THREE.Vector3(0, 0, 1).applyQuaternion(g.getWorldQuaternion(new THREE.Quaternion()));
 
@@ -485,8 +496,12 @@ function build(ctx: WorldContext): BuiltWorld {
   });
   subjects.push(chihiroSubject);
   updaters.push((dt, t, ride) => {
+    ctx.camera.getWorldPosition(camPos);
+    chihiro.lookTarget = camPos;
     chihiro.update(dt, t);
-    const aboard = ride.u > 0.672;
+    // No-Face takes his seat in the car while nobody is looking back at it
+    camDir.set(0, 0, -1).applyQuaternion(ctx.camera.quaternion);
+    const aboard = ride.u > 0.672 && (noFaceAboard.group.visible || camDir.dot(ride.tangent) > 0.2);
     if (aboard && !noFaceAboard.group.visible) { noFaceAboard.group.visible = true; }
     if (aboard) noFaceAboard.update(dt, t);
   });
@@ -498,7 +513,7 @@ function build(ctx: WorldContext): BuiltWorld {
   const kikiSubject = new Subject({
     id: 'kiki', name: 'Kiki', from: "Kiki's Delivery Service", group: kiki.group, radius: 1.3, base: 950, rarity: 'rare',
     hint: 'Flies alongside the train as it leaves Koriko. Play the ocarina and she waves; toss an acorn at the broom and it wobbles.',
-    poses: { wave: { label: 'Waving hello', mult: 1.7 }, swerve: { label: 'Wobbling broom', mult: 1.4 } }, centerOffset: new THREE.Vector3(0, 1.0, 0.2), facing: fwd(kiki.group),
+    poses: { wave: { label: 'Waving hello', mult: 1.7 }, swerve: { label: 'Wobbling broom', mult: 1.4 } }, centerOffset: new THREE.Vector3(0, 1.0, 0.2), facing: fwd(kiki.head),
     onCall: () => { kiki.wave(); kikiSubject.setPose('wave', 2.5); kikiState.closeT = 4; return true; },
     onItem: () => { kiki.startle(); kikiSubject.setPose('swerve', 1.2); jijiSubject.setPose('startled', 1.2); return true; }, reactRange: 12,
   });
@@ -508,24 +523,53 @@ function build(ctx: WorldContext): BuiltWorld {
     poses: { startled: { label: 'Startled jump', mult: 1.6 } }, centerOffset: new THREE.Vector3(0, 0.35, -0.75), maxDistance: 60,
   });
   subjects.push(kikiSubject, jijiSubject);
+  // She flies with the train, looping ahead and out to the sides and now and then dropping back
+  // alongside. Called, she comes alongside on the side you are looking at and waves. When the train
+  // leaves the town she climbs away over the hill instead of vanishing.
+  const kk = { phase: 'off' as 'off' | 'fly' | 'out', outT: 0, vel: new THREE.Vector3(), heading: new Heading(0, 1.1, 0.85), bank: new Spring(0, 1.1, 0.8), pitch: new Spring(0, 1.2, 0.85), closeSide: 1, prevYaw: 0 };
+  kiki.group.rotation.order = 'YXZ';
+  const kTarget = new THREE.Vector3(), kRel = new THREE.Vector3(), kTravel = new THREE.Vector3(), kSide = new THREE.Vector3(), kLook = new THREE.Vector3();
   updaters.push((dt, t, ride) => {
-    const active = ride.u < 0.26;
-    kiki.group.visible = active; kikiSubject.active = active; jijiSubject.active = active;
-    if (!active) return;
+    const want = ride.u < 0.255;
+    if (kk.phase === 'off' && !want) { kiki.group.visible = false; kikiSubject.active = jijiSubject.active = false; return; }
+    ctx.camera.getWorldPosition(camPos);
+    kTravel.copy(ride.tangent).setY(0).normalize();
+    kSide.set(-kTravel.z, 0, kTravel.x);
+    if (kk.phase === 'fly' && !want) { kk.phase = 'out'; kk.outT = 0; }
     kikiState.closeT = Math.max(0, kikiState.closeT - dt);
     const close = smoothstep(0, 1, kikiState.closeT);
-    const tp = ride.position;
-    const r = lerp(11, 5.5, close);
-    const a = t * 0.55;
-    const target = new THREE.Vector3(tp.x + Math.sin(a) * r + 1.5, tp.y + 3.8 + Math.sin(t * 0.9) * 1.6 - close * 1.2, tp.z - 12 + Math.cos(a * 0.8) * 16 * (1 - close * 0.6));
-    kikiState.prev.copy(kiki.group.position);
-    kiki.group.position.lerp(target, 1 - Math.exp(-dt * 1.6));
-    const vel = kiki.group.position.clone().sub(kikiState.prev);
-    if (vel.lengthSq() > 1e-6) {
-      const look = kiki.group.position.clone().add(vel);
-      kiki.group.lookAt(look);
-      kiki.group.rotation.z = clamp(-vel.x * 4, -0.6, 0.6);
+    if (kk.phase === 'out') {
+      kk.outT += dt;
+      kTarget.copy(camPos).addScaledVector(kTravel, 160).addScaledVector(kSide, 220).setY(camPos.y + 70);
+      if (kk.outT > 14 || kiki.group.position.distanceTo(camPos) > 200) { kk.phase = 'off'; kiki.group.visible = false; kikiSubject.active = jijiSubject.active = false; return; }
+    } else {
+      // when called, come alongside on the side the camera is looking at
+      kLook.set(0, 0, -1).applyQuaternion(ctx.camera.quaternion);
+      const lookSide = kLook.dot(kSide);
+      if (Math.abs(lookSide) > 0.25 && close < 0.05) kk.closeSide = Math.sign(lookSide);
+      // she ranges ahead and back, but keeps within about 40 degrees of straight ahead so she stays in view
+      const ahead = lerp(12 + Math.sin(t * 0.23 + 0.5) * 8, 3, close);
+      const across = lerp(Math.tan(Math.sin(t * 0.31) * 0.62 + Math.sin(t * 0.77) * 0.08) * ahead, kk.closeSide * 6.5, close);
+      kTarget.copy(camPos).addScaledVector(kTravel, ahead).addScaledVector(kSide, across);
+      kTarget.y = camPos.y + lerp(0.5 + ahead * 0.13 + Math.sin(t * 0.9) * 0.8, 0.3, close);
     }
+    // (also catches her up if the train has jumped far ahead, e.g. after a long stall)
+    if (kk.phase === 'off' || (kk.phase === 'fly' && kiki.group.position.distanceTo(camPos) > 120)) { kiki.group.position.copy(kTarget); kk.phase = 'fly'; kk.vel.copy(trainVel); }
+    const active = kk.phase === 'fly';
+    kiki.group.visible = true; kikiSubject.active = active; jijiSubject.active = active;
+    // steer: keep pace with the train, then close the gap to the target at a limited speed
+    kRel.subVectors(kTarget, kiki.group.position).multiplyScalar(1.1).clampLength(0, kk.phase === 'out' ? 22 : 9);
+    kRel.add(trainVel);
+    kk.vel.lerp(kRel, 1 - Math.exp(-dt * 2.2));
+    kiki.group.position.addScaledVector(kk.vel, dt);
+    // face the way she is flying, lean into turns, nose up or down with the climb
+    const hv = Math.hypot(kk.vel.x, kk.vel.z);
+    const yaw = hv > 0.5 ? kk.heading.update(Math.atan2(kk.vel.x, kk.vel.z), dt) : kk.heading.value;
+    const yawRate = (yaw - kk.prevYaw) / Math.max(dt, 1e-3);
+    kk.prevYaw = yaw;
+    kiki.group.rotation.set(kk.pitch.update(clamp(-kk.vel.y * 0.08, -0.35, 0.35), dt), yaw, kk.bank.update(clamp(-yawRate * 0.45, -0.55, 0.55), dt));
+    // she glances over at the train when it is close, and looks right at you when she waves
+    kiki.lookTarget = close > 0.1 || kiki.group.position.distanceTo(camPos) < 14 ? camPos : null;
     kiki.update(dt, t);
   });
 
@@ -556,7 +600,9 @@ function build(ctx: WorldContext): BuiltWorld {
   smallGroup.add(chu.group); chibi.group.position.set(1.4, 0, -0.6); smallGroup.add(chibi.group);
   const smallPath = [new THREE.Vector3(-44, 0, -812), new THREE.Vector3(-50, 0, -834), new THREE.Vector3(-58, 0, -856), new THREE.Vector3(-72, 0, -876)];
   const smallCurve = new THREE.CatmullRomCurve3(smallPath);
-  let smallU = 0; let smallStop = 0;
+  const smallLen = smallCurve.getLength();
+  // they walk up the path and back down again, turning round at each end; turns are always eased
+  const small = { u: 0, dir: 1, stop: 0, pause: 0, walk: 0, hopT: 0, heading: new Heading(0, 0.9, 0.9) };
   scene.add(smallGroup);
   const saplings: THREE.Mesh[] = [];
   const sapMat = toon(0x5fa346);
@@ -566,26 +612,49 @@ function build(ctx: WorldContext): BuiltWorld {
     id: 'chu', name: 'Chu & Chibi Totoro', from: 'My Neighbor Totoro', group: smallGroup, radius: 1.4, base: 820, rarity: 'rare',
     hint: 'Two small friends hurrying up the camphor hill with a bag of acorns. Throw an acorn near them.',
     poses: { dance: { label: 'Growing trees', mult: 2.0 }, look: { label: 'Looking back', mult: 1.4 } }, centerOffset: new THREE.Vector3(0.6, 0.9, 0), facing: fwd(smallGroup),
-    onItem: (pos) => { sproutT = 0; sproutPos.copy(pos); smallStop = 4; smallSubject.setPose('dance', 4); return true; },
-    onCall: () => { smallStop = 2.5; smallSubject.setPose('look', 2.5); return true; }, reactRange: 14, maxDistance: 160,
+    onItem: (pos) => { sproutT = 0; sproutPos.copy(pos); small.stop = 4; smallSubject.setPose('dance', 4); return true; },
+    onCall: () => { small.stop = 3; smallSubject.setPose('look', 3); return true; }, reactRange: 14, maxDistance: 160,
   });
   subjects.push(smallSubject);
+  {
+    const p0 = smallCurve.getPointAt(0), p1 = smallCurve.getPointAt(0.02);
+    small.heading.set(Math.atan2(p1.x - p0.x, p1.z - p0.z));
+  }
   updaters.push((dt, t, ride) => {
     const active = ride.u > 0.28 && ride.u < 0.5;
     smallGroup.visible = active; smallSubject.active = active;
     saplings.forEach((s) => (s.visible = s.visible && active));
     if (!active) return;
-    if (smallStop > 0) smallStop -= dt; else smallU = Math.min(1, smallU + dt * 0.02);
-    // walk back and forth on the path so there is always something to see
-    const uu = smallU >= 1 ? 1 : smallU;
-    const p = smallCurve.getPointAt(uu);
+    ctx.camera.getWorldPosition(camPos);
+    let moved = 0;
+    if (small.stop > 0) small.stop -= dt;
+    else if (small.pause > 0) small.pause -= dt;
+    else {
+      const step = (1.5 / smallLen) * dt;
+      const next = clamp(small.u + step * small.dir, 0, 1);
+      moved = Math.abs(next - small.u) * smallLen;
+      small.u = next;
+      // at either end: stop for a moment, then turn round
+      if (small.u <= 0 || small.u >= 1) { small.dir *= -1; small.pause = 2.5; }
+    }
+    const p = smallCurve.getPointAt(small.u);
     smallGroup.position.set(p.x, heightAt(p.x, p.z), p.z);
-    const ahead = smallCurve.getPointAt(Math.min(1, uu + 0.02));
-    if (smallStop > 0 && smallSubject.pose === 'look') { const look = new THREE.Vector3(ride.position.x, smallGroup.position.y, ride.position.z); smallGroup.lookAt(look); }
-    else smallGroup.lookAt(ahead.x, smallGroup.position.y, ahead.z);
-    const hop = smallStop > 0 ? 0 : Math.abs(Math.sin(t * 7)) * 0.3;
-    chu.group.position.y = hop; chibi.group.position.y = Math.abs(Math.sin(t * 8 + 1)) * 0.25 * (smallStop > 0 ? 0 : 1);
-    if (smallSubject.pose === 'dance') { chu.group.position.y = Math.abs(Math.sin(t * 5)) * 0.6; chibi.group.position.y = Math.abs(Math.sin(t * 5 + 1.5)) * 0.5; }
+    // face along the path in the direction of travel, or towards the train when called
+    const tan = smallCurve.getTangentAt(small.u);
+    let want = Math.atan2(tan.x * small.dir, tan.z * small.dir);
+    if (small.stop > 0 && smallSubject.pose === 'look') want = Heading.towards(smallGroup.position, camPos);
+    smallGroup.rotation.y = small.heading.update(want, dt);
+    small.walk = damp(small.walk, moved > 0 ? 1 : 0, 6, dt);
+    const looking = smallSubject.pose === 'look' || camPos.distanceTo(smallGroup.position) < 45;
+    for (const c of [chu, chibi]) { c.walk = small.walk; c.stride = moved; c.lookTarget = looking ? camPos : null; }
+    // dancing: little hops in turn
+    if (smallSubject.pose === 'dance') {
+      const before = small.hopT;
+      small.hopT -= dt;
+      if (small.hopT <= 0) { small.hopT += 0.55; chu.hop(); }
+      // Chibi hops a beat later
+      if (before > 0.37 && small.hopT <= 0.37) chibi.hop();
+    }
     chu.update(dt, t); chibi.update(dt, t);
     if (sproutT >= 0) {
       sproutT += dt;
@@ -610,8 +679,8 @@ function build(ctx: WorldContext): BuiltWorld {
     id: 'totoro', name: 'Totoro', from: 'My Neighbor Totoro', group: totoro.group, radius: 3.2, base: 1500, rarity: 'legendary',
     hint: 'Waits in the rain at the Inari-mae bus stop. Throw an acorn and he jumps; play the ocarina and he roars.',
     poses: { roar: { label: 'The big roar', mult: 2.0 }, jump: { label: 'Rain-shaking jump', mult: 1.8 } }, centerOffset: new THREE.Vector3(0, 2.8, 0), facing: fwd(totoro.group),
-    onItem: () => { totoro.jump(); totoroSubject.setPose('jump', 1.2); dropBurst = 1.2; return true; },
-    onCall: () => { totoro.roar(); totoroSubject.setPose('roar', 1.6); return true; }, reactRange: 18, maxDistance: 140,
+    onItem: () => { totoro.jump(() => { dropBurst = 0.9; }); totoroSubject.setPose('jump', 1.4); return true; },
+    onCall: () => { totoro.roar(); totoroSubject.setPose('roar', 2.4); return true; }, reactRange: 18, maxDistance: 140,
   });
   subjects.push(totoroSubject);
   const sisters = makeSatsukiMei();
@@ -623,51 +692,93 @@ function build(ctx: WorldContext): BuiltWorld {
     onCall: () => { sisters.wave(); sistersSubject.setPose('wave', 2.2); return true; }, maxDistance: 120,
   });
   subjects.push(sistersSubject);
-  updaters.push((dt, t, ride) => { const a = ride.u > 0.38 && ride.u < 0.6; sisters.group.visible = a; sistersSubject.active = a; if (a) sisters.update(dt, t); });
+  updaters.push((dt, t, ride) => {
+    // switched on and off far out in the fog (ahead) or inside the tunnel (behind), so they never pop
+    const a = ride.u > 0.3 && ride.u < 0.6;
+    sisters.group.visible = a; sistersSubject.active = a;
+    if (!a) return;
+    ctx.camera.getWorldPosition(camPos);
+    sisters.lookTarget = camPos.distanceTo(sisters.group.position) < 60 ? camPos : null;
+    sisters.update(dt, t);
+  });
   let dropBurst = 0;
   const drops = new Drift({ count: 160, color: 0xcfe6ff, size: 0.35, box: new THREE.Vector3(10, 8, 10), speed: new THREE.Vector3(0, -9, 0), wobble: 0.3, opacity: 0.9 });
   drops.points.position.copy(totoro.group.position).add(new THREE.Vector3(0, 6, 0));
   drops.intensity = 0;
   scene.add(drops.points);
   updaters.push((dt, t, ride) => {
-    const active = ride.u > 0.38 && ride.u < 0.6;
+    const active = ride.u > 0.3 && ride.u < 0.6;
     totoro.group.visible = active; totoroSubject.active = active;
     if (!active) { drops.intensity = 0; return; }
+    ctx.camera.getWorldPosition(camPos);
+    // he watches the train go by
+    totoro.lookTarget = camPos.distanceTo(totoro.group.position) < 70 ? camPos : null;
     totoro.update(dt, t);
     dropBurst = Math.max(0, dropBurst - dt);
-    drops.intensity = damp(drops.intensity, dropBurst > 0 && dropBurst < 0.9 ? 1 : 0, 6, dt);
+    drops.intensity = damp(drops.intensity, dropBurst > 0 ? 1 : 0, 6, dt);
     drops.update(dt, t, totoro.group.position.clone().add(new THREE.Vector3(0, 6, 0)));
   });
 
   // Catbus: runs on a field road on the right, stops at the bus stop, then races off
   const catbus = makeCatbus();
   scene.add(catbus.group);
+  // It comes running in from far across the fields, slows into the bus stop and waits there until the
+  // train has gone by, then races off into the rain until the fog swallows it.
   const busPath = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(250, 0, -850), new THREE.Vector3(150, 0, -925),
     new THREE.Vector3(60, 0, -980), new THREE.Vector3(40, 0, -1040), new THREE.Vector3(24, 0, -1100), new THREE.Vector3(16, 0, -1150), new THREE.Vector3(18, 0, -1200), new THREE.Vector3(40, 0, -1250), new THREE.Vector3(90, 0, -1320), new THREE.Vector3(160, 0, -1380),
+    new THREE.Vector3(260, 0, -1440), new THREE.Vector3(380, 0, -1500),
   ]);
-  const busState = { u: 0, started: false, waited: 0, done: false };
+  const busLen = busPath.getLength();
+  const busStopS = (() => {
+    // arc length of the point on the path nearest the stop
+    let best = 0, bestD = Infinity;
+    for (let i = 0; i <= 400; i++) { const p = busPath.getPointAt(i / 400); const d = Math.hypot(p.x - 16, p.z + 1150); if (d < bestD) { bestD = d; best = i / 400; } }
+    return best * busLen;
+  })();
+  const busState = { s: 0, speed: 26, started: false, waited: 0, left: false, done: false, heading: new Heading(0, 1.4, 0.9) };
   const catbusSubject = new Subject({
     id: 'catbus', name: 'The Catbus', from: 'My Neighbor Totoro', group: catbus.group, radius: 4.5, base: 1250, rarity: 'rare',
     hint: 'Comes racing across the fields at dusk and pauses at the bus stop.',
     poses: { stop: { label: 'At the bus stop', mult: 1.5 }, grin: { label: 'Big grin', mult: 1.7 } }, centerOffset: new THREE.Vector3(0, 2.2, 2.5), facing: fwd(catbus.group),
-    onCall: () => { if (busState.u < 0.35 || busState.u > 0.6) return false; busState.waited -= 2; catbus.grin(); catbusSubject.setPose('grin', 3); return true; }, maxDistance: 200,
+    onCall: () => { if (Math.abs(busState.s - busStopS) > 70) return false; busState.waited = Math.min(busState.waited, 2); catbus.grin(); catbusSubject.setPose('grin', 3); return true; }, maxDistance: 200,
   });
   subjects.push(catbusSubject);
   updaters.push((dt, t, ride) => {
-    if (!busState.started && ride.u > 0.44 && ride.u < 0.62) busState.started = true;
-    if (ride.u > 0.64) busState.done = true;
+    if (!busState.started && ride.u > 0.415 && ride.u < 0.6) {
+      busState.started = true;
+      const p0 = busPath.getPointAt(0), p1 = busPath.getPointAt(0.01);
+      busState.heading.set(Math.atan2(p1.x - p0.x, p1.z - p0.z));
+    }
     const active = busState.started && !busState.done;
     catbus.group.visible = active; catbusSubject.active = active;
     if (!active) return;
-    const atStop = busState.u > 0.42 && busState.u < 0.45 && busState.waited < 5;
-    if (atStop) { busState.waited += dt; if (catbusSubject.pose === 'idle') catbusSubject.setPose('stop', 5); }
-    else busState.u += dt * (busState.u > 0.45 ? 0.09 : 0.06) * (0.6 + 0.4 * ride.speedMult);
-    if (busState.u >= 1) { busState.done = true; return; }
-    const p = busPath.getPointAt(busState.u);
+    ctx.camera.getWorldPosition(camPos);
+    // ease into the stop, wait until the train has passed (or long enough), then pull away
+    const toStop = busStopS - busState.s;
+    let want = 26 + 6 * (ride.speedMult - 1);
+    if (!busState.left && toStop > -0.5) {
+      want = Math.min(want, Math.max(0, toStop) * 1.1);
+      if (toStop < 0.6) {
+        busState.waited += dt;
+        if (catbusSubject.pose === 'idle') catbusSubject.setPose('stop', 6);
+        const trainPast = camPos.z < -1150 - 25;
+        if ((trainPast && busState.waited > 3) || busState.waited > 14) busState.left = true;
+      }
+    }
+    busState.speed = damp(busState.speed, want, busState.left ? 1.2 : 3, dt);
+    const moved = busState.speed * dt;
+    busState.s = Math.min(busLen, busState.s + moved);
+    const u = busState.s / busLen;
+    const p = busPath.getPointAt(u);
     catbus.group.position.set(p.x, heightAt(p.x, p.z) + 0.2, p.z);
-    const ahead = busPath.getPointAt(Math.min(1, busState.u + 0.01));
-    catbus.group.lookAt(ahead.x, catbus.group.position.y, ahead.z);
-    catbus.running = !atStop;
+    const tan = busPath.getTangentAt(u);
+    catbus.group.rotation.y = busState.heading.update(Math.atan2(tan.x, tan.z), dt);
+    // gone into the rain and fog
+    if (busState.s >= busLen - 1 || (busState.left && camPos.distanceTo(catbus.group.position) > 300)) { busState.done = true; catbus.group.visible = false; catbusSubject.active = false; return; }
+    catbus.running = busState.speed > 1.5;
+    catbus.stride = moved;
+    catbus.lookTarget = camPos;
     catbus.update(dt, t);
   });
   // fireflies in the fields at dusk
@@ -700,7 +811,7 @@ function build(ctx: WorldContext): BuiltWorld {
     onItem: () => { noFace.gulp(); noFaceSubject.setPose('gulp', 1.6); return true; }, reactRange: 14, maxDistance: 130, swallows: true,
   });
   subjects.push(noFaceSubject);
-  updaters.push((dt, t, ride) => { const a = ride.u > 0.6 && ride.u < 0.76; noFace.group.visible = a; noFaceSubject.active = a; if (a) noFace.update(dt, t); });
+  updaters.push((dt, t, ride) => { const a = ride.u > 0.6 && ride.u < 0.82; noFace.group.visible = a; noFaceSubject.active = a; if (a) noFace.update(dt, t); });
 
   // soot sprites on the low jetty
   const soot = makeSootSprites(11, rng, 3.2);
@@ -715,7 +826,7 @@ function build(ctx: WorldContext): BuiltWorld {
     onCall: () => { soot.jump(); sootSubject.setPose('jump', 1.2); return true; }, reactRange: 16, maxDistance: 120, crowd: true,
   });
   subjects.push(sootSubject);
-  updaters.push((dt, t, ride) => { const a = ride.u > 0.62 && ride.u < 0.78; soot.group.visible = a; sootSubject.active = a; if (a) soot.update(dt, t); });
+  updaters.push((dt, t, ride) => { const a = ride.u > 0.62 && ride.u < 0.84; soot.group.visible = a; sootSubject.active = a; if (a) soot.update(dt, t); });
 
   // Haku the dragon over the water
   const haku = makeHaku();
@@ -727,19 +838,48 @@ function build(ctx: WorldContext): BuiltWorld {
     onCall: () => { haku.swoop(); hakuSubject.setPose('swoop', 3.5); return true; }, maxDistance: 200,
   });
   subjects.push(hakuSubject);
+  // He flies in from far ahead once the train is out on the sea, weaves back and forth in front of it
+  // (never dropping behind, however fast the train goes), and at the end climbs away into the sky.
   const hakuTarget = new THREE.Vector3();
+  const hk = { phase: 'off' as 'off' | 'in' | 'fly' | 'out', outT: 0 };
+  const travel = new THREE.Vector3(), side = new THREE.Vector3();
   updaters.push((dt, t, ride) => {
-    const active = ride.u > 0.66 && ride.u < 0.9;
-    haku.group.visible = active; hakuSubject.active = active;
-    if (!active) return;
-    const tp = ride.position;
-    if (haku.state.swoopT > 0) {
-      const camDir = new THREE.Vector3(0, 0, -1).applyQuaternion(ctx.camera.quaternion);
-      hakuTarget.copy(ctx.camera.position).addScaledVector(camDir, 9).add(new THREE.Vector3(0, 1.5 + Math.sin(t * 2) * 1.5, 0));
-    } else {
-      const side = Math.sin(t * 0.21) * 34;
-      hakuTarget.set(tp.x + side, 6 + Math.sin(t * 0.7) * 4 + 3, tp.z - 30 + Math.cos(t * 0.33) * 40);
+    const want = ride.u > 0.655 && ride.u < 0.885;
+    ctx.camera.getWorldPosition(camPos);
+    travel.copy(ride.tangent).setY(0).normalize();
+    side.set(-travel.z, 0, travel.x);
+    const trainSpeed = trainVel.length();
+    // start well out in the fog ahead of the train, high up, already flying towards it
+    const flyIn = () => { haku.teleport(ride.position.clone().addScaledVector(travel, 230).addScaledVector(side, 30).setY(38), travel.clone().negate().setY(-0.15)); hk.phase = 'in'; };
+    if (hk.phase === 'off') {
+      if (!want) { haku.group.visible = false; hakuSubject.active = false; return; }
+      flyIn();
     }
+    if (hk.phase !== 'out' && !want) { hk.phase = 'out'; hk.outT = 0; }
+    haku.group.visible = true;
+    hakuSubject.active = hk.phase !== 'out';
+    const tp = ride.position;
+    if (hk.phase === 'out') {
+      hk.outT += dt;
+      // far enough that the night fog has swallowed him before he is removed
+      hakuTarget.copy(camPos).addScaledVector(travel, 420).addScaledVector(side, -60).setY(160);
+      if (hk.outT > 24 || haku.head.position.distanceTo(camPos) > 400) { hk.phase = 'off'; haku.group.visible = false; hakuSubject.active = false; return; }
+    } else if (haku.state.swoopT > 0) {
+      // swoop in close to wherever the camera is looking, but never under the water
+      camDir.set(0, 0, -1).applyQuaternion(ctx.camera.quaternion);
+      hakuTarget.copy(camPos).addScaledVector(camDir, 9).add(new THREE.Vector3(0, 1.5 + Math.sin(t * 2) * 1.5, 0));
+      hakuTarget.y = Math.max(hakuTarget.y, WATER + 3);
+    } else {
+      // weave across the view ahead of the train
+      const ahead = 34 + Math.sin(t * 0.29 + 1) * 12;
+      const across = Math.tan(Math.sin(t * 0.21) * 0.55 + Math.sin(t * 0.53) * 0.1) * ahead;
+      hakuTarget.copy(camPos).addScaledVector(travel, ahead).addScaledVector(side, across);
+      hakuTarget.y = tp.y + 4.5 + Math.sin(t * 0.47) * 2.8;
+    }
+    if (hk.phase === 'in' && haku.head.position.distanceTo(camPos) < 70) hk.phase = 'fly';
+    // left far behind (the train jumped ahead after a long stall): fly in again from ahead
+    if (hk.phase !== 'out' && haku.head.position.distanceTo(tp) > 300) flyIn();
+    haku.maxSpeed = trainSpeed + (hk.phase === 'fly' ? 16 : 26);
     haku.setTarget(hakuTarget);
     haku.update(dt, t);
   });
@@ -759,8 +899,9 @@ function build(ctx: WorldContext): BuiltWorld {
     ponyo.group.visible = active; ponyoSubject.active = active;
     if (!active) return;
     const tp = ride.position;
-    const k = smoothstep(0.74, 0.77, ride.u) * (1 - smoothstep(0.84, 0.86, ride.u));
-    ponyo.group.position.set(tp.x + 9 + (1 - k) * 30, WATER, tp.z - 4 + Math.sin(t * 0.8) * 5);
+    // they rise out of the sea beside the train, race along with it, and dive away again
+    ponyo.surface = smoothstep(0.74, 0.755, ride.u) * (1 - smoothstep(0.845, 0.858, ride.u));
+    ponyo.group.position.set(tp.x + 9, WATER, tp.z - 4 + Math.sin(t * 0.8) * 5);
     ponyo.update(dt, t);
   });
 
@@ -777,7 +918,7 @@ function build(ctx: WorldContext): BuiltWorld {
     onCall: () => { radish.bow(); radishSubject.setPose('bow', 2.2); return true; }, maxDistance: 120,
   });
   subjects.push(radishSubject);
-  updaters.push((dt, t, ride) => { const a = ride.u > 0.74 && ride.u < 0.88; radish.group.visible = a; radishSubject.active = a; if (a) radish.update(dt, t); });
+  updaters.push((dt, t, ride) => { const a = ride.u > 0.68 && ride.u < 0.93; radish.group.visible = a; radishSubject.active = a; if (a) radish.update(dt, t); });
 
   // Kodama on the forest island
   const kodama = makeKodama(14, rng, 7);
@@ -831,6 +972,8 @@ function build(ctx: WorldContext): BuiltWorld {
   const world: BuiltWorld = {
     scene, curve, speed: 10.5, vehicle, cameraAnchor, subjects, sky, sun, hemi, lighting,
     occluders: [terrain, sea.bathhouse],
+    // the railcar fills the view behind the deck, so lean out over the railing to look back down the line
+    lookBackLean: { out: 2.1, up: 0.35, from: 1.4 },
     waterLevel: WATER,
     groundHeight: heightAt,
     makeProjectile: () => {

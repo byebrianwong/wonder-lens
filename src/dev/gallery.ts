@@ -22,12 +22,15 @@ interface Entry { make: () => { group: THREE.Object3D; update?: (dt: number, t: 
 
 const rng = () => new Rng(7);
 const GHIBLI: Record<string, Entry> = {
-  totoro: { make: () => { const c = C.makeTotoro({ umbrella: true }); return { ...c, act: () => c.roar() }; }, y: 2.8, dist: 12 },
-  chu: { make: () => { const c = C.makeTotoro({ color: 0x5f7fa8, belly: 0xe8e2d0, scale: 0.62, chevrons: false, bag: true }); return c; }, y: 1.8, dist: 7 },
-  chibi: { make: () => C.makeTotoro({ color: 0xf4f1ea, belly: -1, scale: 0.34, chevrons: false, leaf: true }), y: 1.0, dist: 4 },
+  totoro: { make: () => { const c = C.makeTotoro({ umbrella: true }); return { group: c.group, update: c.update, act: () => c.roar() }; }, y: 2.8, dist: 12 },
+  totorojump: { make: () => { const c = C.makeTotoro({ umbrella: true }); return { group: c.group, update: c.update, act: () => c.jump() }; }, y: 2.8, dist: 14 },
+  // walks on the spot; act hops
+  chu: { make: () => { const c = C.makeTotoro({ color: 0x5f7fa8, belly: 0xe8e2d0, scale: 0.62, chevrons: false, bag: true }); return { group: c.group, act: () => c.hop(), update: (dt: number, t: number) => { c.walk = 1; c.stride = dt * 1.4; c.update(dt, t); } }; }, y: 1.8, dist: 7 },
+  chibi: { make: () => { const c = C.makeTotoro({ color: 0xf4f1ea, belly: -1, scale: 0.34, chevrons: false, leaf: true }); return { group: c.group, update: c.update, act: () => c.hop() }; }, y: 1.0, dist: 4 },
   catbus: { make: () => { const c = C.makeCatbus(); return { ...c, act: () => c.grin() }; }, y: 2.2, dist: 15 },
   kiki: { make: () => { const c = C.makeKiki(); c.group.position.y = 1.5; return { ...c, act: () => c.wave() }; }, y: 2.4, dist: 4.5 },
   noface: { make: () => { const c = C.makeNoFace(); return { ...c, act: () => c.offer() }; }, y: 2.9, dist: 8 },
+  nofacegulp: { make: () => { const c = C.makeNoFace(); return { ...c, act: () => c.gulp() }; }, y: 2.9, dist: 8 },
   soot: { make: () => { const c = C.makeSootSprites(11, rng(), 3.2); return { ...c, act: () => c.jump() }; }, y: 0.5, dist: 7 },
   haku: {
     make: () => {

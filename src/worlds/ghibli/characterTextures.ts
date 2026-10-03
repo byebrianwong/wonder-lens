@@ -32,53 +32,6 @@ export function sphereFur(color: THREE.ColorRepresentation, seed: number, o: { w
   return p;
 }
 
-/** Totoro's fur (body, head, arms, feet, ears). `eyes` paints dark rims where the eye balls sit on the head. */
-export function totoroFur(color: number, seed: number, eyes?: Array<[number, number, number]>, w = 1024) {
-  const p = sphereFur(color, seed, { w, contrast: 1 });
-  const k = w / 1024;
-  if (eyes) for (const dir of eyes) {
-    p.at(dir, (g) => {
-      g.fillStyle = css(color, 0.45, 0x1a1c28, 0.5);
-      g.globalAlpha = 0.9;
-      g.beginPath(); g.ellipse(0, 0, 40 * k, 36 * k, 0, 0, Math.PI * 2); g.fill();
-      g.globalAlpha = 1;
-    });
-  }
-  return p.texture();
-}
-
-/** Totoro's cream belly with the grey chevron marks across the top. Painted for an ellipsoid facing +z. */
-export function totoroBelly(cream: number, fur: number, chevrons: boolean, seed: number, w = 1024) {
-  const p = sphereFur(cream, seed, { w, contrast: 0.7 });
-  if (chevrons) {
-    // three across the top, four in the row below, following the curve of the belly
-    const rows: Array<{ y: number; xs: number[] }> = [{ y: 0.66, xs: [-0.3, 0, 0.3] }, { y: 0.4, xs: [-0.5, -0.17, 0.17, 0.5] }];
-    for (const row of rows) for (const x of row.xs) {
-      const y = row.y - Math.abs(x) * 0.12;
-      const z = Math.sqrt(Math.max(0.05, 1 - x * x - y * y));
-      p.at([x, y, z], (g) => {
-        g.rotate(x * 0.4);
-        g.scale(1.1 * w / 1024, 1.2 * w / 1024);
-        // a thick arrowhead pointing up, with slightly curved legs
-        g.fillStyle = css(fur, 0.8);
-        g.beginPath();
-        g.moveTo(0, -15);
-        g.quadraticCurveTo(12, -4, 23, 11);
-        g.lineTo(13, 12);
-        g.quadraticCurveTo(6, 3, 0, -1);
-        g.quadraticCurveTo(-6, 3, -13, 12);
-        g.lineTo(-23, 11);
-        g.quadraticCurveTo(-12, -4, 0, -15);
-        g.fill();
-      });
-    }
-    // brush a few cream hairs back across the marks so they sit in the fur
-    const k = w / 1024;
-    p.fur({ n: 500, colors: [css(cream, 1.02), css(cream, 0.95)], len: [10 * k, 20 * k], width: [3 * k, 6 * k], alpha: [0.2, 0.4], y: [0.15, 0.42], x: [0.1, 0.4] });
-  }
-  return p.texture();
-}
-
 /** Black umbrella cloth for a cone: eight panels with ribs, a soft sheen near the top. */
 export function umbrellaCloth(color: number) {
   const p = new Painter(512, 128, 3).fill(css(color));
@@ -787,5 +740,38 @@ export function airshipHull() {
 /** Soft fade for ghostly shadow figures: transparent at the feet, denser above (alpha map for a capsule). */
 export function shadowFade() {
   const p = new Painter(8, 128, 221).vgrad([[0, '#c8c8c8'], [0.6, '#b0b0b0'], [0.9, '#404040'], [1, '#000000']]);
+  return p.texture({ wrap: false });
+}
+
+/**
+ * The inside of a wide-open mouth (Totoro's roar, No-Face's gulp): dark red with a pink tongue, a row of
+ * big flat upper teeth along the top edge and smaller lower teeth along the bottom. The top of the canvas
+ * is the upper lip.
+ */
+export function grinTexture() {
+  const p = new Painter(512, 256, 211);
+  const c = p.g;
+  const gr = c.createLinearGradient(0, 0, 0, 256);
+  gr.addColorStop(0, '#2a080c'); gr.addColorStop(0.6, '#4a121a'); gr.addColorStop(1, '#5a1820');
+  c.fillStyle = gr; c.fillRect(0, 0, 512, 256);
+  const tg = c.createRadialGradient(256, 236, 10, 256, 236, 170);
+  tg.addColorStop(0, '#e07a80'); tg.addColorStop(0.7, '#b8505a'); tg.addColorStop(1, 'rgba(150,50,60,0)');
+  c.fillStyle = tg; c.beginPath(); c.ellipse(256, 240, 190, 80, 0, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#f6f1e2';
+  const N = 13;
+  for (let i = 0; i < N; i++) {
+    const x0 = 40 + (i / N) * 432, w = 432 / N - 5;
+    const mid = 1 - Math.abs((i + 0.5) / N - 0.5) * 1.4;
+    c.beginPath(); c.roundRect(x0, -10, w, 34 + mid * 34, [0, 0, 8, 8]); c.fill();
+  }
+  for (let i = 0; i < N - 2; i++) {
+    const x0 = 70 + (i / (N - 2)) * 372, w = 372 / (N - 2) - 5;
+    const mid = 1 - Math.abs((i + 0.5) / (N - 2) - 0.5) * 1.4;
+    c.beginPath(); c.roundRect(x0, 256 - 22 - mid * 20, w, 40, [8, 8, 0, 0]); c.fill();
+  }
+  c.fillStyle = 'rgba(120,100,90,0.35)'; c.fillRect(0, 0, 512, 6);
+  // lip line
+  c.strokeStyle = '#1c0c0e'; c.lineWidth = 10;
+  c.beginPath(); c.moveTo(0, 2); c.lineTo(512, 2); c.moveTo(0, 254); c.lineTo(512, 254); c.stroke();
   return p.texture({ wrap: false });
 }
