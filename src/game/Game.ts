@@ -85,6 +85,7 @@ export class Game {
     this.rig = new CameraRig(def.fov, renderer.aspect);
     const t0 = performance.now();
     this.world = def.build({ audio, camera: this.rig.camera, lowDetail: this.o.lowDetail });
+    if (this.world.lookBackLean) Object.assign(this.rig.lean, this.world.lookBackLean);
     console.info(`[window seat] ${def.id} built in ${(performance.now() - t0).toFixed(0)} ms`);
     this.ride = new Ride(this.world.curve, this.world.speed, this.world.vehicle);
     (window as any).__dbg = { world: this.world, ride: this.ride, game: this, rig: this.rig };

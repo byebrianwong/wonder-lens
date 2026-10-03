@@ -415,10 +415,18 @@ export function buildSeaTrain() {
   // rear body (solid)
   car.add(B(3.2, 2.7, 8.0, paint, 0, 1.9, -8.7));
   car.add(B(3.3, 0.5, 8.1, cream, 0, 1.4, -8.7));
-  // cabin side walls (z -1.1 .. -4.7)
+  // cabin side walls (z -1.1 .. -4.7), each with a real glass window beside the seats (y 1.7 .. 2.8,
+  // z -3.25 .. -1.75), so a rider leaning out to look back can see the passengers
+  const glass = new THREE.MeshPhysicalMaterial({ color: 0xcfe0ea, transparent: true, opacity: 0.16, roughness: 0.1, metalness: 0, depthWrite: false });
+  const frameMat = new THREE.MeshLambertMaterial({ map: woodGrain(0x5a4030, 307) });
   for (const sx of [-1, 1]) {
-    car.add(B(0.1, 2.7, 3.6, paint, sx * 1.55, 1.9, -2.9));
+    car.add(B(0.1, 1.15, 3.6, paint, sx * 1.55, 1.125, -2.9));
+    car.add(B(0.1, 0.45, 3.6, paint, sx * 1.55, 3.025, -2.9));
+    car.add(B(0.1, 1.1, 1.45, paint, sx * 1.55, 2.25, -3.975), B(0.1, 1.1, 0.65, paint, sx * 1.55, 2.25, -1.425));
     car.add(B(0.12, 0.5, 3.6, cream, sx * 1.6, 1.4, -2.9));
+    car.add(box(0.03, 1.1, 1.5, glass, sx * 1.56, 2.25, -2.5));
+    for (const y of [1.7, 2.8]) car.add(box(0.16, 0.08, 1.6, frameMat, sx * 1.56, y, -2.5));
+    for (const z of [-3.25, -1.75]) car.add(box(0.16, 1.16, 0.08, frameMat, sx * 1.56, 2.25, z));
   }
   // front wall pieces around the window opening (y 1.7 .. 2.85, x -1.2 .. 1.2)
   car.add(B(3.2, 1.15, 0.3, paint, 0, 1.125, -0.95));
@@ -433,19 +441,22 @@ export function buildSeaTrain() {
   const win = trainWindow();
   const winMat = new THREE.MeshLambertMaterial({ map: win.map, emissive: 0xffffff, emissiveMap: win.glow, emissiveIntensity: 0.9 });
   const windows: THREE.Mesh[] = [];
-  for (const s of [-1, 1]) for (let i = 0; i < 5; i++) {
+  // painted lit windows along the rest of the car (the first on each side is the glass one above)
+  for (const s of [-1, 1]) for (let i = 1; i < 5; i++) {
     const w = box(0.06, 1.1, 1.4, winMat, s * 1.62, 2.25, -2.5 - i * 2.1);
     car.add(w); windows.push(w);
   }
-  // glass in the opening
-  const glass = new THREE.MeshPhysicalMaterial({ color: 0xcfe0ea, transparent: true, opacity: 0.16, roughness: 0.1, metalness: 0, depthWrite: false });
+  // glass in the front opening
   car.add(box(2.4, 1.15, 0.03, glass, 0, 2.275, -0.95));
   // interior: warm panels, a bench facing forward, and the passengers
   const interior = new THREE.Group();
   const panel = new THREE.MeshLambertMaterial({ map: cabinPanels(), emissive: 0x6a5230, emissiveIntensity: 0.6 });
   const P = (w: number, h: number, d: number, x: number, y: number, z: number) => mesh(boxUV(new THREE.BoxGeometry(w, h, d), 1.3), panel, x, y, z);
   interior.add(P(3.0, 2.6, 0.1, 0, 1.9, -4.65));
-  interior.add(P(0.06, 2.6, 3.6, -1.47, 1.9, -2.9), P(0.06, 2.6, 3.6, 1.47, 1.9, -2.9));
+  for (const sx of [-1, 1]) {
+    interior.add(P(0.06, 1.1, 3.6, sx * 1.47, 1.15, -2.9), P(0.06, 0.4, 3.6, sx * 1.47, 3.0, -2.9));
+    interior.add(P(0.06, 1.1, 1.45, sx * 1.47, 2.25, -3.975), P(0.06, 1.1, 0.65, sx * 1.47, 2.25, -1.425));
+  }
   interior.add(mesh(boxUV(new THREE.BoxGeometry(3.0, 0.1, 3.7), 1), new THREE.MeshLambertMaterial({ map: deckPlanks(0x6a4e3a) }), 0, 0.62, -2.9));
   interior.add(box(3.0, 0.1, 3.7, lambert(0xd9c9a0, { emissive: 0x6a5230, emissiveIntensity: 0.6 }), 0, 3.18, -2.9));
   const benchWood = new THREE.MeshLambertMaterial({ map: woodGrain(0x7a5a3a, 309) });

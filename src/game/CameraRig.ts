@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { clamp, damp, deg } from '../engine/math';
+import { clamp, damp, deg, smoothstep } from '../engine/math';
 import type { Input } from '../engine/Input';
 
 /**
@@ -24,6 +24,9 @@ export class CameraRig {
   private anchorQ = new THREE.Quaternion();
   private anchorP = new THREE.Vector3();
   invertY = false;
+  /** lean out over the side when looking back (set by the world; zero means no lean) */
+  lean = { out: 0, up: 0, from: 1.4 };
+  private leanOff = new THREE.Vector3();
 
   constructor(fov: number, aspect: number) {
     this.camera = new THREE.PerspectiveCamera(fov, aspect, 0.1, 2500);
@@ -71,6 +74,12 @@ export class CameraRig {
     this.camera.quaternion.copy(this.anchorQ).multiply(this.tmpQ);
     this.camera.position.copy(this.anchorP);
     this.camera.position.y += Math.sin(time * 2.3) * 0.02;
+    // looking back: lean out towards the side the head is turned to (the anchor's -x is the rider's left)
+    const lean = smoothstep(this.lean.from, this.yawLimit, Math.abs(this.yaw));
+    if (lean > 0 && (this.lean.out || this.lean.up)) {
+      this.leanOff.set(-Math.sign(this.yaw) * this.lean.out * lean, this.lean.up * lean, 0).applyQuaternion(this.anchorQ);
+      this.camera.position.add(this.leanOff);
+    }
   }
 
   shake(amount = 0.01) { this.shakeAmt = amount; }

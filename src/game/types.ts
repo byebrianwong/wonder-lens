@@ -74,6 +74,12 @@ export interface BuiltWorld {
   onCall(pos: THREE.Vector3, ride: RideState): void;
   /** text shown at story beats: [u, text] */
   captions: Array<[number, string]>;
+  /**
+   * Optional: when the rider turns to look behind, the camera leans out over the side by `out` units and
+   * rises by `up`, so the vehicle hides less of the view. The lean starts once the turn passes `from`
+   * radians (default 1.4) and is full at the turn limit.
+   */
+  lookBackLean?: { out: number; up: number; from?: number };
   dispose(): void;
 }
 
