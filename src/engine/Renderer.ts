@@ -136,7 +136,9 @@ export class Renderer {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // three.js r18x replaces PCFSoftShadowMap with PCFShadowMap on the first shadow render. Asking for it directly
+    // looks the same and keeps shaders compiled before that render (see precompile) valid.
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.maxPixelRatio = opts.pixelRatio ?? Math.min(window.devicePixelRatio || 1, 2);
     this.pixelRatio = this.maxPixelRatio;
     this.renderer.setPixelRatio(this.pixelRatio);
@@ -162,6 +164,25 @@ export class Renderer {
     this.renderPass.scene = scene;
     this.renderPass.camera = camera;
     this.fx.camera = camera;
+  }
+
+  /**
+   * Compile every material in the scene now (hidden objects too), so nothing compiles mid-ride the first time
+   * it comes into view. Programs depend on the render target (the scene is drawn into the composer's
+   * half-float target without tone mapping), so compile against that target. Waits for the GPU driver to
+   * finish when the browser can compile in parallel. Lights must already be in place.
+   */
+  async precompile(scene: THREE.Scene, camera: THREE.Camera) {
+    const r = this.renderer;
+    const prev = r.getRenderTarget();
+    r.setRenderTarget(this.composer.renderTarget1);
+    try {
+      const pending = r.compileAsync(scene, camera);
+      r.setRenderTarget(prev);
+      await pending;
+    } finally {
+      r.setRenderTarget(prev);
+    }
   }
 
   resize() {

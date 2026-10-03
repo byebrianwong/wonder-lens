@@ -10,7 +10,7 @@ Worlds:
 
 - **The Sea Train** (Studio Ghibli): leave Koriko by the sea, cross Totoro's countryside in the rain, ride the flooded railway past the bathhouse under the stars.
 - **The Zubrowka Express** (Wes Anderson): symmetrical pastel dioramas, from the Grand Budapest Hotel and Gabelmeister's Peak through Camp Ivanhoe and Asteroid City to the Belafonte at sundown.
-- **Montmartre by Moped** (Amélie): green and gold Paris at night, from the Café des 2 Moulins to the Canal Saint-Martin.
+- **Montmartre by Moped** (Amélie): a dream of Amélie's Paris that drifts from one film scene into the next: into a giant green grocer, through the Café des 2 Moulins and up a tablecloth to a crème brûlée, out of her bedroom window over the rooftops at sunset, down the Sacré-Cœur steps, along the canal at night and through a giant photo booth into sunrise.
 
 Everything is drawn and synthesised in the browser: geometry from primitives, textures from canvas, music and
 sound from the Web Audio API. There are no external assets. A fan-made tribute, not affiliated with any studio.
