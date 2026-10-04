@@ -381,6 +381,7 @@ export class Game {
     this.ride.update(dt);
     const st = this.ride.state;
     this.o.audio.setVehicleSpeed(st.speedMult);
+    if (this.world.vehicleAt) this.o.audio.setVehicleLevel(this.world.vehicleAt(st.u));
     this.world.update(dt, st);
     for (const s of this.world.subjects) s.update(dt, st);
     this.trackMotion(dt);

@@ -1,5 +1,9 @@
 # Notes for agents working on this repo
 
+## Work in progress
+
+The Wes Anderson world's rebuild is not finished. NEXT_STEPS.md lists what is left; start there.
+
 ## Sound while testing
 
 The game starts muted in the Claude app's built-in browser (and in any browser with `navigator.webdriver` set),

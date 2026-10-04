@@ -10,7 +10,7 @@ Worlds:
 
 - **The Sea Train** (Studio Ghibli): leave Koriko by the sea, cross Totoro's countryside in the rain, ride the flooded railway past the bathhouse under the stars.
 - **Catbus to Anywhere** (Studio Ghibli, a second take): ride on the Catbus's back through one night of a dream: up the tree that grows in Totoro's garden, along the power lines with Totoro flying alongside, through the Forest Spirit's wood, into the storm to Laputa, across Howl's meadow and through his castle's door to the bathhouse, and on Haku's back until his scales burst, then home by dawn. The Sea Train stays for comparison while it is play-tested.
-- **The Zubrowka Express** (Wes Anderson): symmetrical pastel dioramas, from the Grand Budapest Hotel and Gabelmeister's Peak through Camp Ivanhoe and Asteroid City to the Belafonte at sundown.
+- **The Zubrowka Express** (Wes Anderson): a ride in nine parts through the films, joined by title cards, whip pans and a theatre curtain: up the funicular into the Grand Budapest, through Mendl's in a pastry box, down Gabelmeister's Peak on a toboggan, under Mr. Fox's hill, across New Penzance in the storm, into the play of Asteroid City, over Trash Island in a gondola, under the sea in the Deep Search, and on to the curtain call. Still being finished (see NEXT_STEPS.md).
 - **Montmartre by Moped** (Amélie): a dream of Amélie's Paris that drifts from one film scene into the next: into a giant green grocer, through the Café des 2 Moulins and up a tablecloth to a crème brûlée, out of her bedroom window over the rooftops at sunset, down the Sacré-Cœur steps, along the canal at night and through a giant photo booth into sunrise.
 
 Everything is drawn and synthesised in the browser: geometry from primitives, textures from canvas, music and

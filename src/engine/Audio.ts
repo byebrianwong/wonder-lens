@@ -241,6 +241,14 @@ export class AudioEngine {
     try { this.vehicleNode.osc?.stop(); this.vehicleNode.lfo?.stop(); } catch { /* */ }
     this.vehicleNode = null;
   }
+  /** Scale the vehicle's sound (0 silent .. 1 full), for a rider who changes vehicle. */
+  setVehicleLevel(k: number) {
+    const lvl = Math.max(0, Math.min(1, k));
+    if (Math.abs(lvl - this.vehicleLevel) < 0.01 || !this.vehicleNode || !this.ctx || !this.profile) return;
+    this.vehicleLevel = lvl;
+    this.vehicleNode.gain.gain.setTargetAtTime((this.profile.vehicle === 'moped' ? 0.05 : 0.35) * lvl, this.ctx.currentTime, 0.4);
+  }
+  private vehicleLevel = 1;
   setVehicleSpeed(s: number) {
     this.vehicleSpeed = s;
     if (this.vehicleNode?.osc && this.ctx) this.vehicleNode.osc.frequency.setTargetAtTime(52 + 26 * s, this.ctx.currentTime, 0.3);
