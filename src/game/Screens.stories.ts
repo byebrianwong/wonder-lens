@@ -10,7 +10,9 @@ export default {
 } satisfies Meta;
 
 type Story = StoryObj;
-const [ghibli, anderson, amelie] = WORLDS;
+// by id, so adding a world to the list does not change which world each story shows
+const world = (id: string) => WORLDS.find((w) => w.id === id)!;
+const ghibli = world('ghibli'), anderson = world('anderson'), amelie = world('amelie');
 
 const menu = (selected = ghibli, relax = false, mouseLock = true): Story => ({
   render: () => {

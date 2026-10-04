@@ -13,9 +13,9 @@ import { blinkAmount, type Character } from './character';
  * Every joint is a group placed at the joint, so a rotation swings the limb from the right place.
  */
 
-type HairStyle = 'bob' | 'short' | 'pigtails' | 'ponytail';
+export type HairStyle = 'bob' | 'short' | 'pigtails' | 'ponytail';
 
-interface KidOpts {
+export interface KidOpts {
   skin?: number;
   hair: number;
   style: HairStyle;
@@ -79,7 +79,7 @@ function hairShape(style: HairStyle, R: number) {
   };
 }
 
-function makeKid(o: KidOpts): Kid {
+export function makeKid(o: KidOpts): Kid {
   const g = new THREE.Group();
   const skinC = o.skin ?? 0xf3d6bd;
   const em = o.glow ?? 0x000000;

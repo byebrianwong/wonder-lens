@@ -46,7 +46,7 @@ export function rideView(def: WorldDef, o: RideViewOptions): HTMLElement {
 
   const rig = new CameraRig(def.fov, renderer.aspect);
   const audio = new AudioEngine(); // never started, so it makes no sound
-  const world = def.build({ audio, camera: rig.camera, lowDetail: false });
+  const world = def.build({ audio, camera: rig.camera, lowDetail: false, focusCaption: o.beat });
   const ride = new Ride(world.curve, world.speed, world.vehicle);
   const beat = world.captions[Math.min(o.beat, world.captions.length - 1)];
   const u = Math.min(0.995, beat[0] + (o.after ?? 0.012));

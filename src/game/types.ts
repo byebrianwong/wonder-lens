@@ -46,6 +46,12 @@ export interface WorldContext {
   camera: THREE.PerspectiveCamera;
   /** true when running the low-detail profile */
   lowDetail: boolean;
+  /**
+   * Optional, set only by Storybook's ride views: the index of the caption the view will be parked just after.
+   * A large world may skip building the parts of the ride far from it, so the view loads faster. The game
+   * never sets it.
+   */
+  focusCaption?: number;
 }
 
 export interface BuiltWorld {
