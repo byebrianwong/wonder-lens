@@ -127,7 +127,8 @@ export class MoonGlitter {
           float rays = max(1.0 - smoothstep(0.0, 0.08, abs(c.x)), 1.0 - smoothstep(0.0, 0.08, abs(c.y))) * (1.0 - smoothstep(0.2, 1.0, r));
           float a = (spot + rays * 0.5) * vA * uAmount;
           if (a < 0.01) discard;
-          gl_FragColor = vec4(uColor * 1.6, a);
+          // kept under the bloom threshold: where many glints overlap they would otherwise fuse into a white blot
+          gl_FragColor = vec4(uColor * 0.9, a * 0.8);
         }
       `,
     });

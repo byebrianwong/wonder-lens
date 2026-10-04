@@ -92,7 +92,7 @@ function build(ctx: WorldContext): BuiltWorld {
     [K(-1262), "Laputa, inside the Dragon's Nest"],
     [K(-1545), "Howl's meadow"],
     [K(-1806), 'The bathhouse, as the lanterns come on'],
-    [K(-2080), "On Haku's back"],
+    [K(-2068), "On Haku's back"],
     [K(-2445), 'Home, at dawn'],
   ];
 

@@ -345,11 +345,16 @@ export function buildNightSea(rng: Rng, lowDetail: boolean): NightSea {
   group.add(clouds);
 
   const moonDir = new THREE.Vector3(-0.2, 0.34, -0.92).normalize();
+
+  const seaSun = { value: new THREE.Color() };
   return {
     group, grid, occluders, moonDir,
     update(t, cam, sky, fog, sunIntensity, z) {
       moonDir.copy(sky.moonDir.value).normalize();
-      sea.update(t, sky, fog, 1);
+      // the water gets a dimmer moon than the sky: at full strength its highlight, seen from up here looking
+      // down the moon's path, blooms into one white oval
+      seaSun.value.copy(sky.sunColor.value).multiplyScalar(0.42);
+      sea.update(t, { topColor: sky.topColor, midColor: sky.midColor, horizonColor: sky.horizonColor, sunDir: sky.sunDir, sunColor: seaSun }, fog, 1);
       stars.update(t, fog);
       glitter.update(t, cam, moonDir, fog);
       streaks.update(t, fog);

@@ -81,7 +81,8 @@ function patchBark(m: THREE.Material, u: GrowUniforms, key: string, colour: bool
 /** Bark material (painted, cel-shaded) and its shadow material, both growing with the rider. */
 export function barkMaterials(map: THREE.Texture, u: GrowUniforms, emissive = 0x000000) {
   // a warm shadow tone, so the bark stays brown in blue moonlight instead of going grey
-  const material = charToon({ map, rim: 0.3, shade: 0xb09484, mid: 0.92, emissive });
+  // (a weak rim: limbs seen from below against the moon would otherwise wash out pale)
+  const material = charToon({ map, rim: 0.1, shade: 0x8c6a54, mid: 0.92, emissive });
   patchBark(material, u, 'bark-grow-v2', true);
   const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
   patchBark(depth, u, 'bark-grow-depth-v2', false);
