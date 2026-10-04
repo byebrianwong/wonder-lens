@@ -46,6 +46,12 @@ export interface SetContext {
   /** the Catbus the rider sits on: seats for passengers, where its head looks */
   mount: CatbusMount;
   fx: ScreenFx;
+  /**
+   * The group the ride moves along the path. When a set's update runs, it is already placed, banked and
+   * bobbing for this frame, so a set can place things relative to it (Haku under the rider).
+   * `vehicle.userData.unbanked` holds its rotation before the bank (a THREE.Quaternion).
+   */
+  vehicle: THREE.Object3D;
 }
 
 /** One scene of the ride. */
@@ -61,7 +67,7 @@ export interface BuiltSet {
   floor(x: number, z: number): number;
   /** height of the water surface in this set, or -Infinity where there is none */
   water: number;
-  /** called every frame while the set is shown */
+  /** called every frame while the set is shown (while it is hidden, the world switches its subjects off) */
   update(dt: number, t: number, ride: RideState): void;
   /** the ocarina was played: set-wide reactions (subjects handle their own) */
   onCall?(ride: RideState): void;

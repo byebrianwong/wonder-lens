@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { glow } from '../../engine/Builders';
 import { charToon } from '../../engine/Paint';
 import { sculpt, profileShape, FlexTube, taperedTube, limbGeometry, outline } from '../../engine/Rig';
-import { clamp, lerp } from '../../engine/math';
+import { clamp, lerp, smoothstep } from '../../engine/math';
 import { sphereFur, hakuScales, hakuMane, tealTuft } from './characterTextures';
 import type { Character } from './character';
 
@@ -48,6 +48,31 @@ class Trail {
     const back = dir.clone().normalize().multiplyScalar(-1);
     for (let i = 30; i >= 0; i--) this.push(head.clone().addScaledVector(back, i * 1.0));
   }
+  /** start again along the given points, oldest first */
+  seed(pts: THREE.Vector3[]) {
+    this.p = []; this.d = []; this.total = 0;
+    for (const q of pts) this.push(q);
+  }
+}
+
+/** Where a rider's world puts the dragon this frame (see `Haku.ride`). */
+export interface HakuRide {
+  /** the head's position and the direction it flies */
+  pos: THREE.Vector3;
+  dir: THREE.Vector3;
+  /** the head's up; tilt it to bank into a turn (default straight up) */
+  up?: THREE.Vector3;
+  /** the head turned on the neck, in radians: yaw about its own up (positive turns it to its left), pitch (positive lifts the snout) */
+  yaw: number;
+  pitch: number;
+  /**
+   * The head swung out from the flight path by this much (to glance back over his shoulder). The body still
+   * follows `pos`; the neck curves out to the head over the first `bend` units behind it.
+   */
+  offset?: THREE.Vector3;
+  bend?: number;
+  /** the neck's thickness where it meets the head, as a fraction of the body's (it widens back to full over `bend`) */
+  neck?: number;
 }
 
 export interface Haku extends Character {
@@ -61,6 +86,18 @@ export interface Haku extends Character {
   maxSpeed: number;
   /** put the dragon somewhere else at once, flying in direction `dir` */
   teleport(p: THREE.Vector3, dir: THREE.Vector3): void;
+  /**
+   * Ridden: when set, `update` puts the head exactly here each frame instead of steering towards the
+   * target, and the body still follows the path the head has flown. The mane on the neck lies low so a
+   * rider can sit there, and the locks stream back in the wind. Null (the default) steers as before.
+   */
+  ride: HakuRide | null;
+  /** 0..1: the scales come away and the body thins to nothing from the tail to the neck, then the head goes (0 = whole) */
+  dissolve: number;
+  /** the body tube (centre line, frames and radii), for effects that follow the body */
+  body: FlexTube;
+  /** lay the body along these points (oldest first; the last one is where the head is) */
+  seedTrail(pts: THREE.Vector3[]): void;
 }
 
 export function makeHaku(): Haku {
@@ -181,9 +218,18 @@ export function makeHaku(): Haku {
   const headQ = new THREE.Quaternion();
   let bank = 0;
   const state = { target: new THREE.Vector3(), swoopT: 0, time: 0, seeded: false };
+  // ridden mode and the dissolve: the flight direction without the head's glance, the full-size radii
+  const flyQ = new THREE.Quaternion(), neckQ = new THREE.Quaternion(), eRide = new THREE.Euler(0, 0, 0, 'YXZ');
+  const bendC = new THREE.Vector3(), bendT = new THREE.Vector3(), lockRoot = new THREE.Vector3(), lockSide = new THREE.Vector3();
+  const bodyR = body.radii.slice(), lockR = locks.map((l) => l.tube.radii.slice()), whiskerR = whiskers.map((w) => w.tube.radii.slice());
+  let lastDissolve = 0, lastTaper = 1;
+  /** how much of body ring i is left while dissolving: the tail goes first, the neck last */
+  const ringLeft = (i: number) => { const at = (1 - i / (N - 1)) * 0.85; return 1 - smoothstep(at, at + 0.1, ch.dissolve); };
+  /** scale a part that hangs off the body; hidden at zero, since a zero scale breaks its normals */
+  const shrink = (o: THREE.Object3D, k: number) => { o.visible = k > 0.002; o.scale.setScalar(Math.max(k, 0.002)); };
 
   const ch: Haku = {
-    group: g, state, head, vel, maxSpeed: 22,
+    group: g, state, head, vel, maxSpeed: 22, ride: null, dissolve: 0, body,
     setTarget(p) { state.target.copy(p); },
     swoop() { state.swoopT = 3.5; },
     teleport(p, dir) {
@@ -194,43 +240,106 @@ export function makeHaku(): Haku {
       head.quaternion.setFromRotationMatrix(mBasis.lookAt(tmp.set(0, 0, 0), vel, up)).multiply(qA.setFromAxisAngle(up, Math.PI));
       headQ.copy(head.quaternion);
     },
+    seedTrail(pts) {
+      if (!pts.length) return;
+      trail.seed(pts);
+      headPos.copy(pts[pts.length - 1]);
+      head.position.copy(headPos);
+      state.seeded = true;
+    },
     update(dt, t) {
       state.time = t;
-      if (!state.seeded) ch.teleport(state.target.clone().add(tmp.set(0, 0, -20)), tmp2.set(0, 0, 1));
-      // steer towards the target with inertia, so the body snakes
-      tmp.copy(state.target).sub(headPos);
-      const dist = tmp.length();
-      const top = ch.maxSpeed + (state.swoopT > 0 ? 12 : 0);
-      const desired = tmp.normalize().multiplyScalar(clamp(dist * 1.5, 5, top));
-      const prevVel = tmp2.copy(vel);
-      vel.lerp(desired, 1 - Math.exp(-dt * 1.7));
-      headPos.addScaledVector(vel, dt);
-      trail.push(headPos);
-      // the head faces where it is flying, turns smoothly and banks into curves
-      head.position.copy(headPos);
-      if (vel.lengthSq() > 0.01) {
-        // Matrix4.lookAt points -z at the target; turn half round so the snout (+z) leads
-        mBasis.lookAt(tmp.set(0, 0, 0), vel, up);
-        qA.setFromRotationMatrix(mBasis).multiply(qB.setFromAxisAngle(up, Math.PI));
-        headQ.slerp(qA, 1 - Math.exp(-dt * 6));
+      const ride = ch.ride;
+      if (ride) {
+        // ridden: the head goes exactly where the rider's world puts it, facing along `dir`, tilted to `up`
+        if (!state.seeded) ch.teleport(ride.pos, ride.dir);
+        // the trail follows the flight path; the head itself may be swung out from it
+        trail.push(ride.pos);
+        tmp2.copy(ride.pos);
+        if (ride.offset) tmp2.add(ride.offset);
+        if (dt > 0) vel.copy(tmp2).sub(headPos).divideScalar(dt);
+        headPos.copy(tmp2);
+        head.position.copy(headPos);
+        mBasis.lookAt(tmp.set(0, 0, 0), ride.dir, ride.up ?? up);
+        flyQ.setFromRotationMatrix(mBasis).multiply(qB.setFromAxisAngle(up, Math.PI));
+        headQ.copy(flyQ).multiply(qB.setFromEuler(eRide.set(-ride.pitch, ride.yaw, 0, 'YXZ')));
+        head.quaternion.copy(headQ);
+      } else {
+        if (!state.seeded) ch.teleport(state.target.clone().add(tmp.set(0, 0, -20)), tmp2.set(0, 0, 1));
+        // steer towards the target with inertia, so the body snakes
+        tmp.copy(state.target).sub(headPos);
+        const dist = tmp.length();
+        const top = ch.maxSpeed + (state.swoopT > 0 ? 12 : 0);
+        const desired = tmp.normalize().multiplyScalar(clamp(dist * 1.5, 5, top));
+        const prevVel = tmp2.copy(vel);
+        vel.lerp(desired, 1 - Math.exp(-dt * 1.7));
+        headPos.addScaledVector(vel, dt);
+        trail.push(headPos);
+        // the head faces where it is flying, turns smoothly and banks into curves
+        head.position.copy(headPos);
+        if (vel.lengthSq() > 0.01) {
+          // Matrix4.lookAt points -z at the target; turn half round so the snout (+z) leads
+          mBasis.lookAt(tmp.set(0, 0, 0), vel, up);
+          qA.setFromRotationMatrix(mBasis).multiply(qB.setFromAxisAngle(up, Math.PI));
+          headQ.slerp(qA, 1 - Math.exp(-dt * 6));
+        }
+        const turn = prevVel.lengthSq() > 0.01 ? Math.atan2(prevVel.clone().cross(vel).y, prevVel.dot(vel)) / Math.max(dt, 1e-3) : 0;
+        bank = lerp(bank, clamp(-turn * 0.5, -0.7, 0.7), 1 - Math.exp(-dt * 3));
+        head.quaternion.copy(headQ).multiply(qB.setFromEuler(e.set(Math.sin(t * 2.1) * 0.06, 0, bank + Math.sin(t * 3) * 0.08)));
       }
-      const turn = prevVel.lengthSq() > 0.01 ? Math.atan2(prevVel.clone().cross(vel).y, prevVel.dot(vel)) / Math.max(dt, 1e-3) : 0;
-      bank = lerp(bank, clamp(-turn * 0.5, -0.7, 0.7), 1 - Math.exp(-dt * 3));
-      head.quaternion.copy(headQ).multiply(qB.setFromEuler(e.set(Math.sin(t * 2.1) * 0.06, 0, bank + Math.sin(t * 3) * 0.08)));
+
+      // the neck may be slimmer where it meets the head (ridden), and while dissolving the rings thin to
+      // nothing from the tail forward, then the head shrinks away
+      const dissolving = ch.dissolve > 0 || lastDissolve > 0;
+      const bendLen = ride && ride.offset ? (ride.bend ?? 1.9) : 0;
+      const taper = ride && bendLen > 0.7 ? (ride.neck ?? 1) : 1;
+      if (dissolving || taper !== 1 || lastTaper !== 1) {
+        for (let i = 0; i < N; i++) {
+          let r = bodyR[i];
+          if (dissolving) r *= ringLeft(i);
+          if (taper !== 1) r *= lerp(taper, 1, smoothstep(0.55, bendLen + 0.6, i * SEG + 0.55));
+          body.radii[i] = r;
+        }
+        lastTaper = taper;
+      }
+      if (dissolving) {
+        const k = 1 - smoothstep(0.85, 1, ch.dissolve);
+        shrink(head, k);
+        locks.forEach((l, j) => { for (let i = 0; i < lockR[j].length; i++) l.tube.radii[i] = lockR[j][i] * k; });
+        whiskers.forEach((w, j) => { for (let i = 0; i < whiskerR[j].length; i++) w.tube.radii[i] = whiskerR[j][i] * k; });
+        lastDissolve = ch.dissolve;
+      }
 
       // body: rings spaced evenly along the path behind the head, with a swimming wave
-      const neck = tmp.set(0, 0, -0.55).applyQuaternion(head.quaternion).add(headPos);
+      // (ridden, the neck leaves the back of the head; when the head is swung out the first `bend` units of the
+      // neck curve from it back to the flight path, and the rider's seat stays steady)
+      const neck = ride
+        ? tmp.set(0, 0, -0.5).applyQuaternion(ride.offset ? headQ : neckQ.copy(flyQ).slerp(headQ, 0.4)).add(headPos)
+        : tmp.set(0, 0, -0.55).applyQuaternion(head.quaternion).add(headPos);
+      if (bendLen > 0.7) {
+        // the curve's middle: halfway along the path between the head and the end of the bend, moved half as far as the head
+        trail.sample(bendLen, bendT);
+        trail.sample(0.55, bendC).lerp(bendT, 0.5).addScaledVector(ride!.offset!, 0.5);
+      }
       for (let i = 0; i < N; i++) {
         const p = body.pts[i];
-        trail.sample(i * SEG + 0.55, p);
+        const d = i * SEG + 0.55;
+        trail.sample(d, p);
         if (i === 0) p.copy(neck);
-        const wave = Math.sin(t * 3.2 - i * 0.22) * 0.18 * Math.min(1, i / 8);
+        else if (bendLen > 0.7 && d < bendLen) {
+          // a smooth curve from the back of the head to the flight path
+          const k = (d - 0.55) / (bendLen - 0.55), a = (1 - k) * (1 - k), b = 2 * (1 - k) * k, c = k * k;
+          p.set(neck.x * a + bendC.x * b + bendT.x * c, neck.y * a + bendC.y * b + bendT.y * c, neck.z * a + bendC.z * b + bendT.z * c);
+        }
+        const wave = Math.sin(t * 3.2 - i * 0.22) * 0.18 * Math.min(1, i / 8) * (ride ? smoothstep(5, 22, i) : 1);
         p.y += wave;
       }
       body.update(up);
       // mane ribbon on top of the body
       for (let i = 0; i < MANE_END; i++) {
-        const h = 0.12 + 0.5 * Math.pow(1 - i / MANE_END, 0.8);
+        let h = 0.12 + 0.5 * Math.pow(1 - i / MANE_END, 0.8);
+        if (ride) h *= lerp(0.22, 1, smoothstep(3, 16, i));
+        if (dissolving) h *= ringLeft(i);
         const T = body.T[i], Nn = body.N[i], B = body.B[i], r = body.radii[i], c = body.pts[i];
         const o = i * 6;
         const bx = c.x + Nn.x * r * 0.75, by = c.y + Nn.y * r * 0.75, bz = c.z + Nn.z * r * 0.75;
@@ -245,14 +354,26 @@ export function makeHaku(): Haku {
 
       // locks and whiskers trail back from the head and ripple
       const hq = head.quaternion;
-      const back = tmp2.set(0, 0, -1).applyQuaternion(hq);
+      const back = ride ? tmp2.copy(ride.dir).normalize().negate() : tmp2.set(0, 0, -1).applyQuaternion(hq);
       for (const l of locks) {
-        const root = new THREE.Vector3(l.side * 0.3, 0.42 - Math.abs(l.side) * 0.12, -0.35).applyQuaternion(hq).add(headPos);
         const n = l.tube.pts.length;
-        for (let k = 0; k < n; k++) {
-          const f = k / (n - 1);
-          l.tube.pts[k].copy(root).addScaledVector(back, f * l.len)
-            .add(new THREE.Vector3(l.side * 0.35 * f, 0.25 * f + Math.sin(t * 6 - k * 0.7 + l.side * 2) * 0.12 * f, 0).applyQuaternion(hq));
+        if (ride) {
+          // ridden: they leave the sides of the back of the skull and stream back in the wind, out and down
+          // along the sides of the neck, so the rider sees the top of the head between them
+          const sd = Math.sign(l.side) * (0.55 + 0.45 * Math.abs(l.side));
+          lockRoot.set(sd * 0.4, 0.15, -0.42).applyQuaternion(hq).add(headPos);
+          for (let k = 0; k < n; k++) {
+            const f = k / (n - 1);
+            lockSide.set(sd * (0.2 + 0.5 * f), -0.3 * f + Math.sin(t * 6 - k * 0.7 + l.side * 2) * 0.08 * f, 0).applyQuaternion(flyQ);
+            l.tube.pts[k].copy(lockRoot).addScaledVector(back, f * l.len * 1.05).add(lockSide);
+          }
+        } else {
+          const root = new THREE.Vector3(l.side * 0.3, 0.42 - Math.abs(l.side) * 0.12, -0.35).applyQuaternion(hq).add(headPos);
+          for (let k = 0; k < n; k++) {
+            const f = k / (n - 1);
+            l.tube.pts[k].copy(root).addScaledVector(back, f * l.len)
+              .add(new THREE.Vector3(l.side * 0.35 * f, 0.25 * f + Math.sin(t * 6 - k * 0.7 + l.side * 2) * 0.12 * f, 0).applyQuaternion(hq));
+          }
         }
         l.tube.update(up);
       }
@@ -276,8 +397,10 @@ export function makeHaku(): Haku {
         const paddle = Math.sin(t * 4.2 + l.phase);
         l.hip.quaternion.copy(qA).multiply(qB.setFromEuler(e.set(0.5 + paddle * 0.55, 0, l.side * 0.55)));
         l.knee.rotation.x = -0.9 - paddle * 0.4;
+        if (dissolving) shrink(l.hip, ringLeft(l.ring));
       }
       tailFan.forEach((f, i) => {
+        if (dissolving) shrink(f, ringLeft(N - 1));
         const end = body.pts[N - 1], T = body.T[N - 1], Nn = body.N[N - 1], B = body.B[N - 1];
         f.position.copy(end);
         mBasis.makeBasis(B, T.clone().negate(), Nn);

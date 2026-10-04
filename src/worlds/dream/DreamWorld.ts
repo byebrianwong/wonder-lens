@@ -65,6 +65,8 @@ function build(ctx: WorldContext): BuiltWorld {
 
   // ---------- the vehicle: an empty group the ride moves; the Catbus rides in it ----------
   const vehicle = new THREE.Group();
+  // the vehicle's rotation before this frame's bank, for sets that place things in the unbanked frame
+  vehicle.userData.unbanked = new THREE.Quaternion();
   scene.add(vehicle);
   const mount = buildCatbusMount();
   vehicle.add(mount.root);
@@ -75,7 +77,7 @@ function build(ctx: WorldContext): BuiltWorld {
   cameraAnchor.add(lens.mesh);
 
   // ---------- the scenes ----------
-  const sctx: SetContext = { rng, road, lights, camera: ctx.camera, lowDetail: ctx.lowDetail, scene, mount, fx };
+  const sctx: SetContext = { rng, road, lights, camera: ctx.camera, lowDetail: ctx.lowDetail, scene, mount, fx, vehicle };
   const sets: Record<SetId, BuiltSet> = {
     garden: buildGarden(sctx), fields: buildFields(sctx), forest: buildForest(sctx), sky: buildSky(sctx), laputa: buildLaputa(sctx),
     meadow: buildMeadow(sctx), bathhouse: buildBathhouse(sctx), haku: buildHaku(sctx), home: buildHome(sctx),
@@ -99,20 +101,20 @@ function build(ctx: WorldContext): BuiltWorld {
   const occluders = list.flatMap((s) => s.occluders);
 
   // ---------- light and colour along the ride ----------
-  const NIGHT = { skyTop: 0x081430, skyMid: 0x182c56, skyBottom: 0x2c4a6e, fog: 0x1a2c44, hemiSky: 0x5070a8, hemiGround: 0x1c2618, sunColor: 0xc0d0ff };
+  const NIGHT = { skyTop: 0x0a1838, skyMid: 0x203664, skyBottom: 0x38587e, fog: 0x22364e, hemiSky: 0x6a8cc4, hemiGround: 0x2a3826, sunColor: 0xc8d6ff };
   const keys: LightKey[] = [
     // Totoro's garden at midnight: blue-green moonlight, the moon ahead and to the left
-    { u: 0, ...NIGHT, fogDensity: 0.0062, sunDir: [-0.38, 0.42, -0.82], sunIntensity: 0.95, hemiIntensity: 0.95, stars: 1, moon: 1, exposure: 1.14, bloom: 0.6, saturation: 1.06, tint: 0xe8f0ff, sunGlow: 0, sunSize: 0, horizonHeight: 0.1 },
-    { u: K(-60), ...NIGHT, fogDensity: 0.0048, sunDir: [-0.38, 0.42, -0.82], sunIntensity: 1.0, hemiIntensity: 0.95, stars: 1, moon: 1, exposure: 1.14, bloom: 0.62, saturation: 1.06, tint: 0xe8f0ff, sunGlow: 0, sunSize: 0, horizonHeight: 0.1 },
+    { u: 0, ...NIGHT, fogDensity: 0.0062, sunDir: [-0.38, 0.42, -0.82], sunIntensity: 1.23, hemiIntensity: 1.28, stars: 1, moon: 1, exposure: 1.24, bloom: 0.6, saturation: 1.06, tint: 0xe8f0ff, sunGlow: 0, sunSize: 0, horizonHeight: 0.1 },
+    { u: K(-60), ...NIGHT, fogDensity: 0.0048, sunDir: [-0.38, 0.42, -0.82], sunIntensity: 1.3, hemiIntensity: 1.28, stars: 1, moon: 1, exposure: 1.24, bloom: 0.62, saturation: 1.06, tint: 0xe8f0ff, sunGlow: 0, sunSize: 0, horizonHeight: 0.1 },
     // above the clouds on the treetop: clearer air, so the sea of cloud and the moon read
-    { u: K(-170), ...NIGHT, fog: 0x203658, fogDensity: 0.0026, sunDir: [-0.3, 0.36, -0.88], sunIntensity: 1.1, hemiIntensity: 1.0, stars: 1, moon: 1, exposure: 1.16, bloom: 0.66, saturation: 1.08, tint: 0xe8f0ff, sunGlow: 0, sunSize: 0, horizonHeight: 0.08 },
-    { u: K(-232), ...NIGHT, fog: 0x203658, fogDensity: 0.003, sunDir: [-0.3, 0.36, -0.88], sunIntensity: 1.05, hemiIntensity: 1.0, stars: 1, moon: 1, exposure: 1.16, bloom: 0.64, saturation: 1.08, tint: 0xe8f0ff, sunGlow: 0, sunSize: 0, horizonHeight: 0.08 },
+    { u: K(-170), ...NIGHT, fog: 0x203658, fogDensity: 0.0026, sunDir: [-0.3, 0.36, -0.88], sunIntensity: 1.43, hemiIntensity: 1.35, stars: 1, moon: 1, exposure: 1.26, bloom: 0.66, saturation: 1.08, tint: 0xe8f0ff, sunGlow: 0, sunSize: 0, horizonHeight: 0.08 },
+    { u: K(-232), ...NIGHT, fog: 0x203658, fogDensity: 0.003, sunDir: [-0.3, 0.36, -0.88], sunIntensity: 1.37, hemiIntensity: 1.35, stars: 1, moon: 1, exposure: 1.26, bloom: 0.64, saturation: 1.08, tint: 0xe8f0ff, sunGlow: 0, sunSize: 0, horizonHeight: 0.08 },
     // over the rice fields: the moon on the water
-    { u: K(-340), ...NIGHT, fogDensity: 0.0042, sunDir: [-0.25, 0.32, -0.92], sunIntensity: 1.0, hemiIntensity: 1.0, stars: 1, moon: 1, exposure: 1.15, bloom: 0.64, saturation: 1.08, tint: 0xe8f0ff, sunGlow: 0, sunSize: 0, horizonHeight: 0.1 },
-    { u: K(-580), ...NIGHT, fog: 0x1c3240, fogDensity: 0.0052, sunDir: [-0.25, 0.32, -0.92], sunIntensity: 0.9, hemiIntensity: 1.0, stars: 0.9, moon: 0.9, exposure: 1.15, bloom: 0.64, saturation: 1.08, tint: 0xe8f4f0, sunGlow: 0, sunSize: 0, horizonHeight: 0.1 },
+    { u: K(-340), ...NIGHT, fogDensity: 0.0042, sunDir: [-0.25, 0.32, -0.92], sunIntensity: 1.3, hemiIntensity: 1.35, stars: 1, moon: 1, exposure: 1.25, bloom: 0.64, saturation: 1.08, tint: 0xe8f0ff, sunGlow: 0, sunSize: 0, horizonHeight: 0.1 },
+    { u: K(-580), ...NIGHT, fog: 0x1c3240, fogDensity: 0.0052, sunDir: [-0.25, 0.32, -0.92], sunIntensity: 1.17, hemiIntensity: 1.35, stars: 0.9, moon: 0.9, exposure: 1.25, bloom: 0.64, saturation: 1.08, tint: 0xe8f4f0, sunGlow: 0, sunSize: 0, horizonHeight: 0.1 },
     // the Forest Spirit's wood: teal mist before dawn
-    { u: K(-640), skyTop: 0x0e2230, skyMid: 0x284a54, skyBottom: 0x5a7a78, fog: 0x2a4a4c, fogDensity: 0.011, sunDir: [-0.2, 0.5, -0.84], sunColor: 0xa8d0d0, sunIntensity: 0.7, hemiSky: 0x5a9a90, hemiGround: 0x1a2a1c, hemiIntensity: 1.05, stars: 0.5, moon: 0.5, exposure: 1.14, bloom: 0.66, saturation: 1.1, tint: 0xe8fff4, sunGlow: 0, sunSize: 0, horizonHeight: 0.1 },
-    { u: K(-760), skyTop: 0x16283a, skyMid: 0x3a5a66, skyBottom: 0x8a8a90, fog: 0x3a5a5c, fogDensity: 0.0085, sunDir: [0.3, 0.2, -0.93], sunColor: 0xc0c8d8, sunIntensity: 0.8, hemiSky: 0x6aa098, hemiGround: 0x1e2c20, hemiIntensity: 1.05, stars: 0.25, moon: 0.2, exposure: 1.12, bloom: 0.62, saturation: 1.1, tint: 0xf0fff4, sunGlow: 0.2, sunSize: 0.02, horizonHeight: 0.1 },
+    { u: K(-640), skyTop: 0x12283a, skyMid: 0x30565e, skyBottom: 0x648684, fog: 0x3a6062, fogDensity: 0.01, sunDir: [-0.2, 0.5, -0.84], sunColor: 0xb0d8d8, sunIntensity: 1.0, hemiSky: 0x80c0b4, hemiGround: 0x2c4430, hemiIntensity: 1.65, stars: 0.5, moon: 0.5, exposure: 1.26, bloom: 0.66, saturation: 1.1, tint: 0xe8fff4, sunGlow: 0, sunSize: 0, horizonHeight: 0.1 },
+    { u: K(-760), skyTop: 0x1a2e40, skyMid: 0x426470, skyBottom: 0x949098, fog: 0x466a6a, fogDensity: 0.008, sunDir: [0.3, 0.2, -0.93], sunColor: 0xc8d0e0, sunIntensity: 1.0, hemiSky: 0x84b8ae, hemiGround: 0x2c4030, hemiIntensity: 1.5, stars: 0.25, moon: 0.2, exposure: 1.2, bloom: 0.62, saturation: 1.1, tint: 0xf0fff4, sunGlow: 0.2, sunSize: 0.02, horizonHeight: 0.1 },
     // first light at the spirit pool
     { u: K(-860), skyTop: 0x2a4a6a, skyMid: 0x7a8a9a, skyBottom: 0xe0a8a0, fog: 0x7a8c8c, fogDensity: 0.0075, sunDir: [0.45, 0.08, -0.89], sunColor: 0xffc0a0, sunIntensity: 1.2, hemiSky: 0x9ab8b0, hemiGround: 0x2a3424, hemiIntensity: 1.0, stars: 0, moon: 0, exposure: 1.08, bloom: 0.6, saturation: 1.1, tint: 0xfff4ec, sunGlow: 0.6, sunSize: 0.03, horizonHeight: 0.1 },
     // above the clouds at sunrise, the sun low ahead and to the right
@@ -121,8 +123,8 @@ function build(ctx: WorldContext): BuiltWorld {
     // the storm wall darkens everything as it looms
     { u: K(-1205), skyTop: 0x3a4a6a, skyMid: 0x6a7080, skyBottom: 0x8a8a90, fog: 0x5a6070, fogDensity: 0.004, sunDir: [0.5, 0.2, -0.84], sunColor: 0xd0c0b0, sunIntensity: 1.0, hemiSky: 0x8a90a0, hemiGround: 0x4a4a50, hemiIntensity: 1.0, exposure: 1.0, bloom: 0.55, saturation: 1.0, tint: 0xf4f4f8, sunGlow: 0.2, sunSize: 0.03, horizonHeight: 0.06 },
     // Laputa in the calm eye: clear morning blue
-    { u: K(-1252), skyTop: 0x2a66d0, skyMid: 0x8ec0ee, skyBottom: 0xe4eef0, fog: 0xc8dcea, fogDensity: 0.0026, sunDir: [0.45, 0.62, -0.5], sunColor: 0xfff0d8, sunIntensity: 2.3, hemiSky: 0xbcdcff, hemiGround: 0x6a7a58, hemiIntensity: 0.85, exposure: 1.0, bloom: 0.36, saturation: 1.12, tint: 0xffffff, sunGlow: 0.7, sunSize: 0.03, horizonHeight: 0.06, cloudShadow: 0.25 },
-    { u: K(-1470), skyTop: 0x2a66d0, skyMid: 0x8ec0ee, skyBottom: 0xe4eef0, fog: 0xc8dcea, fogDensity: 0.0026, sunDir: [0.45, 0.62, -0.5], sunColor: 0xfff0d8, sunIntensity: 2.3, hemiSky: 0xbcdcff, hemiGround: 0x6a7a58, hemiIntensity: 0.85, exposure: 1.0, bloom: 0.36, saturation: 1.12, tint: 0xffffff, sunGlow: 0.7, sunSize: 0.03, horizonHeight: 0.06, cloudShadow: 0.25 },
+    { u: K(-1252), skyTop: 0x2a66d0, skyMid: 0x8ec0ee, skyBottom: 0xe4eef0, fog: 0xc8dcea, fogDensity: 0.0026, sunDir: [0.36, 0.84, -0.41], sunColor: 0xfff0d8, sunIntensity: 2.3, hemiSky: 0xbcdcff, hemiGround: 0x6a7a58, hemiIntensity: 0.85, exposure: 1.0, bloom: 0.36, saturation: 1.12, tint: 0xffffff, sunGlow: 0.7, sunSize: 0.03, horizonHeight: 0.06, cloudShadow: 0.25 },
+    { u: K(-1470), skyTop: 0x2a66d0, skyMid: 0x8ec0ee, skyBottom: 0xe4eef0, fog: 0xc8dcea, fogDensity: 0.0026, sunDir: [0.36, 0.84, -0.41], sunColor: 0xfff0d8, sunIntensity: 2.3, hemiSky: 0xbcdcff, hemiGround: 0x6a7a58, hemiIntensity: 0.85, exposure: 1.0, bloom: 0.36, saturation: 1.12, tint: 0xffffff, sunGlow: 0.7, sunSize: 0.03, horizonHeight: 0.06, cloudShadow: 0.25 },
     // Howl's meadow at golden hour, the sun ahead and to the left
     { u: K(-1530), skyTop: 0x3a78c8, skyMid: 0xa8d0e8, skyBottom: 0xffe2b4, fog: 0xead8b8, fogDensity: 0.0022, sunDir: [-0.55, 0.28, -0.79], sunColor: 0xffd090, sunIntensity: 2.2, hemiSky: 0xc8e0e8, hemiGround: 0x6a7a40, hemiIntensity: 0.9, exposure: 1.0, bloom: 0.44, saturation: 1.14, tint: 0xfff4e0, sunGlow: 0.9, sunSize: 0.04, horizonHeight: 0.08, cloudShadow: 0.3 },
     { u: K(-1740), skyTop: 0x3a70c0, skyMid: 0xb8c8d8, skyBottom: 0xffd09a, fog: 0xe8c8a0, fogDensity: 0.0024, sunDir: [-0.55, 0.2, -0.81], sunColor: 0xffc070, sunIntensity: 2.1, hemiSky: 0xc8d8e0, hemiGround: 0x6a6a40, hemiIntensity: 0.9, exposure: 1.0, bloom: 0.46, saturation: 1.14, tint: 0xfff0dc, sunGlow: 1.0, sunSize: 0.045, horizonHeight: 0.08, cloudShadow: 0.25 },
@@ -131,7 +133,7 @@ function build(ctx: WorldContext): BuiltWorld {
     // the bathhouse: dusk, then night falls as the lanterns come on
     { u: K(-1880), skyTop: 0x101436, skyMid: 0x3a2c5a, skyBottom: 0xb05a48, fog: 0x4a3446, fogDensity: 0.004, sunDir: [0.25, 0.0, -0.97], sunColor: 0xff7040, sunIntensity: 0.5, hemiSky: 0x6a6aa0, hemiGround: 0x2a1a1a, hemiIntensity: 1.0, stars: 0.5, exposure: 1.1, bloom: 0.72, saturation: 1.12, tint: 0xfff0e4, sunGlow: 0.5, sunSize: 0.03, horizonHeight: 0.08 },
     // the boiler room: deep under the bathhouse, lit by the furnace
-    { u: K(-1985), skyTop: 0x080a20, skyMid: 0x141838, skyBottom: 0x2a2a4a, fog: 0x2a1a12, fogDensity: 0.006, sunDir: [-0.2, 0.5, -0.84], sunColor: 0x9aa8d0, sunIntensity: 0.3, hemiSky: 0x8a6a50, hemiGround: 0x2a1810, hemiIntensity: 1.0, stars: 0.8, moon: 0.8, exposure: 1.1, bloom: 0.72, saturation: 1.12, tint: 0xfff0e0, sunGlow: 0, sunSize: 0, horizonHeight: 0.08 },
+    { u: K(-1985), skyTop: 0x080a20, skyMid: 0x141838, skyBottom: 0x2a2a4a, fog: 0x2a1a12, fogDensity: 0.006, sunDir: [-0.2, 0.5, -0.84], sunColor: 0x9aa8d0, sunIntensity: 0.3, hemiSky: 0xd09a70, hemiGround: 0x4a2c1c, hemiIntensity: 1.55, stars: 0.8, moon: 0.8, exposure: 1.2, bloom: 0.72, saturation: 1.12, tint: 0xfff0e0, sunGlow: 0, sunSize: 0, horizonHeight: 0.08 },
     // on Haku's back over the night sea, the moon ahead
     { u: K(-2070), skyTop: 0x060a26, skyMid: 0x14204a, skyBottom: 0x2c3c6c, fog: 0x162244, fogDensity: 0.0032, sunDir: [-0.2, 0.34, -0.92], sunColor: 0xb8caf0, sunIntensity: 1.05, hemiSky: 0x4a5c94, hemiGround: 0x141a30, hemiIntensity: 1.0, stars: 1, moon: 1, exposure: 1.14, bloom: 0.66, saturation: 1.06, tint: 0xeef2ff, sunGlow: 0, sunSize: 0, horizonHeight: 0.08 },
     { u: K(-2330), skyTop: 0x060a26, skyMid: 0x182654, skyBottom: 0x3a4a7a, fog: 0x1c2a50, fogDensity: 0.0028, sunDir: [-0.2, 0.34, -0.92], sunColor: 0xb8caf0, sunIntensity: 1.05, hemiSky: 0x4a5c94, hemiGround: 0x141a30, hemiIntensity: 1.0, stars: 1, moon: 1, exposure: 1.16, bloom: 0.7, saturation: 1.06, tint: 0xeef2ff, sunGlow: 0, sunSize: 0, horizonHeight: 0.08 },
@@ -235,11 +237,23 @@ function build(ctx: WorldContext): BuiltWorld {
       current = setAt(z);
       kind = mountAtZ(z);
 
-      // ---- scenes ----
+      // ---- banking into turns, floating a little in the air (before the scenes update, so they see the final vehicle) ----
+      const turn = dt > 0 ? (prevTan.x * tan.z - prevTan.z * tan.x) / dt : 0;
+      prevTan.copy(tan);
+      const air = inAir(z);
+      const limit = kind === 'haku' ? 0.42 : air ? 0.3 : 0.08;
+      bank = damp(bank, clamp(-turn * (air ? 3.2 : 1.2), -limit, limit), 2.5, dt);
+      if (air && kind !== 'fall') vehicle.position.y += Math.sin(t * 1.2) * 0.1;
+      (vehicle.userData.unbanked as THREE.Quaternion).copy(vehicle.quaternion);
+      vehicle.rotateZ(bank);
+      vehicle.updateMatrixWorld(true);
+
+      // ---- scenes; a hidden scene's subjects are switched off so they cannot be photographed ----
       for (const s of list) {
         const on = u >= s.show[0] && u <= s.show[1];
         s.group.visible = on;
         if (on) s.update(dt, t, ride);
+        else for (const sub of s.subjects) sub.active = false;
       }
       lights.update(u, t);
       if (kind !== 'haku' && kind !== 'fall') mount.setSign(SIGNS[current.id]);
@@ -328,15 +342,6 @@ function build(ctx: WorldContext): BuiltWorld {
         cameraAnchor.rotation.set(-0.16 * c, Math.PI, 0, 'YXZ');
       }
       cb.update(dt, t);
-
-      // ---- banking into turns, floating a little in the air ----
-      const turn = dt > 0 ? (prevTan.x * tan.z - prevTan.z * tan.x) / dt : 0;
-      prevTan.copy(tan);
-      const air = inAir(z);
-      const limit = kind === 'haku' ? 0.42 : air ? 0.3 : 0.08;
-      bank = damp(bank, clamp(-turn * (air ? 3.2 : 1.2), -limit, limit), 2.5, dt);
-      if (air && kind !== 'fall') vehicle.position.y += Math.sin(t * 1.2) * 0.1;
-      vehicle.rotateZ(bank);
 
       // ---- screen covers between scenes, plus whatever the sets asked for ----
       for (const c of COVERS) {

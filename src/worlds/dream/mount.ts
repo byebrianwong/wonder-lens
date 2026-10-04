@@ -26,7 +26,7 @@ export interface CatbusMount {
   lookAt(p: THREE.Vector3 | null): void;
 }
 
-export const SEAT = new THREE.Vector3(0, 4.7, -0.9);
+export const SEAT = new THREE.Vector3(0, 5.1, -1.5);
 
 export function buildCatbusMount(): CatbusMount {
   const catbus = makeCatbus();
