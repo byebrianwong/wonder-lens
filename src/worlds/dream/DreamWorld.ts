@@ -81,10 +81,31 @@ function build(ctx: WorldContext): BuiltWorld {
 
   // ---------- the scenes ----------
   const sctx: SetContext = { rng, road, lights, camera: ctx.camera, lowDetail: ctx.lowDetail, scene, mount, fx, vehicle };
-  const sets: Record<SetId, BuiltSet> = {
-    garden: buildGarden(sctx), fields: buildFields(sctx), forest: buildForest(sctx), sky: buildSky(sctx), laputa: buildLaputa(sctx),
-    meadow: buildMeadow(sctx), bathhouse: buildBathhouse(sctx), haku: buildHaku(sctx), home: buildHome(sctx),
+  // ---------- story beats (built before the scenes: a ride view uses one to decide what to build) ----------
+  const captions: Array<[number, string]> = [
+    [0.003, "Totoro's garden, at midnight"],
+    [K(-40), 'The tree that grew in one night'],
+    [K(-178), 'Above the clouds, on the tree top'],
+    [K(-262), 'Over the fields on the power lines'],
+    [K(-640), "The Forest Spirit's wood, before dawn"],
+    [K(-950), 'Above the clouds at sunrise'],
+    [K(-1262), "Laputa, inside the Dragon's Nest"],
+    [K(-1545), "Howl's meadow"],
+    [K(-1806), 'The bathhouse, as the lanterns come on'],
+    [K(-2080), "On Haku's back"],
+    [K(-2445), 'Home, at dawn'],
+  ];
+
+  // A Storybook ride view sees one point of the ride, so it builds only the scenes that can be drawn there
+  // (a scene is drawn from up to 460 units before its stretch to 340 after it); the game builds them all.
+  const focus = ctx.focusCaption !== undefined ? curve.getPointAt(clamp(captions[Math.min(ctx.focusCaption, captions.length - 1)][0] + 0.012, 0, 1)).z : null;
+  const near = (id: SetId) => focus === null || (focus <= SETS[id].z0 + 460 && focus >= SETS[id].z1 - 340);
+  const skip = (id: SetId): BuiltSet => ({ id, group: new THREE.Group(), show: [2, 2], occluders: [], subjects: [], water: -Infinity, floor: () => 0, update() { /* not built */ } });
+  const builders: Record<SetId, (c: SetContext) => BuiltSet> = {
+    garden: buildGarden, fields: buildFields, forest: buildForest, sky: buildSky, laputa: buildLaputa,
+    meadow: buildMeadow, bathhouse: buildBathhouse, haku: buildHaku, home: buildHome,
   };
+  const sets = Object.fromEntries(SET_ORDER.map((id) => [id, near(id) ? builders[id](sctx) : skip(id)])) as Record<SetId, BuiltSet>;
   const list = SET_ORDER.map((id) => sets[id]);
   for (const s of list) scene.add(s.group);
   const setAt = (z: number) => list.find((s) => inZ(z, SETS[s.id])) ?? (z > SETS.garden.z0 ? sets.garden : sets.home);
@@ -219,19 +240,7 @@ function build(ctx: WorldContext): BuiltWorld {
         crickets: 0.32 * night,
       };
     },
-    captions: [
-      [0.003, "Totoro's garden, at midnight"],
-      [K(-40), 'The tree that grew in one night'],
-      [K(-178), 'Above the clouds, on the tree top'],
-      [K(-262), 'Over the fields on the power lines'],
-      [K(-640), "The Forest Spirit's wood, before dawn"],
-      [K(-950), 'Above the clouds at sunrise'],
-      [K(-1262), "Laputa, inside the Dragon's Nest"],
-      [K(-1545), "Howl's meadow"],
-      [K(-1806), 'The bathhouse, as the lanterns come on'],
-      [K(-2080), "On Haku's back"],
-      [K(-2445), 'Home, at dawn'],
-    ],
+    captions,
     update(dt, ride) {
       const t = ride.time, u = ride.u, z = ride.position.z;
       fxState.flash = 0; fxState.wash = 0;
