@@ -67,13 +67,36 @@ export function makeCurve() {
   return c;
 }
 
+/**
+ * A pace for each whole scene, on top of the scene's own speed keys, so the ride's length can be tuned in
+ * one place (about four and a half minutes in all). It blends over 30 units at each join.
+ */
+const SET_PACE: Record<SetId, number> = {
+  garden: 1, fields: 1, forest: 1.1, sky: 1, laputa: 1.08, meadow: 1, bathhouse: 1.3, haku: 1.18, home: 1.25,
+};
+const ORDERED = Object.entries(SETS) as Array<[SetId, { z0: number; z1: number }]>;
+
+/** The pace of the scene a z falls in. */
+function paceStep(z: number) {
+  for (const [id, r] of ORDERED) if (z <= r.z0 && z > r.z1) return SET_PACE[id];
+  return z > SETS.garden.z0 ? SET_PACE.garden : SET_PACE.home;
+}
+/** The scene pace, averaged over 30 units so it changes smoothly across a join. */
+function paceAtZ(z: number) {
+  let sum = 0;
+  for (let i = -3; i <= 3; i++) sum += paceStep(z + i * 5);
+  return sum / 7;
+}
+
 /** Speed multiplier for a z along the ride. */
 export function speedAtZ(z: number) {
-  for (let i = 0; i < SPEED.length - 1; i++) {
+  let k = SPEED[SPEED.length - 1][1];
+  if (z > SPEED[0][0]) k = SPEED[0][1];
+  else for (let i = 0; i < SPEED.length - 1; i++) {
     const [za, a] = SPEED[i], [zb, b] = SPEED[i + 1];
-    if (z <= za && z >= zb) return lerp(a, b, smoothstep(za, zb, z));
+    if (z <= za && z >= zb) { k = lerp(a, b, smoothstep(za, zb, z)); break; }
   }
-  return z > SPEED[0][0] ? SPEED[0][1] : SPEED[SPEED.length - 1][1];
+  return k * paceAtZ(z);
 }
 
 /**

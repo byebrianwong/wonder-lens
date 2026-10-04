@@ -183,7 +183,7 @@ function build(ctx: WorldContext): BuiltWorld {
   };
 
   const world: BuiltWorld = {
-    scene, curve, speed: 12, vehicle, cameraAnchor, subjects, occluders, sky, sun, hemi, lighting,
+    scene, curve, speed: 14, vehicle, cameraAnchor, subjects, occluders, sky, sun, hemi, lighting,
     get waterLevel() { return current.water; },
     groundHeight: (x, z) => current.floor(x, z),
     speedAt: (u) => speedAtZ(curve.getPointAt(clamp(u, 0, 1)).z),

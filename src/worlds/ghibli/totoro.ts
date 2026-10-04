@@ -5,7 +5,11 @@ import { clamp, lerp, noise2, Rng, smoothstep, TAU } from '../../engine/math';
 import { sphereFur, css, umbrellaCloth, burlap, leafTexture, grinTexture } from './characterTextures';
 import { type Character, surfaceAt, polarAtHeight, alignTo, dirArr, blinkAmount, surfaceMouth } from './character';
 
-export interface TotoroOpts { color?: number; belly?: number; scale?: number; chevrons?: boolean; leaf?: boolean; umbrella?: boolean; bag?: boolean }
+export interface TotoroOpts {
+  color?: number; belly?: number; scale?: number; chevrons?: boolean; leaf?: boolean; umbrella?: boolean; bag?: boolean;
+  /** colour of the umbrella's cloth (default near black) */
+  umbrellaColor?: number;
+}
 
 export interface Totoro extends Character {
   /** the big roar: winds up, throws its head back with the mouth wide open, arms up, then settles (2.6 s) */
@@ -22,12 +26,17 @@ export interface Totoro extends Character {
   lookTarget: THREE.Vector3 | null;
   /** seconds of the roar left (0 when not roaring) */
   readonly roarTime: number;
+  /** the umbrella in his +x paw, or null (a scene may scale it down to put it away) */
+  readonly umbrella: THREE.Group | null;
   /**
    * Optional pose for moments the stock animations do not cover (flying on a spinning top, playing an
    * ocarina). Arm angles replace the computed ones (index 0 is the -x arm); `mouth` (0..1) keeps the mouth
    * at least that open; `lean` tips the chest forward (+) or back (-). Null for the normal animation.
+   * Optional extras: `stretch` makes the body taller (+, up on tiptoe) or squats it (-) as a fraction of
+   * its height; `rise` lifts the whole body off the ground by that many (unscaled) units; `head` tips the
+   * head forward (+) or back to look up (-), in radians.
    */
-  pose: { out?: [number, number]; up?: [number, number]; mouth?: number; lean?: number } | null;
+  pose: { out?: [number, number]; up?: [number, number]; mouth?: number; lean?: number; stretch?: number; rise?: number; head?: number } | null;
 }
 
 const ROAR = 2.6, JUMP = 1.45, HOP = 0.5;
@@ -311,7 +320,7 @@ export function makeTotoro(o: TotoroOpts = {}): Totoro {
   let umbrella: THREE.Group | null = null;
   const UMB_ARM = 1; // the +x arm holds the umbrella
   if (o.umbrella) {
-    const u = makeUmbrella(1.45, 0x2e2830);
+    const u = makeUmbrella(1.45, o.umbrellaColor ?? 0x2e2830);
     umbrella = u.group;
     // held in the paw: placed in the arm's own space, then turned so the shaft stands up over the head
     const arm = arms[UMB_ARM];
@@ -339,7 +348,7 @@ export function makeTotoro(o: TotoroOpts = {}): Totoro {
 
   const ch: Totoro = {
     group: g,
-    walk: 0, stride: 0, lookTarget: null, pose: null,
+    walk: 0, stride: 0, lookTarget: null, pose: null, umbrella,
     get roarTime() { return roarT >= 0 ? ROAR - roarT : 0; },
     roar() { roarT = 0; },
     jump(onLand) { jumpT = 0; landCb = onLand ?? null; landed = false; },
@@ -421,6 +430,9 @@ export function makeTotoro(o: TotoroOpts = {}): Totoro {
         if (p.up) { up[0] = p.up[0]; up[1] = p.up[1]; }
         if (p.mouth !== undefined) mouthT = Math.max(mouthT, p.mouth);
         if (p.lean) chestX += p.lean;
+        if (p.stretch) { sy += p.stretch; sxz -= p.stretch * 0.45; }
+        if (p.rise) y += p.rise;
+        if (p.head) headX += p.head;
       }
 
       // ---- springs ----
