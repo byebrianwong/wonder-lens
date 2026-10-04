@@ -22,7 +22,7 @@ export function menuElement({ worlds, selected, relax, mouseLock }: MenuState): 
     <div class="menu-inner">
       <header class="menu-head">
         <div class="kicker">A photo ride through worlds worth watching</div>
-        <h1>Window <em>Seat</em></h1>
+        <h1>Wonder <em>Lens</em></h1>
         <p class="lede">Sit back as the world drifts past, or pick up the camera. Look anywhere, zoom in, throw something, call out, and catch the moments that make each world feel alive.</p>
       </header>
       <div class="worlds">

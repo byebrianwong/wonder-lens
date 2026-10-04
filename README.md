@@ -1,4 +1,4 @@
-# Window Seat (wonder-lens)
+# Wonder Lens
 
 Source: https://github.com/byebrianwong/wonder-lens
 

@@ -86,7 +86,7 @@ export class Game {
     const t0 = performance.now();
     this.world = def.build({ audio, camera: this.rig.camera, lowDetail: this.o.lowDetail });
     if (this.world.lookBackLean) Object.assign(this.rig.lean, this.world.lookBackLean);
-    console.info(`[window seat] ${def.id} built in ${(performance.now() - t0).toFixed(0)} ms`);
+    console.info(`[wonder lens] ${def.id} built in ${(performance.now() - t0).toFixed(0)} ms`);
     this.ride = new Ride(this.world.curve, this.world.speed, this.world.vehicle);
     if (this.world.speedAt) this.ride.profile = (u) => this.world.speedAt!(u);
     (window as any).__dbg = { world: this.world, ride: this.ride, game: this, rig: this.rig };
@@ -107,7 +107,7 @@ export class Game {
     const tc = performance.now();
     this.applyLighting(0);
     await renderer.precompile(this.world.scene, this.rig.camera);
-    console.info(`[window seat] ${def.id} shaders compiled in ${(performance.now() - tc).toFixed(0)} ms`);
+    console.info(`[wonder lens] ${def.id} shaders compiled in ${(performance.now() - tc).toFixed(0)} ms`);
     audio.setProfile(this.world.ambience);
     this.bindInput();
     this.o.input.enabled = true;
@@ -329,7 +329,7 @@ export class Game {
         this.album = new Album(this.o.ui, summary, this.world.subjects, this.o.def.title, this.o.def.accent,
           () => this.o.onAgain(), () => this.exit(), this.o.relax);
       } catch (err) {
-        console.error('[window seat] album failed', err);
+        console.error('[wonder lens] album failed', err);
         this.exit();
         return;
       }
