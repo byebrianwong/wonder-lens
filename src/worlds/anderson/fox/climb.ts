@@ -62,15 +62,17 @@ export function buildClimb(road: Road, rng: Rng, m: Mats): Climb {
     b.add(at(new THREE.TorusGeometry(1.55, 0.14, 6, 24), s * (WX - 0.05), wy, zc, s * Math.PI / 2), m.woodLight);
     b.box(s * (WX - 0.2), s * WX, hi - 0.4, hi, zc + WIN, zc - WIN, m.woodDark);
     // the room beyond: floor below the hole, walls, ceiling
-    const fy = wy - 2.2, x0 = s * (WX + 0.4), x1 = s * (WX + 10), za = zc + 6, zb = zc - 6, top = wy + 4.5;
+    // (kept clear of the tunnel's own walls, which reach out to x = 3.5; a short wooden sleeve joins the hole to it)
+    const fy = wy - 2.2, xr = s * (WX + 0.6), x1 = s * (WX + 10), za = zc + 6, zb = zc - 6, top = wy + 4.5;
     const wall = key === 'boggis' ? plank : plankDark;
-    b.box(s * WX, x1, fy - 0.3, fy, za, zb, key === 'boggis' ? straw : plankDark, 3);
+    b.add(at(new THREE.CylinderGeometry(1.5, 1.5, 0.7, 20, 1, true).rotateZ(Math.PI / 2), s * (WX + 0.3), wy, zc), m.woodLight);
+    b.add(at(new THREE.CylinderGeometry(1.5, 1.5, 0.7, 20, 1, true).rotateZ(Math.PI / 2).scale(-1, 1, 1), s * (WX + 0.3), wy, zc), m.woodLight);
+    b.box(xr, x1, fy - 0.3, fy, za, zb, key === 'boggis' ? straw : plankDark, 3);
     b.box(x1, x1 + s * 0.3, fy, top, za, zb, wall, 2);
-    b.box(s * WX, x1, fy, top, za, za - 0.3, wall, 2);
-    b.box(s * WX, x1, fy, top, zb + 0.3, zb, wall, 2);
-    b.box(s * WX, x1, top, top + 0.3, za, zb, wall, 2);
-    b.box(s * (WX + 0.1), s * (WX + 0.4), fy, top, za, zb, wall, 2);
-    for (let z = za - 2; z > zb; z -= 3) b.box(s * WX, x1, top - 0.35, top, z - 0.15, z + 0.15, m.woodDark);
+    b.box(xr, x1, fy, top, za, za - 0.3, wall, 2);
+    b.box(xr, x1, fy, top, zb + 0.3, zb, wall, 2);
+    b.box(xr, x1, top, top + 0.3, za, zb, wall, 2);
+    for (let z = za - 2; z > zb; z -= 3) b.box(xr, x1, top - 0.35, top, z - 0.15, z + 0.15, m.woodDark);
     const geo = new THREE.PlaneGeometry(5.6, 0.7);
     const [v0, v1] = signs.uv(key === 'boggis' ? 0 : 1);
     const uv = geo.attributes.uv as THREE.BufferAttribute;

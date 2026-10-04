@@ -28,8 +28,8 @@ export const OVENS = { z0: -398, z1: -440, x: 30 };
 export const SIDE = { x: 14, z0: -301, z1: -440 };
 
 /** The twin stand mixers at the start of the line, and the rivers of cream that run from them. */
-export const MIXER = { x: 7.5, z: -325 };
-export const RIVER = { x: 7.5, z0: -330, z1: -440, w: 3 };
+export const MIXER = { x: 7.5, z: -333 };
+export const RIVER = { x: 7.5, z0: -338, z1: -440, w: 3 };
 
 /** Gantries across the hall carrying the piping bags over the side lines. */
 export const BAGS = [-342, -366, -390];

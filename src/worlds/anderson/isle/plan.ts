@@ -34,11 +34,11 @@ export const ISLAND = { back: -1774, halfW: 150 };
 export const PLANE = { x: -15, z: -1858, y: 6 };
 export const PACK = { x: -10.5, z: -1847, y: 4 };
 /** Chief alone on a bale peak beside the cable */
-export const CHIEF = { x: -6.2, z: -1893, y: 18 };
+export const CHIEF = { x: -5, z: -1892, y: 22 };
 /** Spots in his cage on a heap to the right */
 export const SPOTS = { x: 13.5, z: -1934, y: 22 };
 /** Nutmeg poised on an old sake barrel to the left */
-export const NUTMEG = { x: -9, z: -1972, y: 24 };
+export const NUTMEG = { x: -7, z: -1972, y: 24 };
 /** the abandoned amusement park in the valley on the right */
 export const PARK = { x: 66, z: -1995, y: 2, wheelR: 23 };
 /** the sake factory in the valley on the left */

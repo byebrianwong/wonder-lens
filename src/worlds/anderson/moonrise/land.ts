@@ -9,7 +9,7 @@ import { Rng, clamp, fbm, lerp, smoothstep } from '../../../engine/math';
 import { subCurve } from '../common';
 import type { Road } from '../layout';
 import { CAMP, COVE, HOUSE, LAND, LIGHTHOUSE, PY, STORM } from './plan';
-import { MK } from './textures';
+import { MK, rockTexture } from './textures';
 
 /*
  * The ground of New Penzance: a long island with the track down its spine. Summer's End stands on a narrow
@@ -95,7 +95,10 @@ export function buildLand(road: Road, low: boolean): Land {
     const lr = Math.hypot(x - LIGHTHOUSE.x, z - LIGHTHOUSE.z);
     h = Math.max(h, lerp(PY - 0.1, h, smoothstep(LIGHTHOUSE.r + 1.5, LIGHTHOUSE.r + 5, lr)));
     // flat under the track bed
-    return lerp(PY - 0.42, h, smoothstep(2.6, 5, ad));
+    h = lerp(PY - 0.42, h, smoothstep(2.6, 5, ad));
+    // behind the start, the hill the train has just come out of
+    const hill = smoothstep(-1184, -1168, z);
+    return lerp(h, PY + 11 + hills(x, z) * 0.6 + 4 * smoothstep(-1172, -1150, z), hill * (1 - smoothstep(40, 90, ad) * 0.5));
   };
 
   const RES = 2;
@@ -131,10 +134,29 @@ export function buildLand(road: Road, low: boolean): Land {
 
   // ---------- the sea: one surface round the island, raised by the storm ----------
   const sea = new SeaMaterial(grid, { deep: MK.seaDeep, shallow: MK.sea, sand: MK.sand, nightDeep: 0x2e3e3c, nightShallow: 0x5a6e66, waterY: COVE.sea });
-  const seaMesh = new THREE.Mesh(new THREE.PlaneGeometry(LAND.xMax - LAND.xMin + 600, LAND.zMax - LAND.zMin + 400, 1, 1).rotateX(-Math.PI / 2), sea.material);
-  seaMesh.position.set(0, COVE.sea, (LAND.zMin + LAND.zMax) / 2);
+  // it stops short of the scene behind (Mr. Fox's hill), which is drawn until the whip pan covers the join
+  const seaMesh = new THREE.Mesh(new THREE.PlaneGeometry(LAND.xMax - LAND.xMin + 600, 1170 - LAND.zMin + 200, 1, 1).rotateX(-Math.PI / 2), sea.material);
+  seaMesh.position.set(0, COVE.sea, (-1170 + LAND.zMin - 200) / 2);
   seaMesh.renderOrder = 1;
   group.add(seaMesh);
+
+  // ---------- the tunnel's mouth in the hillside behind the start ----------
+  {
+    const face = new THREE.Shape();
+    face.moveTo(-9, -1.5); face.lineTo(9, -1.5); face.lineTo(9, 13); face.lineTo(-9, 13); face.closePath();
+    const hole = new THREE.Path(); hole.moveTo(-3.2, -1.5); hole.lineTo(-3.2, 3.6); hole.absarc(0, 3.6, 3.2, Math.PI, 0, true); hole.lineTo(3.2, -1.5); hole.lineTo(-3.2, -1.5);
+    face.holes.push(hole);
+    const geo = new THREE.ExtrudeGeometry(face, { depth: 2.2, bevelEnabled: false });
+    const uv = geo.attributes.uv as THREE.BufferAttribute; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / 3, uv.getY(i) / 3);
+    const stone = new THREE.MeshLambertMaterial({ map: rockTexture(65071) });
+    const portal = new THREE.Mesh(geo, stone);
+    portal.position.set(0, PY, -1180.5);
+    group.add(portal);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(3.45, 0.35, 6, 20, Math.PI), new THREE.MeshLambertMaterial({ color: 0x9a8e7c }));
+    ring.position.set(0, PY + 3.6, -1178.2); group.add(ring);
+    const dark = new THREE.Mesh(new THREE.PlaneGeometry(7, 8), new THREE.MeshBasicMaterial({ color: 0x0a0806 }));
+    dark.position.set(0, PY + 3, -1170); group.add(dark);
+  }
 
   // ---------- the track ----------
   const track = buildDetailedTrack(subCurve(road, -1176, -1504, 160));
@@ -168,12 +190,15 @@ export function buildLand(road: Road, low: boolean): Land {
         return;
       }
       let d = (1 - smoothstep(0.3, 0.55, grid.slope(x, z))) * (0.55 + 0.45 * smoothstep(0.3, 0.6, fbm(x * 0.06 - 3, z * 0.06 + 9, 2)));
+      // the camp's clearing is mown short
+      const mown = z < CAMP.z0 + 6 && z > CAMP.z1 - 6 && Math.abs(x - trackX(z)) < 27;
       d *= smoothstep(3, 5, Math.abs(x - trackX(z)));
       out.density = d;
       if (d <= 0) return;
       gc.set(MK.grass).lerp(tmp.set(MK.grassDry), smoothstep(0.3, 0.75, fbm(x * 0.05 + 3, z * 0.05, 3)));
       out.r = gc.r; out.g = gc.g; out.b = gc.b;
       out.height = lerp(0.8, 1.5, smoothstep(0.35, 0.7, fbm(x * 0.03 + 50, z * 0.03, 2)));
+      if (mown) { out.height = 0.35; out.density = d * 0.7; }
     },
   });
   group.add(grass.group);

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Subject } from '../../../game/Subject';
 import { Drift, Puffs } from '../../../engine/Particles';
 import { clamp, smoothstep } from '../../../engine/math';
+import { envelope } from '../../../engine/Rig';
 import { SETS } from '../layout';
 import { FILMS, boxProxy, forwardOf, optimize, showRange, type BuiltSet, type SetContext, type SetModule, type ZLightKey } from '../common';
 import { buildTrashLand } from '../isle/terrain';
@@ -84,6 +85,7 @@ function build(ctx: SetContext): BuiltSet {
   const atari = makeAtari();
   atari.group.position.copy(plane.group.position).add(plane.stand);
   atari.group.rotation.y = 0.75;
+  atari.group.scale.setScalar(1.22);
   live.add(atari.group);
   const smokeAt = plane.group.position.clone().add(plane.smoke);
   const smoke = new Drift({ count: 36, color: 0x5a5650, size: 1.3, box: new THREE.Vector3(2.5, 12, 2.5), speed: new THREE.Vector3(0.5, 1.4, 0.2), wobble: 0.4, opacity: 0.45, seed: 7101 });
@@ -186,7 +188,7 @@ function build(ctx: SetContext): BuiltSet {
   });
   subjects.push(spotsS);
   spotsLife.react = (P) => {
-    const k = Math.min(1, Math.max(0, 1 - Math.abs(spotsT - 1.8) / 1.8)) > 0 ? Math.min(1, spotsT / 0.4, (3.8 - spotsT) / 0.6) : 0;
+    const k = envelope(spotsT, 0, 0.4, 3.0, 3.6);
     if (k > 0) { P.sit = 1 - k; P.rear = k * 0.85; P.headPitch -= 0.9 * k; P.wag = Math.sin(spotsT * 16) * 0.5 * k; P.tailUp = k; }
   };
 
@@ -217,10 +219,10 @@ function build(ctx: SetContext): BuiltSet {
   subjects.push(nutmegS);
   nutmegLife.react = (P) => {
     // the trick: up on her hind legs for a pirouette, then a neat sit
-    const tr = nutCallT < 2.2 ? Math.min(1, nutCallT / 0.3, (2.2 - nutCallT) / 0.4) : 0;
+    const tr = envelope(nutCallT, 0, 0.3, 1.8, 2.2);
     if (tr > 0) { P.sit = 1 - tr; P.rear = tr; P.headPitch -= 0.3 * tr; P.wag = Math.sin(nutCallT * 14) * 0.3 * tr; }
     // the balance: head up, perfectly still
-    const bl = nutItemT < 4.6 ? Math.min(1, nutItemT / 0.4, (4.6 - nutItemT) / 0.5) : 0;
+    const bl = envelope(nutItemT, 0, 0.4, 4.1, 4.6);
     if (bl > 0) { P.headPitch = -0.75 * bl; P.headYaw *= 1 - bl; P.headRoll *= 1 - bl; }
     nutBox.visible = nutItemT > 0.3 && nutItemT < 4.4;
   };
@@ -229,10 +231,10 @@ function build(ctx: SetContext): BuiltSet {
   const park = buildPark(ground);
   const wheelGroup = park.wheel;
   park.group.remove(wheelGroup);
-  for (const c of park.cabins) park.group.remove(c);
   statics.add(park.group);
-  live.add(wheelGroup, ...park.cabins);
-  for (const c of [wheelGroup, ...park.cabins]) optimize(c);
+  live.add(wheelGroup, park.cabins);
+  optimize(wheelGroup);
+  const cabinM = new THREE.Matrix4(), cabinQ = new THREE.Quaternion(), cabinE = new THREE.Euler(), cabinP = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
   const hubAnchor = new THREE.Object3D();
   hubAnchor.position.copy(park.hub);
   live.add(hubAnchor);
@@ -316,7 +318,7 @@ function build(ctx: SetContext): BuiltSet {
   let prevZ = 1e9;
   const grip = gripPoint(road, ZSNAP);
   return {
-    id: 'isle', group, show: showRange(road, R, 8, 8), occluders, subjects, water: SEA, floor,
+    id: 'isle', group, show: showRange(road, R, 8, 2), occluders, subjects, water: SEA, floor,
     mounts: [gondola.def],
     bump(z) {
       // the carriage rattles over each pylon's sheaves; a lurch when the grip lets go
@@ -345,6 +347,11 @@ function build(ctx: SetContext): BuiltSet {
       if (fall > 0) { ctx.shot.roll += Math.sin(t * 23) * 0.012 * fall; ctx.shot.offset.y += Math.sin(t * 31) * 0.03 * fall; }
       sparks.update(dt);
 
+      // characters out of sight are not drawn: the pack and Atari once well behind, the drummers until the summit
+      const early = z > -1965;
+      atari.group.visible = early;
+      for (const { dog } of packDogs) dog.group.visible = early;
+      for (const d of drummers) d.group.visible = z < -1972;
       // the first stretch: the pack, Atari, the plane's smoke
       if (z > -1915) {
         atari.target = camPos;
@@ -379,11 +386,14 @@ function build(ctx: SetContext): BuiltSet {
         park.bulbs.color.setRGB(0.55 + lit * 1.0, 0.48 + lit * 0.82, 0.38 + lit * 0.4);
         const a = t * (0.04 + lit * 0.12);
         wheelGroup.rotation.x = a;
-        for (const c of park.cabins) {
-          const ang = (c.userData.angle as number) - a;
-          c.position.set(park.hub.x, park.hub.y + Math.sin(ang) * 23, park.hub.z + Math.cos(ang) * 23);
-          c.rotation.z = Math.sin(t * 0.8 + (c.userData.angle as number) * 3) * 0.04;
-        }
+        park.cabinAngles.forEach((a0, k) => {
+          const ang = a0 - a;
+          cabinP.set(park.hub.x, park.hub.y + Math.sin(ang) * park.radius, park.hub.z + Math.cos(ang) * park.radius);
+          // one cabin hangs crooked, the rest swing a little
+          cabinE.set(Math.sin(t * 0.8 + a0 * 3) * 0.05, 0, k === 5 ? 0.45 : 0);
+          park.cabins.setMatrixAt(k, cabinM.compose(cabinP, cabinQ.setFromEuler(cabinE), one));
+        });
+        park.cabins.instanceMatrix.needsUpdate = true;
       }
       // the drummers, and their unison strike
       if (z < -1980) {

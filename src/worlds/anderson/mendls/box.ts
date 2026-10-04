@@ -4,7 +4,7 @@ import { charToon, Painter } from '../../../engine/Paint';
 import { clamp, lerp, smoothstep, TAU } from '../../../engine/math';
 import { easeOutBack } from '../../../engine/Rig';
 import { css } from '../textures';
-import { boxSide, cardInside, flapInside, lidInside, lidTop, MC, ribbonTex, tissue } from './textures';
+import { boxSide, cardInside, flapInside, frontInside, lidInside, lidTop, MC, ribbonTex, tissue } from './textures';
 import { courtesan } from './pastry';
 
 /**
@@ -20,7 +20,7 @@ export const BOX = { w: 3.6, l: 3.6, h: 1.32, t: 0.05, floor: 0.08 };
 /** the lid's angle when open (radians about the hinge; 0 is shut) */
 const LID_OPEN = -1.98;
 
-interface BoxMats { flap: THREE.Material; flapB: THREE.Material; side: THREE.Material; inside: THREE.Material; insideB: THREE.Material; edge: THREE.Material; pinkPlain: THREE.Material; pinkB: THREE.Material; top: THREE.Material; under: THREE.Material; ribbon: THREE.Material; tissues: THREE.Material[] }
+interface BoxMats { frontIn: THREE.Material; flap: THREE.Material; flapB: THREE.Material; side: THREE.Material; inside: THREE.Material; insideB: THREE.Material; edge: THREE.Material; pinkPlain: THREE.Material; pinkB: THREE.Material; top: THREE.Material; under: THREE.Material; ribbon: THREE.Material; tissues: THREE.Material[] }
 let shared: BoxMats | null = null;
 export function boxMaterials(): BoxMats {
   if (shared) return shared;
@@ -38,7 +38,8 @@ export function boxMaterials(): BoxMats {
   const tissues = [0xf8dde4, 0xfbf3ea, 0xe8dcf4].map((c, i) => new THREE.MeshLambertMaterial({ map: tissue(c, 9 + i), side: THREE.DoubleSide, emissive: new THREE.Color(c).multiplyScalar(0.18) }));
   const flapMap = flapInside();
   const flap = charToon({ map: flapMap, rim: 0.15, shade: 0xc8b8c8 }), flapB = charToon({ map: flapMap, rim: 0.15, shade: 0xc8b8c8, side: THREE.BackSide });
-  shared = { flap, flapB, side, inside, insideB, edge, pinkPlain, pinkB, top, under, ribbon, tissues };
+  const frontIn = charToon({ map: frontInside(), rim: 0.15, shade: 0xc8b8c8 });
+  shared = { frontIn, flap, flapB, side, inside, insideB, edge, pinkPlain, pinkB, top, under, ribbon, tissues };
   return shared;
 }
 
@@ -191,8 +192,9 @@ export function buildPastryBox(withRider = true): PastryBox {
   for (const [x, z, ry] of [[0, hl, 0], [0, -hl, Math.PI], [hw, 0, Math.PI / 2], [-hw, 0, -Math.PI / 2]] as const) {
     const out = plane(w, h, M.side, x, h / 2 + 0.02, z, ry); out.castShadow = true;
     const ix = x - Math.sign(x) * t, iz = z - Math.sign(z) * t;
-    const inn = plane(w - t * 2, h - floor + 0.02, M.inside, ix, (h + floor) / 2 - 0.0, iz, ry + Math.PI);
-    const iu = inn.geometry.attributes.uv as THREE.BufferAttribute; for (let i = 0; i < iu.count; i++) iu.setXY(i, iu.getX(i) * 1.8, iu.getY(i) * 0.66);
+    const front = z > 0;
+    const inn = plane(w - t * 2, h - floor + 0.02, front ? M.frontIn : M.inside, ix, (h + floor) / 2 - 0.0, iz, ry + Math.PI);
+    if (!front) { const iu = inn.geometry.attributes.uv as THREE.BufferAttribute; for (let i = 0; i < iu.count; i++) iu.setXY(i, iu.getX(i) * 1.8, iu.getY(i) * 0.66); }
     const rim = new THREE.Mesh(new THREE.BoxGeometry(w, 0.025, t + 0.004), M.edge);
     rim.position.set(x - Math.sign(x) * t / 2, h + 0.0125, z - Math.sign(z) * t / 2); rim.rotation.y = ry;
     statics.add(rim);
@@ -267,10 +269,8 @@ export function buildPastryBox(withRider = true): PastryBox {
     const extras = new THREE.Group();
     group.add(extras);
     // tissue paper: three sheets in three pale tints, along the front and the sides
-    const front = tissueSheet(w - 0.12, (u) => 0.03 + 0.04 * Math.abs(Math.sin(u * Math.PI * 5 + 0.3)) + 0.2 * smoothstep(0.3, 0.47, Math.abs(u - 0.5)), 1, M.tissues[0]);
-    front.position.z = hl; front.rotation.y = Math.PI; extras.add(front);
     for (const s of [-1, 1]) {
-      const sh = tissueSheet(l - 0.12, (u) => 0.05 + 0.16 * Math.pow(Math.abs(Math.sin(u * Math.PI * 2 + s)), 0.8) + 0.12 * smoothstep(0.62, 0.95, s > 0 ? u : 1 - u), s > 0 ? 2 : 3, M.tissues[s > 0 ? 1 : 2]);
+      const sh = tissueSheet(l - 0.12, (u) => 0.05 + 0.14 * Math.pow(Math.abs(Math.sin(u * Math.PI * 2 + s)), 0.8) + 0.16 * smoothstep(0.6, 0.97, s > 0 ? u : 1 - u), s > 0 ? 2 : 3, M.tissues[s > 0 ? 0 : 2]);
       sh.position.x = s * hw; sh.rotation.y = -s * Math.PI / 2; extras.add(sh);
     }
     // a Courtesan on a doily in the front left corner, and a second, smaller one beside it

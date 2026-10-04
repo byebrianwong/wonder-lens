@@ -180,6 +180,11 @@ export function makeIbex(): Ibex {
   }
   const tail = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.16, 6), dark); tail.position.set(0, 0.42, -0.7); tail.rotation.x = -0.8; B.add(tail);
   group.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && !m.userData.outline) m.castShadow = true; });
+  // merge what never moves against itself: the head, each leg, then the body round them
+  mergeStatic(head);
+  for (const L of legs) mergeStatic(L);
+  for (const o of [head, ...legs]) o.traverse((c) => { c.userData.keep = true; });
+  mergeStatic(B);
   const rear = new Beat(3.2);
   let lookY = 0;
   const tmp = new THREE.Vector3();

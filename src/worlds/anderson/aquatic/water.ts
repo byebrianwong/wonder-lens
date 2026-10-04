@@ -100,10 +100,10 @@ export class SeaSurface {
             float win = smoothstep(0.62, 0.78, c);
             float edge = exp(-pow((c - 0.68) * 12.0, 2.0));
             // the ceiling: bright wobbling lines where the ripples focus the light, everywhere; the window brighter still
-            float lines = smoothstep(0.62, 0.95, r0) + 0.7 * smoothstep(0.78, 1.0, r1);
-            float near = 1.0 - smoothstep(10.0, 60.0, dist);
-            vec3 ceil = uUnder * 1.08 + uWindow * lines * (0.18 + 0.3 * near);
-            col = mix(ceil, uWindow * 1.2, win) + uWindow * (edge * 0.55 + lines * win * 0.35);
+            float near = 1.0 - smoothstep(8.0, 50.0, dist);
+            float thin = smoothstep(0.86, 0.98, r0) + 0.6 * smoothstep(0.88, 1.0, r1);
+            vec3 ceil = uUnder * (1.0 + 0.12 * r0) + uWindow * thin * 0.22 * near;
+            col = mix(ceil, uWindow * 1.1, win * (0.65 + 0.35 * r1)) + uWindow * (edge * 0.4 + thin * win * 0.4);
             col *= uUnderLight;
             alpha = 1.0;
           } else {

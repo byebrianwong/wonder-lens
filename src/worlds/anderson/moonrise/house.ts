@@ -620,7 +620,8 @@ export function buildSummersEnd(): SummersEnd {
   const suzyG = new THREE.Group();
   const bino = binoculars(1.6);
   {
-    suzy.group.scale.setScalar(KID.tall);
+    // a little larger than life, so she reads from the train
+    suzy.group.scale.setScalar(KID.tall * 1.2);
     suzyG.add(suzy.group);
     suzyG.position.set(0, LIGHTHOUSE.gallery + 0.15, LIGHTHOUSE.r - 0.25);
     lighthouse.add(suzyG);

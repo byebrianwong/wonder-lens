@@ -7,7 +7,9 @@ import { SETS } from '../layout';
 import { FILMS, optimize, showRange, subCurve, zWindow, type BuiltSet, type SetContext, type SetModule, type ZLightKey } from '../common';
 import { DESK, DOORS, FUNI, HOTEL as H, LIFT, LOBBY, STAIRS, STATION, TERRACE, TOP_DOORS, Y0, groundHeight } from '../hotel/plan';
 import { hotelMats } from '../hotel/mats';
-import { buildStation } from '../hotel/station';
+import { buildStation, mendlsVan } from '../hotel/station';
+import { makeConductor, makeGustave, makeLiftOperator, makeLobbyBoys, makeMadameD, makePorter, makeTraveller, makeZero } from '../hotel/cast';
+import { forwardOf } from '../common';
 import { buildValley } from '../hotel/town';
 import { buildFunicularTrack, makeFunicularCar } from '../hotel/funicular';
 import { buildExterior } from '../hotel/exterior';
@@ -115,6 +117,125 @@ function build(ctx: SetContext): BuiltSet {
   });
   subjects.push(carS);
 
+  // ---------- the people on the platform, and Mendl's van ----------
+  const sp = station.spots;
+  const conductor = makeConductor();
+  conductor.group.position.copy(sp.conductor); conductor.group.rotation.y = -0.75;
+  const porter = makePorter();
+  porter.group.position.copy(sp.porter); porter.group.rotation.y = 0.95;
+  const lady = makeTraveller('lady');
+  lady.group.position.copy(sp.ladies); lady.group.rotation.y = 1.25;
+  const gent = makeTraveller('gent');
+  gent.group.position.copy(sp.gent); gent.group.rotation.y = -1.35;
+  const van = mendlsVan();
+  van.group.position.copy(sp.van);
+  live.add(conductor.group, porter.group, lady.group, gent.group, van.group);
+  let vanT = 9;
+  const conductorS = new Subject({
+    id: 'gbh-conductor', name: 'The stationmaster of Nebelsbad', from: FILMS.gbh, group: conductor.group, radius: 1.1, base: 520,
+    hint: 'On the right-hand platform as the train leaves Nebelsbad. Blow the whistle and he answers with his own, and raises his flag.',
+    poses: { flag: { label: 'All aboard!', mult: 1.5 } }, centerOffset: new THREE.Vector3(0, 1.2, 0), facing: forwardOf(conductor.group), maxDistance: 70,
+    onCall: () => { conductor.flag(); conductorS.setPose('flag', 3); return true; },
+    update: (_dt, ride) => { conductorS.active = ride.position.z > 0; },
+  });
+  const vanS = new Subject({
+    id: 'gbh-van', name: "Mendl's delivery van", from: FILMS.gbh, group: van.group, radius: 2.4, base: 450,
+    hint: "Parked on the station square, on the left. Blow the whistle and it flashes its lamps; land a Mendl's box beside it for a special delivery.",
+    poses: { toot: { label: 'Toot toot', mult: 1.4 }, delivery: { label: 'Special delivery', mult: 1.7 } }, centerOffset: new THREE.Vector3(0, 1.2, 0), maxDistance: 90, reactRange: 6,
+    onCall: () => { vanT = 0; vanS.setPose('toot', 1.8); return true; },
+    onItem: () => { vanT = 0; vanS.setPose('delivery', 2.2); return true; },
+    update: (_dt, ride) => { vanS.active = ride.position.z > -20; },
+  });
+  subjects.push(conductorS, vanS);
+
+  // ---------- the lobby's people ----------
+  const F = LOBBY.floor;
+  const gustave = makeGustave();
+  gustave.group.position.set(DESK.x - 1.25, F, DESK.z + 0.9); gustave.group.rotation.y = 1.2;
+  const zero = makeZero();
+  zero.group.position.set(DESK.x + 2.9, F, DESK.z - 6.0); zero.group.rotation.y = 0.8;
+  const boyZ = [-172, -183, -194, -225, -236, -247];
+  const boyPlaces = boyZ.flatMap((bz) => [{ pos: V(-3.5, F, bz), yaw: Math.PI / 2 }, { pos: V(3.5, F, bz), yaw: -Math.PI / 2 }]);
+  const boys = makeLobbyBoys(boyPlaces);
+  const operator = makeLiftOperator();
+  operator.group.position.set(LIFT.x + 0.5, F + 0.12, LIFT.z); operator.group.rotation.y = -Math.PI / 2;
+  const madame = makeMadameD();
+  madame.group.position.set(7.4, F, -249.2); madame.group.rotation.y = -0.45;
+  const sitter = makeTraveller('sitter');
+  sitter.group.position.set(-14.25, F + 0.12, -181.4); sitter.group.rotation.y = Math.PI / 2 - 0.3;
+  const reader = makeTraveller('reader');
+  reader.group.position.set(20.15, F + 0.26, -227); reader.group.rotation.y = -Math.PI / 2;
+  inside.add(gustave.group, zero.group, boys.group, operator.group, madame.group, sitter.group, reader.group);
+  // Madame D.'s luggage: a tower of hatboxes and a trunk
+  {
+    const lug = new THREE.Group();
+    const trunk = new THREE.MeshLambertMaterial({ color: 0x6a2a3a }), stripe = new THREE.MeshLambertMaterial({ color: 0xe8d8b8 });
+    lug.add(new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.9, 0.8), trunk).translateY(0.45));
+    lug.add(new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.08, 0.82), stripe).translateY(0.7));
+    lug.add(new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.42, 16), stripe).translateY(1.11));
+    lug.add(new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.36, 16), trunk).translateY(1.5));
+    lug.position.set(8.9, F, -250.3); lug.rotation.y = 0.3;
+    inside.add(lug);
+  }
+  const look = (z: number) => z < -150;
+  const gustaveS = new Subject({
+    id: 'gbh-gustave', name: 'M. Gustave', from: FILMS.gbh, group: gustave.group, radius: 1.1, base: 1450, rarity: 'legendary',
+    hint: 'The concierge, behind his desk on the left of the lobby, with the wall of keys behind him. Blow the whistle for a perfect bow; toss him a box from Mendl\'s and he catches it with a flourish.',
+    poses: { bow: { label: 'A perfect bow', mult: 1.9 }, catch: { label: 'Caught with a flourish', mult: 1.8 } }, centerOffset: new THREE.Vector3(0, 1.45, 0), facing: forwardOf(gustave.group),
+    onCall: () => { gustave.bow(); gustaveS.setPose('bow', 2.6); return true; },
+    onItem: () => { gustave.catchBox(); gustaveS.setPose('catch', 3.2); return true; }, reactRange: 9, maxDistance: 80, swallows: true,
+    update: (_dt, ride) => { gustaveS.active = look(ride.position.z) && ride.position.z > -262; },
+  });
+  const zeroS = new Subject({
+    id: 'gbh-zero', name: 'Zero, the lobby boy', from: FILMS.gbh, group: zero.group, radius: 0.9, base: 1100, rarity: 'rare',
+    hint: 'Beside the concierge desk in his purple uniform and LOBBY BOY cap, moustache pencilled on. Blow the whistle and he snaps to attention and salutes.',
+    poses: { salute: { label: 'Snaps to attention', mult: 1.7 } }, centerOffset: new THREE.Vector3(0, 1.3, 0), facing: forwardOf(zero.group),
+    onCall: () => { zero.salute(); zeroS.setPose('salute', 2.6); return true; }, maxDistance: 70,
+    update: (_dt, ride) => { zeroS.active = look(ride.position.z) && ride.position.z > -262; },
+  });
+  const boysAnchor = new THREE.Object3D(); boysAnchor.position.copy(boys.centre()); inside.add(boysAnchor);
+  const boysS = new Subject({
+    id: 'gbh-lobbyboys', name: 'The lobby boys', from: FILMS.gbh, group: boysAnchor, radius: 6, base: 750,
+    hint: 'A guard of honour in purple lining the red carpet. Blow the whistle and they bow one after another, like dominoes.',
+    poses: { domino: { label: 'Domino bow', mult: 1.8 } }, centerOffset: new THREE.Vector3(0, 1.3, 0), crowd: true, maxDistance: 90,
+    onCall: () => {
+      const order = boyPlaces.map((_, i) => i).sort((a, b) => boyPlaces[b].pos.z - boyPlaces[a].pos.z || boyPlaces[a].pos.x - boyPlaces[b].pos.x);
+      boys.bowAll(order, 0.16); boysS.setPose('domino', 3.2); return true;
+    },
+    update: (_dt, ride) => {
+      boysS.active = look(ride.position.z) && ride.position.z > -258;
+      // the photo centre follows the boys still ahead of the train
+      const ahead = boyPlaces.filter((p) => p.pos.z < ride.position.z - 4);
+      if (ahead.length) { boysAnchor.position.set(0, F, 0); for (const p of ahead.slice(0, 6)) boysAnchor.position.z += p.pos.z / Math.min(6, ahead.length); }
+    },
+  });
+  let liftT = 9;
+  const liftAnchor = new THREE.Object3D(); liftAnchor.position.set(LIFT.x - 1, F + 2, LIFT.z); inside.add(liftAnchor);
+  const liftS = new Subject({
+    id: 'gbh-lift', name: 'The lift', from: FILMS.gbh, group: liftAnchor, radius: 2.6, base: 700,
+    hint: 'The rose-red lift in its gilded cage, on the right of the lobby. Blow the whistle: it comes down, the doors slide open and the operator nods you in.',
+    poses: { open: { label: 'Going up?', mult: 1.6 } }, maxDistance: 80,
+    onCall: () => { if (liftT < 4.2) return false; liftT = 0; liftS.setPose('open', 4.2); return true; },
+    update: (_dt, ride) => { liftS.active = look(ride.position.z) && ride.position.z > -262; },
+  });
+  const madameS = new Subject({
+    id: 'gbh-madamed', name: 'Madame D.', from: FILMS.gbh, group: madame.group, radius: 1.0, base: 950, rarity: 'rare',
+    hint: 'At the foot of the grand staircase on the right, with her hatboxes, about to leave. Blow the whistle and she waves goodbye with her handkerchief.',
+    poses: { wave: { label: 'Au revoir', mult: 1.6 } }, centerOffset: new THREE.Vector3(0, 1.3, 0), facing: forwardOf(madame.group),
+    onCall: () => { madame.wave(); madameS.setPose('wave', 3); return true; }, maxDistance: 80,
+    update: (_dt, ride) => { madameS.active = look(ride.position.z) && ride.position.z > -262; },
+  });
+  let spotT = 9;
+  const paintS = new Subject({
+    id: 'gbh-boywithapple', name: 'Boy with Apple', from: FILMS.gbh, group: lobby.painting, radius: 2.6, base: 850, rarity: 'rare',
+    hint: 'The priceless portrait by Johannes van Hoytl the Younger, hung over the doors at the top of the grand staircase. Blow the whistle and its picture lamp brightens.',
+    poses: { lit: { label: 'In the spotlight', mult: 1.5 } }, maxDistance: 140, facing: forwardOf(lobby.painting),
+    onCall: () => { spotT = 0; paintS.setPose('lit', 3); return true; },
+    update: (_dt, ride) => { paintS.active = look(ride.position.z) && ride.position.z > -294; },
+  });
+  subjects.push(gustaveS, zeroS, boysS, liftS, madameS, paintS);
+  let bellT = 9;
+
   // ---------- floor for thrown items ----------
   const floor = (x: number, z: number) => {
     const ax = Math.abs(x);
@@ -127,10 +248,25 @@ function build(ctx: SetContext): BuiltSet {
   };
 
   const camPos = new THREE.Vector3();
+  // DEBUG-HOTEL-ACT (temporary, for screenshots): ?hotelAct=<seconds> blows the whistle at that time; ?hotelItem=<id> throws a box at a subject
+  const actAt = typeof location !== 'undefined' ? Number(new URLSearchParams(location.search).get('hotelAct') ?? NaN) : NaN;
+  const itemAt = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('hotelItem') : null;
+  let acted = false;
   return {
     id: 'hotel', group, show: showRange(road, R, 60, 6), occluders: [...valley.occluders, ext.occluder], subjects, floor, water: -Infinity,
+    onCall(ride) { if (ride.position.z < -160) bellT = 0; },
+    bump(z) {
+      if (z > STAIRS.z0 || z < STAIRS.z1) return 0;
+      const d = (STAIRS.z0 - STAIRS.z1) / 25;
+      const f = (((STAIRS.z0 - z) / d) % 1 + 1) % 1;
+      return -0.07 * (1 - f) ** 3;
+    },
     update(dt, t, ride) {
       const z = ride.position.z;
+      if (!acted && t >= (Number.isNaN(actAt) ? 1e9 : actAt)) { acted = true; for (const sb of subjects) if (sb.active) sb.tryCall(camPos, 200); }
+      if (!acted && itemAt && t >= 1) { acted = true; const sb = subjects.find((x) => x.id === itemAt); if (sb) sb.hitByItem(sb.center()); }
+      // a gentle tilt up the funicular, so the hotel stays in frame
+      ctx.shot.pitch = 0.08 * zWindow(z, -42, -62, -118, -140);
       ctx.camera.getWorldPosition(camPos);
       outside.visible = z > DOORS.close1;
       inside.visible = z < DOORS.open0 + 10;
@@ -151,6 +287,33 @@ function build(ctx: SetContext): BuiltSet {
         signT += dt;
         ext.sign.emissiveIntensity = signT < 3.5 ? 0.9 + 1.4 * (Math.sin(signT * 14) > 0 ? 1 : 0.2) : 0.9 + Math.sin(t * 1.3) * 0.05;
         ext.flag.rotation.y = Math.sin(t * 1.7) * 0.25 + Math.sin(t * 3.1) * 0.08;
+      }
+      // ---- the people ----
+      if (outside.visible && z > -40) {
+        for (const p of [conductor, porter, lady, gent]) { p.lookTarget = camPos; p.update(dt, t); }
+        vanT += dt;
+        const vk = vanT < 1.8 ? (Math.sin(vanT * 18) > 0 ? 2.6 : 0.6) : 1;
+        for (const l of van.lights) (l.material as THREE.MeshBasicMaterial).color.setHex(0xfff2c0).multiplyScalar(vk);
+        van.group.position.y = sp.van.y + (vanT < 1.8 ? Math.abs(Math.sin(vanT * 16)) * 0.05 : 0);
+      }
+      if (inside.visible) {
+        for (const p of [gustave, zero, operator, madame]) { p.lookTarget = camPos; p.update(dt, t); }
+        for (const p of [sitter, reader]) { p.lookTarget = camPos; p.update(dt, t); }
+        boys.update(dt, t);
+        // the lift: the needle comes down to the ground floor, the doors slide open, the operator nods
+        liftT += dt;
+        lobby.liftNeedle.rotation.x = -Math.PI / 2 * smoothstep(0, 1, liftT) * (1 - smoothstep(4.8, 6.5, liftT));
+        const dOpen = smoothstep(0.9, 1.6, liftT) * (1 - smoothstep(3.8, 4.6, liftT));
+        for (const d of lobby.liftDoors) d.position.z = LIFT.z + d.userData.side * (1.05 + dOpen * 1.9);
+        if (liftT > 1.1 && liftT < 1.2) operator.nod();
+        lobby.liftLamp.color.setHex(0xffe0b0).multiplyScalar(1.2 + dOpen * 0.6);
+        // the picture lamp over Boy with Apple
+        spotT += dt;
+        lobby.pictureLamp.color.setHex(0xfff2d0).multiplyScalar(1.1 + 1.6 * (spotT < 3 ? Math.sin(Math.min(1, spotT * 3) * Math.PI / 2) * (1 - smoothstep(2.4, 3, spotT)) : 0));
+        // the concierge bell jumps when rung
+        bellT += dt;
+        lobby.bell.position.y = LOBBY.floor + 1.1 + (bellT < 0.5 ? Math.abs(Math.sin(bellT * 30)) * 0.04 * (1 - bellT * 2) : 0);
+        lobby.chandelierBulbs.color.setHex(0xfff0c8).multiplyScalar(1.5 + Math.sin(t * 2.3) * 0.03);
       }
       snow.intensity = 1 - smoothstep(-150, -166, z);
       snow.update(dt, t, camPos);

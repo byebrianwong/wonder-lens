@@ -577,7 +577,7 @@ export function makeDog(o: DogOpts): Dog {
 
 // ---------------- the dogs of the film ----------------
 export const DOGS = {
-  chief: (): DogOpts => ({ coat: 0x24222a, coat2: 0x46444e, pattern: 'plain', ears: 'up', shag: 0.85, length: 1.08, leg: 1.12, girth: 0.88, snout: 1.25, head: 1.0, iris: 0x4a3418, brows: 0.2, jaw: true, scale: 2.25, seed: 101 }),
+  chief: (): DogOpts => ({ coat: 0x24222a, coat2: 0x46444e, pattern: 'plain', ears: 'up', shag: 0.85, length: 1.08, leg: 1.12, girth: 0.88, snout: 1.25, head: 1.0, iris: 0x4a3418, brows: 0.2, jaw: true, scale: 2.4, seed: 101 }),
   rex: (): DogOpts => ({ coat: 0x8e8c88, coat2: 0xe6e0d4, pattern: 'plain', ears: 'fold', shag: 1.0, long: 0.6, length: 1.0, leg: 0.95, girth: 1.05, snout: 0.9, head: 1.08, brows: 1, scale: 2.15, seed: 111, tip: 0xe6e0d4 }),
   king: (): DogOpts => ({ coat: 0xe2d6bc, coat2: 0x8a5a36, pattern: 'saddle', ears: 'flop', earColor: 0x8a5a36, shag: 0.35, length: 1.05, leg: 0.92, girth: 1.18, snout: 0.95, head: 1.15, brows: 0.3, scale: 2.2, seed: 121 }),
   boss: (): DogOpts => ({ coat: 0xb88e5e, coat2: 0x5a4030, pattern: 'mask', ears: 'flop', earColor: 0x6a4a34, shag: 0.4, length: 1.0, leg: 0.98, girth: 1.05, snout: 0.75, head: 1.1, scale: 2.15, seed: 131, jersey: { color: 0xf2eee2, trim: 0x2a3a6a, text: 'DRAGONS', num: '8' } }),

@@ -185,6 +185,8 @@ export function buildToboggan(o: { rider?: boolean; scale?: number } = {}): Tobo
 
   // merge everything that never moves
   body.traverse((c) => { if ((c as THREE.Mesh).isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+  mergeStatic(lantern);
+  if (pennant) mergeStatic(pennant);
   for (const c of [lantern, pennant]) c?.traverse((m) => { m.userData.keep = true; });
   mergeStatic(body);
   if (o.scale) group.scale.setScalar(o.scale);

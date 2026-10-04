@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { box, canvasTexture, cyl, glow, mesh, toon } from '../../../engine/Builders';
 import { Painter, repeatUV } from '../../../engine/Paint';
 import { TAU, lerp } from '../../../engine/math';
@@ -91,6 +92,7 @@ export function buildPlane(baleMat: THREE.Material) {
   // nose down into the heap, rolled a little
   plane.rotation.set(0.12, 0, 0.62);
   plane.position.set(0, 0.6, 0);
+  plane.scale.setScalar(1.35);
   g.add(plane);
   // a mound of bales round the nose (on the grid, for the bale shader)
   // (the group stands at an odd x and an even z, so whole bales sit at even x and odd z here)
@@ -147,10 +149,10 @@ export function buildBarrel() {
     c.fillStyle = '#c03028'; c.beginPath(); c.arc(92, 34, 9, 0, TAU); c.fill();
     c.strokeStyle = '#3a2a1a'; c.lineWidth = 6; for (const y of [14, 114]) { c.beginPath(); c.moveTo(0, y); c.lineTo(256, y); c.stroke(); }
   });
-  const R = 1.0, H = 1.7;
-  g.add(mesh(new THREE.CylinderGeometry(R * 0.96, R, H, 20, 1, true), new THREE.MeshLambertMaterial({ map: straw }), 0, H / 2, 0));
-  g.add(mesh(new THREE.CylinderGeometry(R * 0.96, R * 0.96, 0.06, 20), toon(0xa8885a), 0, H, 0));
-  for (const y of [0.3, H - 0.25]) { const t = mesh(new THREE.TorusGeometry(R * 0.99, 0.06, 6, 24), toon(0x3a2a1a), 0, y, 0); t.rotation.x = Math.PI / 2; g.add(t); }
+  const R = 1.25, H = 3.0;
+  g.add(mesh(new THREE.CylinderGeometry(R * 0.92, R, H, 20, 1, true), new THREE.MeshLambertMaterial({ map: straw }), 0, H / 2, 0));
+  g.add(mesh(new THREE.CylinderGeometry(R * 0.92, R * 0.92, 0.06, 20), toon(0xa8885a), 0, H, 0));
+  for (const y of [0.3, H * 0.5, H - 0.25]) { const t = mesh(new THREE.TorusGeometry(R * 0.97, 0.07, 6, 24), toon(0x3a2a1a), 0, y, 0); t.rotation.x = Math.PI / 2; g.add(t); }
   // empty sake bottles round its foot (her trick props)
   const bottle = (x: number, z: number, lying: boolean) => {
     const b = new THREE.Group();
@@ -167,7 +169,9 @@ export function buildBarrel() {
 export interface Park {
   group: THREE.Group;
   wheel: THREE.Group;
-  cabins: THREE.Object3D[];
+  cabins: THREE.InstancedMesh;
+  cabinAngles: number[];
+  radius: number;
   bulbs: THREE.MeshBasicMaterial;
   /** a point at the wheel's hub, for the photo subject */
   hub: THREE.Vector3;
@@ -203,24 +207,22 @@ export function buildPark(groundAt: (x: number, z: number) => number): Park {
   wheel.add(cyl(0.7, 0.7, 3.2, white, 0, 0, 0, 14).rotateZ(Math.PI / 2));
   wheel.position.set(wx, hubY, wz);
   g.add(wheel);
-  // the cabins hang from the rim and stay upright (the scene keeps them level as the wheel turns)
-  const cabins: THREE.Object3D[] = [];
-  const cabinMats = [mint, pink, yellow, white];
-  for (let k = 0; k < 16; k++) {
-    const c = new THREE.Group();
-    const m = cabinMats[k % 4];
-    c.add(box(1.8, 0.12, 1.6, m, 0, -2.0, 0), box(1.8, 1.0, 0.08, m, 0, -1.5, 0.78), box(1.8, 1.0, 0.08, m, 0, -1.5, -0.78), box(0.08, 1.0, 1.6, m, -0.88, -1.5, 0), box(0.08, 1.0, 1.6, m, 0.88, -1.5, 0));
-    const roof = mesh(new THREE.ConeGeometry(1.35, 0.7, 4), m, 0, -0.45, 0); roof.rotation.y = Math.PI / 4; c.add(roof);
-    for (const x of [-0.85, 0.85]) for (const z of [-0.75, 0.75]) c.add(cyl(0.03, 0.03, 1.1, white, x, -0.9, z, 4));
-    c.add(cyl(0.05, 0.05, 0.5, white, 0, -0.1, 0, 4));
-    const a = (k / 16) * TAU;
-    c.position.set(wx, hubY + Math.sin(a) * R, wz + Math.cos(a) * R);
-    c.userData.angle = a;
-    // one cabin is missing its floor, one hangs crooked
-    if (k === 5) c.rotation.z = 0.5;
-    cabins.push(c);
-    g.add(c);
-  }
+  // the cabins hang from the rim and stay upright (the scene keeps them level as the wheel turns): one
+  // instanced mesh, each cabin tinted a faded pastel
+  const cabinParts: THREE.BufferGeometry[] = [];
+  const part = (geo: THREE.BufferGeometry, x: number, y: number, z: number) => { const gg = geo.index ? geo.toNonIndexed() : geo; gg.translate(x, y, z); cabinParts.push(gg); };
+  part(new THREE.BoxGeometry(1.8, 0.12, 1.6), 0, -2.0, 0);
+  part(new THREE.BoxGeometry(1.8, 1.0, 0.08), 0, -1.5, 0.78); part(new THREE.BoxGeometry(1.8, 1.0, 0.08), 0, -1.5, -0.78);
+  part(new THREE.BoxGeometry(0.08, 1.0, 1.6), -0.88, -1.5, 0); part(new THREE.BoxGeometry(0.08, 1.0, 1.6), 0.88, -1.5, 0);
+  part(new THREE.ConeGeometry(1.35, 0.7, 4).rotateY(Math.PI / 4), 0, -0.45, 0);
+  for (const x of [-0.85, 0.85]) for (const z of [-0.75, 0.75]) part(new THREE.CylinderGeometry(0.03, 0.03, 1.1, 4), x, -0.9, z);
+  part(new THREE.CylinderGeometry(0.05, 0.05, 0.5, 4), 0, -0.1, 0);
+  for (const gg of cabinParts) { for (const k of Object.keys(gg.attributes)) if (!['position', 'normal', 'uv'].includes(k)) gg.deleteAttribute(k); }
+  const cabins = new THREE.InstancedMesh(mergeGeometries(cabinParts, false)!, texMat(rustIron(0xf2eee6, 443, 0.55)), 16);
+  const tints = [0x9ac8b8, 0xe2a8b0, 0xe8c86a, 0xe6e0d0].map((c) => new THREE.Color(c));
+  for (let k = 0; k < 16; k++) cabins.setColorAt(k, tints[k % 4]);
+  cabins.castShadow = true; cabins.frustumCulled = false;
+  const cabinAngles = Array.from({ length: 16 }, (_, k) => (k / 16) * TAU);
   // the A-frame legs
   for (const s of [-1, 1]) for (const dz of [-1, 1]) g.add(rod(V(wx + s * 2.2, floor, wz + dz * R * 0.55), V(wx + s * 1.5, hubY, wz), 0.32, white, 8));
   // a ticket booth and the gate arch with the park's name, facing the cable line
@@ -311,7 +313,7 @@ export function buildPark(groundAt: (x: number, z: number) => number): Park {
     g.add(car);
   }
   g.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && m.material !== bulbs) { m.castShadow = true; m.receiveShadow = true; } });
-  return { group: g, wheel, cabins, bulbs, hub: V(wx, hubY, wz) };
+  return { group: g, wheel, cabins, cabinAngles, radius: R, bulbs, hub: V(wx, hubY, wz) };
 }
 
 let stripes: THREE.Texture | null = null;

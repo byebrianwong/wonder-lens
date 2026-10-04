@@ -4,7 +4,7 @@ import { envelope } from '../../../engine/Rig';
 import { clamp, lerp, smoothstep } from '../../../engine/math';
 import { SETS } from '../layout';
 import { FILMS, forwardOf, optimize, showRange, zWindow, type BuiltSet, type MountDef, type SetContext, type SetModule, type ZLightKey } from '../common';
-import { CH, SPOT, Z, makePlan } from '../ski/plan';
+import { CH, PROM, SPOT, Z, makePlan } from '../ski/plan';
 import { buildRun } from '../ski/run';
 import { buildMountain } from '../ski/terrain';
 import { buildToboggan } from '../ski/toboggan';
@@ -38,9 +38,13 @@ const KEY = { skyTop: 0x2c5cc4, skyMid: 0x7eaae8, skyBottom: 0xf2dbe6, fog: 0xdc
 export const LIGHTS: ZLightKey[] = [{ z: -562, ...KEY }, { z: -878, ...KEY }];
 
 /** where Jopling and Gustave and Zero's toboggan come to a stop at the cliff */
-const STOP_J = -843.2, STOP_G = -842.6;
+const STOP_J = -853.2, STOP_G = -847.5;
+/** where Gustave hangs from the promontory's lip */
+const G_HANG_Z = -851.2;
+/** where the ski instructor pulls up */
+const SKIER_STOP = -836;
 /** Gustave flies off the toboggan and catches the edge once it stops */
-const TUMBLE_Z = -821;
+const TUMBLE_Z = -829;
 
 function build(ctx: SetContext): BuiltSet {
   const { road, fx, shot } = ctx;
@@ -58,6 +62,8 @@ function build(ctx: SetContext): BuiltSet {
     for (const [kx, kz, r] of keepOut) if (Math.hypot(x - kx, z - kz) < r) return true;
     // the summit plateau and the run's piste stay clear; the cliff's tableau too
     if (z > Z.tip && Math.abs(x) < 26) return true;
+    // keep the vista from the summit open: no trees close beside the first stretch of the run
+    if (z > -660 && z < Z.tip + 2 && Math.abs(x - road.at(z).x) < 21) return true;
     if (z < Z.edge + 12 && z > Z.edge - 2 && Math.abs(x) < 16) return true;
     if (z < Z.touch && z > Z.edge && Math.abs(x - road.at(z).x) < 14) return true;
     return false;
@@ -78,21 +84,21 @@ function build(ctx: SetContext): BuiltSet {
   const obs = buildObservatory();
   obs.group.position.copy(SPOT.obs);
   obs.group.rotation.y = -0.78;
-  live.add(obs.group);
+  statics.add(obs.group);
   const chapel = buildChapel();
   chapel.group.position.copy(SPOT.chapel);
   chapel.group.rotation.y = 0.98;
   statics.add(chapel.group);
   const cable = buildCableCar();
-  live.add(cable.group);
+  statics.add(cable.group);
   // flags along the start, in pairs either side of the piste
   const summitFlags: THREE.Object3D[] = [];
-  for (const [z, a, b] of [[-566, 0xc8323c, 0xf6efe2], [-576, 0x5d3a8a, 0xf2b8c6], [-586, 0x2a3a6a, 0xf6efe2]] as Array<[number, number, number]>) {
+  for (const [z, a, b] of [[-572, 0xc8323c, 0xf6efe2], [-596, 0x5d3a8a, 0xf2b8c6], [-601.5, 0x2a3a6a, 0xf6efe2]] as Array<[number, number, number]>) {
     for (const s of [-1, 1]) {
       const fp = flagpole(6.5, a, b, s < 0 ? 'keys' : 'stripe');
-      fp.group.position.set(s * 6.2, 54, z);
+      fp.group.position.set(s * 6.6, 54, z);
       fp.group.rotation.y = s > 0 ? Math.PI : 0;
-      live.add(fp.group);
+      statics.add(fp.group);
       summitFlags.push(fp.flag);
     }
   }
@@ -139,6 +145,11 @@ function build(ctx: SetContext): BuiltSet {
   ibex.group.rotation.y = 0.9;
   live.add(ibex.group);
 
+  // DEBUG-COUNT
+  {
+    const tally = (o: THREE.Object3D) => { let n = 0, sh = 0; o.traverse((c) => { const m = c as THREE.Mesh; if ((m.isMesh || (c as THREE.Points).isPoints) && c.visible) { n++; if (m.castShadow) sh++; } }); return `${n}/${sh}`; };
+    console.warn(`[ski-count] statics ${tally(statics)} mountain ${tally(mountain.group)} jop ${tally(jop.group)} pair ${tally(pair.group)} skier ${tally(skier.group)} ibex ${tally(ibex.group)} monks ${tally(monks.group)} dress.live ${tally(dress.live)} sled ${tally(sled.group)}`);
+  }
   // ---------- photo subjects ----------
   const camPos = new THREE.Vector3();
   const eye = new THREE.Vector3();
@@ -246,9 +257,14 @@ function build(ctx: SetContext): BuiltSet {
   /** stand an object on the run at z and lateral offset, facing down the run, pitched with the slope and tilted with the floor */
   const onRun = (o: THREE.Object3D, z: number, lat: number, yaw = 0, lift = 0) => {
     const p = road.at(z), a = road.at(z + 0.6), b = road.at(z - 0.6);
-    const y = plan.surface(z, lat) + lift;
-    o.position.set(p.x + p.rx * lat, y, p.z + p.rz * lat);
-    tf.set(b.x - a.x, b.y - a.y, b.z - a.z).normalize();
+    const x = p.x + p.rx * lat, zz = p.z + p.rz * lat;
+    // on the snowfield (and out on the promontory) stand on the snow itself
+    const y = (z < Z.touch ? ground(x, zz) : plan.surface(z, lat)) + lift;
+    o.position.set(x, y, zz);
+    // pitched with the run (or, on the snowfield, with the snow under it)
+    tf.set(b.x - a.x, 0, b.z - a.z).normalize();
+    const slope = z < Z.touch ? (ground(x + tf.x * 0.6, zz + tf.z * 0.6) - ground(x - tf.x * 0.6, zz - tf.z * 0.6)) / 1.2 : (b.y - a.y) / Math.max(0.01, Math.hypot(b.x - a.x, b.z - a.z));
+    tf.y = slope; tf.normalize();
     tr.set(p.rx, 0, p.rz);
     const roll = z <= Z.chan0 && z >= Z.chan1 ? plan.bank(z) * 0.8 : 0;
     tUp.set(0, 1, 0).applyAxisAngle(tf, -roll);
@@ -260,12 +276,10 @@ function build(ctx: SetContext): BuiltSet {
   let tumbleT = -1;
   const gHang = V(0, 0, 0), zKneel = V(0, 0, 0), sledRest = V(0, 0, 0);
   {
-    const e = road.side(Z.edge, 3.4);
-    gHang.set(e.x, ground(e.x, Z.edge + 0.6) - 2.25, Z.edge - 0.95);
-    const k = road.side(Z.edge + 1.2, 2.2);
-    zKneel.set(k.x, ground(k.x, k.z), k.z);
-    const s = road.side(STOP_G, 3.6);
-    sledRest.set(s.x, ground(s.x, s.z), s.z);
+    // Gustave hangs from the promontory's left lip, facing its wall; Zero kneels above reaching down to him
+    gHang.set(PROM.x0 - 0.42, ground(PROM.x0 + 1.2, G_HANG_Z) - 2.3, G_HANG_Z);
+    zKneel.set(PROM.x0 + 0.95, ground(PROM.x0 + 0.95, G_HANG_Z + 1.6), G_HANG_Z + 1.6);
+    sledRest.set(PROM.x0 + 4, ground(PROM.x0 + 4, STOP_G), STOP_G);
   }
   const gFrom = new THREE.Vector3(), zFrom = new THREE.Vector3();
   const jumpPuff = { done: false };
@@ -315,6 +329,12 @@ function build(ctx: SetContext): BuiltSet {
       shot.offset.x += inChan * Math.sin(t * 23.1) * 0.006 * speed;
       shot.pitch += 0.06 * zWindow(z, Z.lip + 4, Z.lip, Z.lip - 4, Z.lip - 10) - 0.15 * zWindow(z, Z.lip - 8, Z.lip - 20, Z.touch + 2, Z.touch - 8) - 0.3 * zWindow(z, Z.edge + 3, Z.edge - 5, -876, -884);
       shot.offset.y += 0.18 * zWindow(z, Z.lip + 2, Z.lip - 3, Z.touch + 6, Z.touch);
+      // at the cliff the camera cranes up over the toboggan and turns a little to the tableau at the edge
+      const crane = zWindow(z, -810, -832, -850, -862);
+      shot.offset.y += 2.4 * crane;
+      shot.offset.z -= 0.8 * crane;
+      shot.pitch -= 0.16 * crane;
+      shot.yaw -= 0.1 * crane;
 
       // ---- snow in the air; powder from the runners ----
       air.update(t, camPos);
@@ -362,10 +382,10 @@ function build(ctx: SetContext): BuiltSet {
       {
         const zj = STOP_J + ease(z - 44 - STOP_J);
         const atCliff = zj - STOP_J < 0.6;
-        const toEdge = smoothstep(STOP_J + 30, STOP_J, zj);
+        const toEdge = smoothstep(STOP_J + 32, STOP_J + 9, zj);
         let lat = zj > Z.chan1 ? Math.sin(zj * 0.21) * 0.55 : zj > Z.lip ? 0 : zj > Z.touch ? 0 : Math.sin(zj * 0.16) * 2.2 * (1 - toEdge);
-        lat = lerp(lat, 5.8, toEdge);
-        onRun(jopWrap, zj, lat, toEdge * (Math.PI - 0.55));
+        lat = lerp(lat, PROM.x0 + 2.4, toEdge);
+        onRun(jopWrap, zj, lat, toEdge * (Math.PI - 0.9));
         jop.skis.visible = !atCliff || z > STOP_J + 40;
         jop.crouch = atCliff ? 0 : zj < Z.lip && zj > Z.touch ? 0.6 : 0.9;
         jop.lookTarget = eye;
@@ -379,9 +399,9 @@ function build(ctx: SetContext): BuiltSet {
       {
         const lead = lerp(12, 21, smoothstep(-586, -630, z));
         const zg = STOP_G + ease(z - lead - STOP_G);
-        const toEdge = smoothstep(STOP_G + 26, STOP_G, zg);
+        const toEdge = smoothstep(STOP_G + 28, STOP_G + 7, zg);
         let lat = zg > Z.chan1 ? Math.sin(zg * 0.17 + 1) * 0.45 : zg > Z.touch ? 0 : Math.sin(zg * 0.13) * 1.4 * (1 - toEdge);
-        lat = lerp(lat, 3.6, toEdge);
+        lat = lerp(lat, PROM.x0 + 4, toEdge);
         onRun(pair.group, zg, lat, toEdge * 0.5);
         pair.group.visible = z < Z.clear + 14 && z > Z.coverFull;
         pair.gustave.lookTarget = eye; pair.zero.lookTarget = eye;
@@ -404,14 +424,14 @@ function build(ctx: SetContext): BuiltSet {
         if (tumbleT >= 0) {
           tumbleT += dt;
           const k = clamp(tumbleT / 0.9, 0, 1), e = k * k * (3 - 2 * k);
-          const yawG = road.along(Z.edge);
           pair.gustave.group.position.lerpVectors(gFrom, gHang, e);
           pair.gustave.group.position.y += Math.sin(k * Math.PI) * 1.4;
-          pair.gustave.group.rotation.set(0, yawG + Math.PI, 0);
+          // facing the promontory's wall (+x), his back to the path
+          pair.gustave.group.rotation.set(0, Math.PI / 2, 0);
           pair.gustave.mode = k > 0.45 ? 'hang' : 'stand';
           const kz = clamp((tumbleT - 0.3) / 0.9, 0, 1), ez = kz * kz * (3 - 2 * kz);
           pair.zero.group.position.lerpVectors(zFrom, zKneel, ez);
-          pair.zero.group.rotation.set(0, yawG + Math.PI + 0.3, 0);
+          pair.zero.group.rotation.set(0, -Math.PI / 2 + 0.35, 0);
           pair.zero.mode = kz > 0.5 ? 'reach' : 'stand';
           // the empty toboggan slews round and stops at the edge
           pair.body.rotation.y = lerp(0, 0.9, e);
@@ -431,7 +451,8 @@ function build(ctx: SetContext): BuiltSet {
 
       // ---- the ski instructor alongside on the snowfield; the ibex ----
       {
-        const zs = z - lerp(-4, 10, smoothstep(-776, -830, z));
+        // she keeps pace beside the rider, then pulls up short of the edge to watch
+        const zs = SKIER_STOP + ease(z - lerp(-4, 10, smoothstep(-776, -830, z)) - SKIER_STOP, 5);
         const lat = 8 + Math.sin(zs * 0.18) * 2.4;
         onRun(skier.group, zs, lat, Math.cos(zs * 0.18) * 0.35);
         skier.group.position.y = ground(skier.group.position.x, skier.group.position.z);

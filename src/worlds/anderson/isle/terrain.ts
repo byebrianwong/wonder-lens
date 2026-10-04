@@ -87,11 +87,11 @@ export function buildTrashLand(road: Road, lowDetail: boolean): TrashLand {
       const dd = Math.hypot(dx, dz);
       if (dd < f.soft) h = lerp(f.y, h, smoothstep(0, f.soft, dd));
     }
-    // Chief's peak: one column of bales standing above the land round it
+    // the land round Chief's pillar falls away (the pillar itself is set below, after the clearance)
     {
       const dx = Math.abs(x - CHIEF.x), dz = Math.abs(z - CHIEF.z);
-      if (dx < 1 && dz < 2) h = CHIEF.y;
-      else { const dd = Math.hypot(Math.max(0, dx - 1), Math.max(0, dz - 2)); if (dd < 7) h = Math.min(h, CHIEF.y - 6 + dd * 1.4); }
+      const dd = Math.hypot(Math.max(0, dx - 1), Math.max(0, dz - 2));
+      if (dd < 9) h = Math.min(h, CHIEF.y - 8 + dd * 1.2);
     }
     // the loading station's yard is level, with a channel for the cars under the cable
     if (z > STATION.z1 - 4) {
@@ -100,6 +100,8 @@ export function buildTrashLand(road: Road, lowDetail: boolean): TrashLand {
     }
     // never closer than this under the cars (both lines)
     h = Math.min(h, pathY(z) - 2.2 + d * 1.15);
+    // Chief's pillar: one column of bales, 2 x 4, rising beside the cable to just under the car
+    if (Math.abs(x - CHIEF.x) < 1 && Math.abs(z - CHIEF.z) < 2) h = CHIEF.y;
     // pylon footings: a flat pad
     for (const pz of PYLONS) if (Math.abs(z - pz) < 3 && Math.abs(x - PYLON_X) < 3) h = Math.min(h, Math.floor(pathY(pz) - 5.5));
     return h;

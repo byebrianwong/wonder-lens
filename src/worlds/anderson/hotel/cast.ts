@@ -65,7 +65,12 @@ function trimMoustache(a: Adult, color: number) {
  * on heart; catchBox(): he plucks a Mendl's box out of the air and holds it up with a flourish.
  */
 export function makeGustave() {
-  const a = makeAdult({ skin: 0xf0d0bc, hair: 0x3a2a24, style: 'short', top: PURPLE, coat: PURPLE, bottom: { kind: 'trousers', color: PURPLE_DARK }, shoes: 0x161214, face: { mouth: 'small', blush: 0.25 }, hiRes: true, seed: 101, scale: 1.08 });
+  const a = makeAdult({ skin: 0xf0d0bc, hair: 0x33241e, style: 'none', top: PURPLE, coat: PURPLE, bottom: { kind: 'trousers', color: PURPLE_DARK }, shoes: 0x161214, face: { mouth: 'small', blush: 0.25, fringe: 'none' }, hiRes: true, seed: 101, scale: 1.08 });
+  // slicked back: a smooth cap of dark hair with a sheen, close to the head
+  {
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(HEAD_R.adult * 1.04, 24, 14, 0, Math.PI * 2, 0, Math.PI * 0.42), charToon({ color: 0x33241e, rim: 0.6 }));
+    cap.rotation.x = -0.32; cap.position.set(0, 0.012, -0.012); a.head.add(cap);
+  }
   dressTorso(a, uniformTexture({ color: PURPLE, lapel: 0x6e3c86, shirt: 0xfaf6f0, tie: 0x2a1830, buttons: GOLD, double: true, keys: true, braid: GOLD, seed: 7 }));
   trimMoustache(a, 0x3a2a24);
   // the box he catches, in his right hand, hidden until then

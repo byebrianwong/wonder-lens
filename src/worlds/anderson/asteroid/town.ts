@@ -529,6 +529,7 @@ export function buildTown(road: Road, rng: Rng): Town {
     base.add(mesh(merge(lat), white));
     base.add(mesh(cylAt(1.0, 1.0, 0.8, 0, 7.2, 0, 12), white));
     base.position.set(dx, STAGE_Y, dz);
+    base.scale.set(0.8, 1, 0.8);
     castAll(base, true, false);
     statics.add(base);
     const bowl = new THREE.LatheGeometry(Array.from({ length: 10 }, (_, i) => { const r = (i / 9) * 6.5; return new THREE.Vector2(r, r * r * 0.06); }), 32);
@@ -540,6 +541,7 @@ export function buildTown(road: Road, rng: Rng): Town {
     head.rotation.x = 0.9;
     dish.add(head);
     dish.position.set(dx, STAGE_Y + 8, dz);
+    dish.scale.setScalar(0.72);
     castAll(dish, true, false);
     live.add(dish);
   }

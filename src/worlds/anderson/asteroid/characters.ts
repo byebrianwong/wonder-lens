@@ -2,9 +2,8 @@ import * as THREE from 'three';
 import { mergeStatic } from '../../../engine/Builders';
 import { Painter, charToon } from '../../../engine/Paint';
 import { envelope, LookAt, limbGeometry, outline, profileShape, sculpt, Spring } from '../../../engine/Rig';
-import { Rng, TAU, clamp, damp, lerp } from '../../../engine/math';
+import { Rng, TAU, clamp, lerp } from '../../../engine/math';
 import { StopMotion, ownMap } from '../stopmotion';
-import { css } from '../textures';
 import { HEAD_R, hold, makeAdult, makeKid, peakedCap, poseArm, relax, wear, type Adult, type Kid } from '../people';
 import { boxAt, cylAt, merge } from './kit';
 import { AC } from './plan';
@@ -345,6 +344,7 @@ export function makeRoadrunner(seed = 31): Roadrunner {
     const patch = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6), charToon({ color: s > 0 ? 0x5ab4e0 : 0x5ab4e0, rim: 0.2 })); patch.scale.set(0.01, 0.022, 0.04); patch.position.set(s * 0.078, 0.02, -0.02); head.add(patch);
     const orange = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6), charToon({ color: 0xf08a3a, rim: 0.2 })); orange.scale.set(0.01, 0.018, 0.03); orange.position.set(s * 0.076, 0.0, -0.06); head.add(orange);
   }
+  mergeStatic(head);
   const tail = new THREE.Group(); tail.position.set(0, 0.04, -0.28); rig.add(tail);
   const tm = ink(new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.025, 0.58), feathers)); tm.position.z = -0.27; tail.add(tm);
   const legs: THREE.Group[] = [];
@@ -404,6 +404,19 @@ export function makeRoadrunner(seed = 31): Roadrunner {
 // =========================================================================================================
 // PEOPLE
 // =========================================================================================================
+
+/**
+ * Merge every mesh under `root` by material, except the sub-trees in `keep` (joints that still move), which
+ * are lifted out first and put back afterwards. A figure that only nods and waves costs a handful of draw
+ * calls instead of thirty.
+ */
+export function freeze(root: THREE.Object3D, keep: THREE.Object3D[]) {
+  const saved = keep.map((o) => { const p = o.parent!; p.remove(o); return { o, p }; });
+  root.updateMatrixWorld(true);
+  mergeStatic(root);
+  for (const { o, p } of saved) p.add(o);
+  return root;
+}
 
 const pm = new Map<string, THREE.Material>();
 const pmat = (k: string, make: () => THREE.Material) => { let m = pm.get(k); if (!m) { m = make(); pm.set(k, m); } return m; };
@@ -517,7 +530,12 @@ export function makeStargazers(): Stargazers {
   const clifford = makeKid({ hair: 0xc8a060, style: 'short', top: AC.coral, stripes: { color: 0xfbf6ec, count: 6, width: 14 }, sleeves: 'short', bottom: { kind: 'shorts', color: 0xb8a070 }, socks: 0x2f4a7e, shoes: 0x3a2a20, seed: 75 });
   const kids = [woodrow, dinah, clifford];
   const spots: Array<[number, number, number]> = [[-1.2, 0.3, 0.25], [0, 0, 0], [1.25, 0.25, -0.3]];
-  kids.forEach((k, i) => { k.group.scale.setScalar(0.62); k.group.position.set(spots[i][0], 0, spots[i][1]); k.group.rotation.y = spots[i][2]; group.add(k.group); });
+  kids.forEach((k, i) => {
+    k.group.scale.setScalar(0.62); k.group.position.set(spots[i][0], 0, spots[i][1]); k.group.rotation.y = spots[i][2]; group.add(k.group);
+    k.group.traverse((o) => { if ((o as THREE.Mesh).isMesh && !o.userData.outline) o.castShadow = true; });
+    // they stand still from the waist down: the legs and the skirt are merged into the pelvis
+    freeze(k.pelvis, [k.spine]);
+  });
   let cue: 'look' | 'wave' | 'point' | 'stand' = 'stand', cueT = 0;
   const lift = kids.map(() => new Spring(0, 1.6, 0.7));
   return {
@@ -564,13 +582,16 @@ export function makeGeneral(): General {
   wear(fig, peakedCap(HEAD_R.adult, 0x6a6a3c, 0x2a2a1a, 0xd8a840));
   const rib = [0xc8323c, 0x2f4a7e, 0xf6dc8a, 0x52b8b4, 0xf6f2e8, 0xc8323c];
   rib.forEach((c, i) => { const r = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.022, 0.012), pmat(`rib${c}`, () => charToon({ color: c, rim: 0.2 }))); r.position.set(-0.08 + (i % 3) * 0.05, 0.42 - Math.floor(i / 3) * 0.026, 0.13); fig.spine.add(r); });
+  // he stands at the lectern: everything but the gesturing arm and the head is merged
+  poseArm(fig, 1, -0.6, 0.12, -0.9);
+  fig.group.traverse((o) => { if ((o as THREE.Mesh).isMesh && !o.userData.outline) o.castShadow = true; });
+  freeze(fig.group, [fig.shoulder[0], fig.neck]);
   let salT = 9;
   return {
     fig, group: fig.group,
     salute() { salT = 0; },
     update(dt, t, lookAt) {
       salT += dt;
-      relax(fig, dt, 4);
       const s = envelope(salT, 0, 0.3, 2.0, 2.5);
       if (s > 0.01) {
         poseArm(fig, 0, lerp(0, -1.1, s), lerp(0.1, 1.2, s), lerp(0, -2.2, s));
@@ -579,8 +600,8 @@ export function makeGeneral(): General {
         const g = Math.max(0, Math.sin(t * 0.9)) ** 2;
         poseArm(fig, 0, -0.5 - g * 0.9, 0.25, -1.0 - Math.sin(t * 5) * 0.2 * g);
       }
-      poseArm(fig, 1, -0.6, 0.12, -0.9);
       fig.tick(dt, t, lookAt, 0.7);
+      fig.spine.scale.setScalar(1);
     },
   };
 }
@@ -748,4 +769,3 @@ export function makeCarChase(): CarChase {
   };
 }
 
-void css; void damp;

@@ -43,8 +43,8 @@ function paintRange(W: number, H: number, peaks: Peak[], t: Tones, seed: number)
     path(); g.fillStyle = t.rockShade; g.fill();
     g.save(); path(); g.clip();
     // the lit face: from the summit down a spur to the right foot
-    const spurX = k.x + rng.range(-0.15, 0.1) * k.w;
-    const spur = jag(rng, k.x, top, spurX, H + 4, k.w * 0.12);
+    const spurX = k.x + rng.range(0.25, 0.55) * k.w;
+    const spur = jag(rng, k.x, top, spurX, H + 4, k.w * 0.2);
     g.beginPath(); g.moveTo(k.x, top); spur.forEach(([x, y]) => g.lineTo(x, y)); g.lineTo(R + 10, H + 4); g.lineTo(R + 10, top - 10); g.closePath();
     g.fillStyle = t.rockLit; g.fill();
     // snow above a ragged line, lit and shaded the same way
@@ -123,7 +123,7 @@ export function buildPanorama(ground: (x: number, z: number) => number) {
   const mid = paintRange(W, H, range(12, 150, 300, 100, 190, { x: W, h: 430, w: 150 }), {
     snowLit: '#ffe6ee', snowShade: '#a4b6ea', rockLit: '#b896bc', rockShade: '#6e7cc0', base: '#dcdff2', haze: 'rgba(220,223,242,A)', hazeK: 0.14,
   }, 613);
-  const near = paintRange(W, H, range(16, 70, 170, 90, 200, { x: W - 330, h: 150, w: 170 }), {
+  const near = paintRange(W, H, range(16, 70, 170, 90, 200, { x: W, h: 118, w: 210 }), {
     snowLit: '#fff0f2', snowShade: '#9eb2e6', rockLit: '#a07ea8', rockShade: '#545ea0', base: '#d8dcf0', haze: 'rgba(216,220,240,A)', hazeK: 0.08, forest: '#2e4e5e',
   }, 614);
   group.add(ring(980, -120, 560, far, -3), ring(820, -110, 430, mid, -2), ring(660, -100, 190, near, -1));

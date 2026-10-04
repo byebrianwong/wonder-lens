@@ -52,7 +52,9 @@ function build(ctx: SetContext): BuiltSet {
   const F = Y.floor;
 
   // ---------- the rooms ----------
+  const T0 = performance.now(); const tick = (n: string) => console.warn(`[mendls] ${n} ${Math.round(performance.now() - T0)}ms`);
   const rooms = buildRooms(ctx.lowDetail);
+  tick('rooms');
   statics.add(rooms.statics);
   live.add(rooms.shafts);
 
@@ -68,6 +70,7 @@ function build(ctx: SetContext): BuiltSet {
     return cv;
   });
   const sideLines = buildSideLines(live);
+  tick('conveyors');
 
   // ---------- machines ----------
   const mixers = buildMixers(statics, live);
@@ -77,6 +80,7 @@ function build(ctx: SetContext): BuiltSet {
   const folder = buildFolder(statics, live);
   const tower = buildTower(statics, live);
   const shop = buildShop(statics, live, rng);
+  tick('machines+shop');
 
   // ---------- the bakers' tables along the walls ----------
   const bakerSpots: Array<{ pos: THREE.Vector3; yaw: number }> = [];
@@ -110,6 +114,7 @@ function build(ctx: SetContext): BuiltSet {
   zero.group.scale.setScalar(GIANT * 0.94); zero.group.position.set(ZERO.x, F, ZERO.z); zero.group.rotation.y = ZERO.yaw;
   inkForScale(zero.group, GIANT);
   live.add(zero.group);
+  tick('cast');
 
   // ---------- the mount: the pastry box ----------
   const box = buildPastryBox(true);
@@ -133,12 +138,14 @@ function build(ctx: SetContext): BuiltSet {
 
   // ---------- lights ----------
   lights.add({ from: road.u(-298), to: road.u(-398), pos: new THREE.Vector3(0, Y.belt + 22, -350), color: 0xffe2c8, intensity: 110, distance: 90 });
-  lights.add({ from: road.u(-386), to: road.u(-446), pos: new THREE.Vector3(0, Y.belt + 1, -419), color: 0xff9a50, intensity: 85, distance: 50, flicker: 0.6 });
+  lights.add({ from: road.u(-386), to: road.u(-446), pos: new THREE.Vector3(OVENS.x - 5, Y.belt + 2, -419), color: 0xff9a50, intensity: 60, distance: 34, flicker: 0.6 });
   lights.add({ from: road.u(-438), to: road.u(-506), pos: new THREE.Vector3(0, Y.belt + 40, ROT.z), color: 0xf4f0ff, intensity: 130, distance: 90 });
   lights.add({ from: road.u(-498), to: road.u(-572), pos: new THREE.Vector3(0, Y.belt + 14, -536), color: 0xffe8e0, intensity: 110, distance: 70 });
 
   statics.updateMatrixWorld(true);
+  tick('before optimize');
   optimize(statics);
+  tick('optimize');
 
   // ---------- occluders: the walls round the arch and the hatch ----------
   const occluders: THREE.Object3D[] = [];
@@ -232,11 +239,11 @@ function build(ctx: SetContext): BuiltSet {
     update: () => { bakersS.active = between(-313, -392); bakerAnchor.position.x = camPos.x > 0 ? 24 : -24; },
   });
   const mixersS = new Subject({
-    id: 'mixers', name: 'The stand mixers', from: FILMS.gbh, group: anchor(new THREE.Vector3(7.5, Y.belt + 4, -325)), radius: 6, base: 420,
+    id: 'mixers', name: 'The stand mixers', from: FILMS.gbh, group: anchor(new THREE.Vector3(7.5, Y.belt + 4, -333)), radius: 6, base: 420,
     hint: 'Twin stand mixers at the start of the line, whisking cream that spills into two rivers along the belt. Whistle and the whisks go flat out.',
     poses: { whisk: { label: 'Full speed', mult: 1.4 } }, maxDistance: 80, reactRange: 30,
     onCall: () => { mixers.react(); mixersS.setPose('whisk', 2.6); return true; },
-    update: () => { mixersS.active = between(-313, -335); },
+    update: () => { mixersS.active = between(-313, -342); },
   });
   subjects.push(agathaS, mendlS, zeroS, towerS, ribbonS, ovensS, bagsS, windowS, bakersS, mixersS);
 

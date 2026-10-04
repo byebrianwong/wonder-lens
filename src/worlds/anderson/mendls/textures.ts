@@ -174,6 +174,30 @@ export function lidInside(seed = 7) {
   return p.texture({ wrap: false });
 }
 
+/**
+ * The inside of the box's front wall, which the rider sees all the way: cream card printed with a pink lace
+ * border along the rim, a fine blue rule, and the name either side of where the ribbon comes over.
+ */
+export function frontInside() {
+  const W = 1024, H = 384;
+  const p = new Painter(W, H, 47).fill(css(0xfaf2ea));
+  grain(p, 0xfaf2ea, 1.5);
+  const g = p.g;
+  g.fillStyle = css(MC.pink); g.fillRect(0, 0, W, 34);
+  for (let x = 0; x < W; x += 36) { g.beginPath(); g.arc(x + 18, 34, 18, 0, Math.PI); g.fill(); }
+  g.fillStyle = css(0xfaf2ea);
+  for (let x = 0; x < W; x += 36) { g.beginPath(); g.arc(x + 18, 24, 5, 0, TAU); g.fill(); }
+  g.fillStyle = css(MC.navy); g.fillRect(40, 84, W - 80, 3); g.fillRect(40, H - 40, W - 80, 3);
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (const cx of [W * 0.27, W * 0.73]) {
+    fitFont(g, "Mendl's", 'italic bold', SCRIPT, 300, 110);
+    g.fillText("Mendl's", cx, H * 0.5);
+    g.font = `500 22px ${FUTURA}`; spaced(g, 'NEBELSBAD', cx, H * 0.5 + 72, 8);
+  }
+  g.fillStyle = 'rgba(140,90,90,0.12)'; g.fillRect(0, H - 30, W, 30);
+  return p.texture({ wrap: false });
+}
+
 /** The inside of a side flap: cream card with a pink lace edge along the fold-out side and the name in small blue script. */
 export function flapInside() {
   const W = 512, H = 136;

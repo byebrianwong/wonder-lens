@@ -451,12 +451,13 @@ export function buildLobby(road: Road, m: HotelMats): Lobby {
   let bell: THREE.Object3D;
   {
     const dx = DESK.x, dz = DESK.z, len = DESK.len;
-    const front = mesh(new THREE.PlaneGeometry(len, 1.15), new THREE.MeshLambertMaterial({ map: deskFront() }), dx + 0.71, F + 0.58, dz);
+    const DH = 0.98;
+    const front = mesh(new THREE.PlaneGeometry(len, DH), new THREE.MeshLambertMaterial({ map: deskFront() }), dx + 0.71, F + DH / 2, dz);
     front.rotation.y = Math.PI / 2; add(front);
-    add(box(1.4, 1.15, len, darkWood, dx, F + 0.575, dz));
-    add(tbox(1.8, 0.12, len + 0.4, stepMarble, 2, dx + 0.1, F + 1.21, dz));
-    add(box(0.12, 0.08, len + 0.4, m.gold, dx + 1.0, F + 1.16, dz));
-    for (const s of [-1, 1]) add(box(1.4, 1.15, 0.12, m.gold, dx, F + 0.575, dz + s * (len / 2 + 0.05)));
+    add(box(1.4, DH, len, darkWood, dx, F + DH / 2, dz));
+    add(tbox(1.8, 0.12, len + 0.4, stepMarble, 2, dx + 0.1, F + DH + 0.06, dz));
+    add(box(0.12, 0.08, len + 0.4, m.gold, dx + 1.0, F + DH + 0.01, dz));
+    for (const s of [-1, 1]) add(box(1.4, DH, 0.12, m.gold, dx, F + DH / 2, dz + s * (len / 2 + 0.05)));
     // the wall of cubbies behind, with a cornice and the sign
     const wx = -L.half + 0.06;
     const cub = mesh(new THREE.PlaneGeometry(len + 1, 5), new THREE.MeshLambertMaterial({ map: keyCubbies() }), wx + 0.25, F + 3.1, dz);
@@ -466,15 +467,15 @@ export function buildLobby(road: Road, m: HotelMats): Lobby {
     const sign = mesh(new THREE.PlaneGeometry(6, 0.95), new THREE.MeshBasicMaterial({ map: goldSign('CONCIERGE') }), wx + 0.42, F + 6.7, dz);
     sign.rotation.y = Math.PI / 2; add(sign);
     // on the desk: the register, a telephone, a lamp with a pink shade
-    add(box(0.7, 0.08, 1.0, new THREE.MeshLambertMaterial({ color: 0x5a1a24 }), dx + 0.2, F + 1.31, dz + 2.5), box(0.62, 0.02, 0.9, m.cream, dx + 0.2, F + 1.36, dz + 2.5));
-    add(cyl(0.1, 0.14, 0.05, m.dark, dx + 0.1, F + 1.3, dz - 2.6, 10), cyl(0.03, 0.03, 0.5, m.dark, dx + 0.1, F + 1.55, dz - 2.6, 6), cyl(0.07, 0.05, 0.12, m.dark, dx + 0.1, F + 1.82, dz - 2.6, 8));
-    add(cyl(0.12, 0.16, 0.05, m.gold, dx - 0.3, F + 1.3, dz - 3.6, 10), cyl(0.03, 0.03, 0.8, m.gold, dx - 0.3, F + 1.7, dz - 3.6, 6), cyl(0.18, 0.36, 0.4, new THREE.MeshLambertMaterial({ color: 0xf2a6b8, emissive: 0xa04050 }), dx - 0.3, F + 2.15, dz - 3.6, 12));
+    add(box(0.7, 0.08, 1.0, new THREE.MeshLambertMaterial({ color: 0x5a1a24 }), dx + 0.2, F + DH + 0.16, dz + 2.5), box(0.62, 0.02, 0.9, m.cream, dx + 0.2, F + DH + 0.21, dz + 2.5));
+    add(cyl(0.1, 0.14, 0.05, m.dark, dx + 0.1, F + DH + 0.15, dz - 2.6, 10), cyl(0.03, 0.03, 0.5, m.dark, dx + 0.1, F + DH + 0.4, dz - 2.6, 6), cyl(0.07, 0.05, 0.12, m.dark, dx + 0.1, F + DH + 0.67, dz - 2.6, 8));
+    add(cyl(0.12, 0.16, 0.05, m.gold, dx - 0.3, F + DH + 0.15, dz - 3.6, 10), cyl(0.03, 0.03, 0.8, m.gold, dx - 0.3, F + DH + 0.55, dz - 3.6, 6), cyl(0.18, 0.36, 0.4, new THREE.MeshLambertMaterial({ color: 0xf2a6b8, emissive: 0xa04050 }), dx - 0.3, F + DH + 1.0, dz - 3.6, 12));
     // the brass bell, separate so it can jump when rung
     const b = new THREE.Group();
     b.add(cyl(0.16, 0.18, 0.05, darkWood, 0, 0.025, 0, 14));
     const dome = mesh(new THREE.SphereGeometry(0.13, 14, 8, 0, TAU, 0, Math.PI / 2), m.brass, 0, 0.05, 0); b.add(dome);
     b.add(cyl(0.015, 0.015, 0.06, m.brass, 0, 0.2, 0, 5), sphere(0.03, m.brass, 0, 0.24, 0, 6, 5));
-    b.position.set(dx + 0.45, F + 1.27, dz + 0.4);
+    b.position.set(dx + 0.45, F + DH + 0.12, dz + 0.4);
     g.add(b);
     bell = b;
   }

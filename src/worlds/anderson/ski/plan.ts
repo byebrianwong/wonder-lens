@@ -14,7 +14,7 @@ export const Z = {
   /** the lid of the pastry box is lifted (the cover clears) */
   clear: -586,
   hut: -552,
-  gate: -597,
+  gate: -606,
   /** the summit's edge: the run tips over */
   tip: -604,
   /** the ice channel of the bobsled run */
@@ -43,6 +43,8 @@ export const SPOT = {
   ibex: new THREE.Vector3(-25, 0, -808),
 };
 export const VALLEY = -62;
+/** the promontory over the chasm, right of where the run goes off the edge (its flat top) */
+export const PROM = { x0: 5.6, x1: 15.6, z0: -846, z1: -858 };
 /** flat-topped crags: [top centre, radius of the flat top] */
 const KNOBS: Array<[THREE.Vector3, number]> = [[SPOT.obs, 12.5], [SPOT.station, 7.5], [SPOT.chapel, 12]];
 
@@ -149,7 +151,7 @@ export function makePlan(road: Road): Plan {
     } else if (z > Z.chan1) {
       // the bobsled run: the channel sits in a trench; the banks come up just under its wall tops and rise
       // on into the slope
-      if (al < CH_OUT - 0.1) near = py - 1.6;
+      if (al < CH_OUT + 0.45) near = py - 1.9;
       else {
         const top = wallTop(p.z, Math.sign(lat)) - 0.3 - 0.25 * smoothstep(CH_OUT, CH_OUT + 3, al);
         const slope = 1.6 + 2.2 * smoothstep(6, 26, al) + n1 * 1.4 * smoothstep(6, 14, al);
@@ -172,6 +174,10 @@ export function makePlan(road: Road): Plan {
       const drift = r2 < 1 ? -3.8 - 26 * r2 * r2 + n1 * 1.5 : -60;
       near = Math.max(chasm, drift);
       if (z < Z.edge - 3) near = Math.max(drift, VALLEY + 22 - (Z.edge - 3 - z) * 0.4);
+      // the promontory jutting out over the chasm on the right, where the chase ends
+      const dxp = Math.max(PROM.x0 - x, 0, x - PROM.x1), dzp = Math.max(PROM.z1 - z, 0);
+      const dp = Math.hypot(dxp, dzp);
+      if (dp < 6) near = Math.max(near, lerp(7.9 + n1 * 0.3, VALLEY + 10, Math.pow(smoothstep(0, 5, dp), 0.6)));
     }
     // away from the run the mountain falls into the valleys on either side
     const crest = near;

@@ -62,7 +62,7 @@ export function carMaterials() {
     plate: M('plate', () => texMat(rustIron(0x6a3e2c, 213, 1))),
     steel: M('steel', () => texMat(rustIron(0x56605a, 215, 0.45))),
     hazard: M('hazard', () => texMat(hazard())),
-    cube: M('cube', () => new THREE.MeshLambertMaterial({ map: baleAtlas(), color: 0xc8a070 })),
+    cube: M('cube', () => new THREE.MeshLambertMaterial({ map: baleAtlas(), color: 0xe8dcc0 })),
     strap: M('strap', () => toon(0x2a2a28)),
   };
 }
@@ -85,7 +85,7 @@ function baleBox(s: number, tile: number) {
 function buildCar(detail: boolean) {
   const g = new THREE.Group();
   const m = carMaterials();
-  const X = 1.6, ZB = -1.6, ZF = 2.4, H = 0.98, L = ZF - ZB, zc = (ZF + ZB) / 2;
+  const X = 1.6, ZB = -1.6, ZF = 2.4, H = 0.84, L = ZF - ZB, zc = (ZF + ZB) / 2;
   // outer sides: stencilled panels
   for (const s of [-1, 1]) {
     const p = mesh(new THREE.PlaneGeometry(L, H), m.side, s * (X + 0.035), H / 2, zc);
@@ -126,10 +126,10 @@ function buildCar(detail: boolean) {
   g.add(cyl(0.08, 0.08, 0.5, m.steel, 0.3, 4.85, GRIP_Z, 8));
   for (const s of [-1, 1]) g.add(box(0.1, 0.5, 0.36, m.steel, s * (X + 0.1), 0.6, GRIP_Z));
   // a bale of trash, strapped
-  const cube = mesh(baleBox(1.2, 3), m.cube, -0.86, 0.6, 0.9);
+  const cube = mesh(baleBox(1.2, 3), m.cube, -0.86, 0.6, -0.85);
   cube.rotation.y = 0.12;
   g.add(cube);
-  for (const y of [0.34, 0.86]) { const st = box(1.24, 0.05, 1.24, m.strap, -0.86, y, 0.9); st.rotation.y = 0.12; g.add(st); }
+  for (const y of [0.34, 0.86]) { const st = box(1.24, 0.05, 1.24, m.strap, -0.86, y, -0.85); st.rotation.y = 0.12; g.add(st); }
   if (detail) {
     // inside: rusty walls and floor (the rider sees these), with a sign on the front wall
     for (const s of [-1, 1]) {
@@ -140,7 +140,7 @@ function buildCar(detail: boolean) {
       const p = mesh(new THREE.PlaneGeometry(X * 2, H), m.inner, 0, H / 2, z);
       p.rotation.y = ry; g.add(p);
     }
-    const fl = mesh(repeatUV(new THREE.PlaneGeometry(X * 2, L), 1.6, 2), m.plate, 0, 0.01, zc);
+    const fl = mesh(repeatUV(new THREE.PlaneGeometry(X * 2, L), 3.2, 4), m.plate, 0, 0.01, zc);
     fl.rotation.x = -Math.PI / 2; g.add(fl);
     // inside ribs and a cross-brace on the floor
     for (const s of [-1, 1]) for (let z = ZB + 0.8; z < ZF - 0.3; z += 0.8) g.add(box(0.06, H - 0.1, 0.06, m.steel, s * (X - 0.07), H / 2, z));

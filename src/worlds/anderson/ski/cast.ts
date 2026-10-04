@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { box, cyl, sphere } from '../../../engine/Builders';
 import { charToon } from '../../../engine/Paint';
 import { envelope, outline } from '../../../engine/Rig';
@@ -33,7 +34,14 @@ export class Beat {
 
 /** Cast shadows from a figure's body (not its ink lines). */
 function shade(g: THREE.Object3D) {
-  g.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && !m.userData.outline) m.castShadow = true; });
+  // only the bigger parts: the small ones (buttons, ears, rings) cost a draw call each in the shadow pass
+  g.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || m.userData.outline) return;
+    if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
+    const s = m.scale;
+    m.castShadow = m.geometry.boundingSphere!.radius * Math.max(s.x, s.y, s.z) > 0.12;
+  });
 }
 
 /** Pose the legs so the feet stay on the ground: hip bend `a` (negative swings the thigh forward), knee bend `k`. */
@@ -96,8 +104,7 @@ export function makeJopling(): Jopling {
   group.add(f.group);
   // black gloves over the hands, and the brass knuckles on the right fist
   for (const h of f.hand) { const gl = new THREE.Mesh(new THREE.SphereGeometry(0.052, 10, 8), flat(0x141216)); gl.scale.set(0.85, 1.1, 0.7); gl.position.copy(h.position); h.parent!.add(gl); h.visible = false; }
-  const knux = new THREE.Group();
-  for (let i = 0; i < 4; i++) { const r = new THREE.Mesh(new THREE.TorusGeometry(0.017, 0.007, 5, 10), flat(0xd8b25a)); r.position.set(-0.03 + i * 0.02, 0, 0.035); knux.add(r); }
+  const knux = new THREE.Mesh(mergeGeometries([0, 1, 2, 3].map((i) => new THREE.TorusGeometry(0.017, 0.007, 5, 10).translate(-0.03 + i * 0.02, 0, 0.035)), false)!, flat(0xd8b25a));
   knux.position.copy(f.hand[0].position).add(new THREE.Vector3(0, -0.03, 0));
   f.hand[0].parent!.add(knux);
   // a widow's peak of black hair and a high collar turned up against the cold
@@ -273,7 +280,9 @@ export function makeZero(): Zero {
   group.add(f.group);
   wear(f, pillboxCap(HEAD_R.adult, 0x5d3a8a, 0xd8a840, 'LOBBY BOY'));
   // two rows of gold buttons down the jacket
-  for (const s of [-1, 1]) for (let i = 0; i < 4; i++) { const b = sphere(0.016, flat(0xd8a840), s * 0.06, 0.18 + i * 0.085, 0.135, 6, 5); f.spine.add(b); }
+  const btn: THREE.BufferGeometry[] = [];
+  for (const s of [-1, 1]) for (let i = 0; i < 4; i++) btn.push(new THREE.SphereGeometry(0.016, 6, 5).translate(s * 0.06, 0.18 + i * 0.085, 0.135));
+  f.spine.add(new THREE.Mesh(mergeGeometries(btn, false)!, flat(0xd8a840)));
   shade(group);
   const bow = new Beat(2.6);
   const z: Zero = {

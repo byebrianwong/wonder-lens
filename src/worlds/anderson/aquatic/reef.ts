@@ -206,6 +206,8 @@ export interface Reef {
   floor(x: number, z: number): number;
   /** the glowing specks on the deep cliffs, brightened by the set */
   deepGlow: THREE.MeshBasicMaterial;
+  /** the painted flats' materials: their colour follows the fog, so they always read as a darker silhouette */
+  flats: THREE.MeshBasicMaterial[];
   /** top of the arch at its middle, where the octopus sits */
   archTop: THREE.Vector3;
   /** top of the crabs' ledge */
@@ -425,11 +427,11 @@ export function buildReef(road: Road, lowDetail: boolean): Reef {
   }
 
   // ---- the coral arch over the path, where the paisley octopus sits ----
-  const archTop = V(0, py(Z.arch) + 6.3, Z.arch);
+  const archTop = V(0, py(Z.arch) + 7.1 + 1.0, Z.arch);
   {
     const pz = Z.arch, p0 = py(pz);
     const footY = (x: number) => H(x, pz) - 1;
-    const pts = [V(-9.5, footY(-9.5), pz + 0.6), V(-8.2, p0 + 1.5, pz + 0.3), V(-6.4, p0 + 4.6, pz), V(-3.2, p0 + 6.2, pz - 0.2), V(0, archTop.y - 0.9, pz), V(3.2, p0 + 6.2, pz + 0.2), V(6.4, p0 + 4.6, pz), V(8.2, p0 + 1.5, pz - 0.3), V(9.5, footY(9.5), pz - 0.6)];
+    const pts = [V(-9.5, footY(-9.5), pz + 0.6), V(-8.4, p0 + 1.5, pz + 0.3), V(-7.0, p0 + 4.4, pz), V(-4.4, p0 + 6.4, pz - 0.2), V(0, p0 + 7.1, pz), V(4.4, p0 + 6.4, pz + 0.2), V(7.0, p0 + 4.4, pz), V(8.4, p0 + 1.5, pz - 0.3), V(9.5, footY(9.5), pz - 0.6)];
     const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
     const segs = 70, radial = 14;
     const geo = new THREE.TubeGeometry(curve, segs, 1, radial, false);
@@ -521,8 +523,9 @@ export function buildReef(road: Road, lowDetail: boolean): Reef {
 
   console.warn('[aq] reef', dbg.join(' '));
   // ---------- the painted flats at the back of the set ----------
+  const flats: THREE.MeshBasicMaterial[] = [];
   {
-    const flatMat = (seed: number, color: number) => new THREE.MeshBasicMaterial({ map: reefFlat(seed), color, alphaTest: 0.5, side: THREE.DoubleSide, fog: true });
+    const flatMat = (seed: number, color: number) => { const m = new THREE.MeshBasicMaterial({ map: reefFlat(seed), color, alphaTest: 0.5, side: THREE.DoubleSide, fog: true }); flats.push(m); return m; };
     const layers: Array<[number, number, number]> = [[38, 16, 0x2a7890], [52, 24, 0x2a7088], [68, 32, 0x2a6a84]];
     layers.forEach(([ax, h, col], li) => {
       const mat = flatMat(600 + li, col);
@@ -574,5 +577,5 @@ export function buildReef(road: Road, lowDetail: boolean): Reef {
     if (Math.hypot(x - memorial.x, z - memorial.z) < 1.8) return memorial.y;
     return H(x, z);
   };
-  return { group, floor, deepGlow, archTop, ledgeTop, memorial };
+  return { group, floor, deepGlow, flats, archTop, ledgeTop, memorial };
 }

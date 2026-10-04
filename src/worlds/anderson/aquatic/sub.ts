@@ -163,7 +163,7 @@ export function buildDeepSearch(): DeepSearch {
   dial(gaugeFace('FATHOMS'), 0.23, 0.075);
   dial(gaugeFace('COMPASS', '#e8f0f6'), -0.23, 0.065);
   const sonar = dial(sonarFace(), 0, 0.095);
-  panel.position.set(0, DOME.y - 0.08, DOME.z + 0.64);
+  panel.position.set(0, DOME.y - 0.2, DOME.z + 0.72);
   add(panel);
   // a red knit beanie left beside the panel
   {
@@ -185,11 +185,11 @@ export function buildDeepSearch(): DeepSearch {
     lp.add(mesh(new THREE.CircleGeometry(0.17, 18), lampGlass, 0, 0, 0.175));
     // the bracket to the hull
     lp.add(mesh(new THREE.BoxGeometry(0.12, 0.3, 0.14), steel, -s * 0.1, -0.16, -0.06));
-    lp.position.set(s * 0.92, AXIS + 0.5, 2.85);
+    lp.position.set(s * 1.02, AXIS + 0.12, 2.6);
     lp.rotation.y = s * 0.06;
     add(lp);
     const anchor = new THREE.Object3D();
-    anchor.position.set(s * 0.92, AXIS + 0.5, 3.05);
+    anchor.position.set(s * 1.02, AXIS + 0.12, 2.8);
     group.add(anchor);
     lamps.push(anchor);
   }
@@ -333,14 +333,14 @@ export function buildDeepSearch(): DeepSearch {
   const needle = mesh(new THREE.BoxGeometry(0.006, 0.06, 0.004), new THREE.MeshBasicMaterial({ color: 0xc8202a }), 0, 0, 0);
   needle.geometry.translate(0, 0.025, 0);
   const needleHolder = new THREE.Group();
-  needleHolder.position.set(0.23, DOME.y - 0.08 + 0.152, DOME.z + 0.64 - 0.001);
+  needleHolder.position.set(0.23, DOME.y - 0.2 + 0.152, DOME.z + 0.72 - 0.001);
   needleHolder.rotation.set(TILT, 0, Math.PI);
   needleHolder.add(needle);
   body.add(needleHolder);
   const sweep = mesh(new THREE.PlaneGeometry(0.01, 0.09), new THREE.MeshBasicMaterial({ color: 0x8affb0, transparent: true, opacity: 0.85 }), 0, 0, 0);
   sweep.geometry.translate(0, 0.045, 0);
   const sweepHolder = new THREE.Group();
-  sweepHolder.position.set(0, DOME.y - 0.08 + 0.153, DOME.z + 0.64 - 0.001);
+  sweepHolder.position.set(0, DOME.y - 0.2 + 0.153, DOME.z + 0.72 - 0.001);
   sweepHolder.rotation.set(TILT, 0, Math.PI);
   sweepHolder.add(sweep);
   body.add(sweepHolder);
@@ -424,7 +424,7 @@ export function buildDeepSearch(): DeepSearch {
     const cone = new THREE.ConeGeometry(2.6, 15, 20, 1, true);
     cone.translate(0, -7.5, 0);
     cone.rotateX(-Math.PI / 2);
-    const m = mesh(cone, beamMat, s * 0.92, AXIS + 0.5, 3.05);
+    const m = mesh(cone, beamMat, s * 1.02, AXIS + 0.12, 2.8);
     m.rotation.y = s * 0.06;
     m.renderOrder = 5;
     body.add(m);

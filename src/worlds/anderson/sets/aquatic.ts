@@ -1,10 +1,16 @@
 import * as THREE from 'three';
 import { Rng, smoothstep } from '../../../engine/math';
 import { FogCuller } from '../../../engine/Culling';
-import type { Subject } from '../../../game/Subject';
+import { Subject } from '../../../game/Subject';
 import { SETS } from '../layout';
-import { showRange, type BuiltSet, type SetContext, type SetModule, type ZLightKey } from '../common';
-import { Z, deepness, surfaced } from '../aquatic/plan';
+import { FILMS, forwardOf, showRange, zWindow, type BuiltSet, type SetContext, type SetModule, type ZLightKey } from '../common';
+import { LEDGE, Z, deepness, surfaced } from '../aquatic/plan';
+import { PonyfishSchool } from '../aquatic/ponyfish';
+import { SugarCrabs } from '../aquatic/crabs';
+import { Jellyfish } from '../aquatic/jellyfish';
+import { Octopus } from '../aquatic/octopus';
+import { JaguarShark } from '../aquatic/shark';
+import { estebanHelmet } from '../aquatic/props';
 import { buildReef } from '../aquatic/reef';
 import { SEA, tickSea } from '../aquatic/shaders';
 import { buildDeepSearch } from '../aquatic/sub';
@@ -119,10 +125,132 @@ function build(ctx: SetContext): BuiltSet {
   const lampPos = new THREE.Vector3();
   lights.add({ from: road.u(-2186), to: road.u(-2300), pos: lampPos, color: 0xfff0d8, intensity: 34, distance: 28 });
 
-  if (DEBUG) console.warn(`[aq] built in ${Math.round(performance.now() - t0)} ms`);
   const subjects: Subject[] = [];
   const camPos = new THREE.Vector3();
   const tmp = new THREE.Vector3();
+  const py = (z: number) => road.at(z).y;
+  const zOf = (ride: { position: THREE.Vector3 }) => ride.position.z;
+  const live = new THREE.Group();
+  group.add(live);
+
+  // ---------- the crayon ponyfish: two schools milling beside the path ----------
+  const schools = [new PonyfishSchool(ctx.lowDetail ? 16 : 24, new THREE.Vector3(3.6, py(-2120) + 1.4, -2120)), new PonyfishSchool(ctx.lowDetail ? 16 : 24, new THREE.Vector3(-3.8, py(-2166) + 1.2, -2166))];
+  const ponyAnchor = new THREE.Object3D();
+  for (const sc of schools) live.add(sc.mesh);
+  live.add(ponyAnchor);
+  const nearSchool = () => (camPos.z > -2143 ? schools[0] : schools[1]);
+  const ponyS = new Subject({
+    id: 'ponyfish', name: 'Crayon ponyfish', from: FILMS.aquatic, group: ponyAnchor, radius: 3, base: 650, crowd: true,
+    hint: 'Schools of little fish striped in crayon colours, milling round and round beside the path in the reef. Blow the whistle and they swirl round the bubble; throw a box and they dart to it.',
+    poses: { swirl: { label: 'Swirling round the bubble', mult: 1.7 }, dart: { label: 'Darting for the box', mult: 1.5 } },
+    onCall: () => { nearSchool().swirl(); ponyS.setPose('swirl', 4.5); return true; },
+    onItem: (pos) => { nearSchool().dartTo(pos); ponyS.setPose('dart', 4); return true; }, reactRange: 16, maxDistance: 60,
+    update: (_dt, ride) => { const z = zOf(ride); ponyS.active = z < -2096 && z > -2180; ponyAnchor.position.copy(nearSchool().anchor.position); },
+  });
+  subjects.push(ponyS);
+
+  // ---------- the sugar crabs on their ledge ----------
+  const crabs = new SugarCrabs(ctx.lowDetail ? 6 : 9, new THREE.Vector3(LEDGE.x, reef.ledgeTop, LEDGE.z), LEDGE.r * 0.85);
+  live.add(crabs.group, crabs.anchor);
+  const crabS = new Subject({
+    id: 'sugar-crabs', name: 'Sugar crabs', from: FILMS.aquatic, group: crabs.anchor, radius: 2.6, base: 600, crowd: true,
+    hint: 'Candy-striped crabs on a flat rock on the left, early in the reef. Throw a box onto the rock and they all rush to it; blow the whistle and they wave their claws.',
+    poses: { rush: { label: 'Sugar rush', mult: 1.7 }, claws: { label: 'Claws up', mult: 1.4 } },
+    onItem: (pos) => { if (!crabs.rush(pos)) return false; crabS.setPose('rush', 5); return true; },
+    onCall: () => { crabs.wave(); crabS.setPose('claws', 3); return true; }, reactRange: 9, maxDistance: 50,
+    update: (_dt, ride) => { const z = zOf(ride); crabS.active = z < -2096 && z > -2150; },
+  });
+  subjects.push(crabS);
+
+  // ---------- the paisley octopus on the arch ----------
+  const octo = new Octopus(6);
+  octo.group.position.copy(reef.archTop).add(new THREE.Vector3(0, -0.3, 0));
+  octo.group.scale.setScalar(1.25);
+  live.add(octo.group);
+  const octoAnchor = new THREE.Object3D();
+  octoAnchor.position.set(0, 1.2, 0.3);
+  octo.group.add(octoAnchor);
+  const octoS = new Subject({
+    id: 'octopus', name: 'The paisley octopus', from: FILMS.aquatic, group: octoAnchor, radius: 2.8, base: 900, rarity: 'rare',
+    hint: 'Draped over the top of the coral arch you pass under, watching you with big eyes. Blow the whistle and it shows off its colours; throw a box and it squirts ink.',
+    poses: { show: { label: 'Showing off', mult: 1.8 }, ink: { label: 'Ink!', mult: 1.6 } },
+    facing: forwardOf(octo.group),
+    onCall: () => { octo.showOff(); octoS.setPose('show', 3.2); return true; },
+    onItem: () => { octo.squirt(); octoS.setPose('ink', 3); return true; }, reactRange: 12, maxDistance: 70,
+    update: (_dt, ride) => { const z = zOf(ride); octoS.active = z < -2100 && z > -2162; },
+  });
+  subjects.push(octoS);
+
+  // ---------- Esteban's helmet ----------
+  const helmet = estebanHelmet();
+  helmet.position.copy(reef.memorial);
+  helmet.rotation.y = -1.1;
+  live.add(helmet);
+  const helmetS = new Subject({
+    id: 'esteban', name: "Esteban's helmet", from: FILMS.aquatic, group: helmet, radius: 1.2, base: 450, centerOffset: new THREE.Vector3(0, 0.6, 0),
+    hint: "Steve's old partner Esteban was eaten by the jaguar shark. His brass diving helmet lies on a rock on the right, just before the drop-off, with a red beanie on it.",
+    maxDistance: 40,
+    update: (_dt, ride) => { const z = zOf(ride); helmetS.active = z < -2140 && z > -2190; },
+  });
+  subjects.push(helmetS);
+
+  // ---------- the electric jellyfish over the drop-off ----------
+  const jellyPlaces: THREE.Vector3[] = [];
+  {
+    const jr = new Rng(2244);
+    while (jellyPlaces.length < (ctx.lowDetail ? 22 : 34)) {
+      const z = jr.range(Z.jelly1, Z.jelly0), x = jr.sign() * jr.range(2, 17), y = py(z) + 1.5 + jr.range(-7, 7);
+      if (Math.abs(x) < 4 && Math.abs(y - py(z) - 1.2) < 3) continue;
+      jellyPlaces.push(new THREE.Vector3(x, y, z));
+    }
+  }
+  const jelly = new Jellyfish(jellyPlaces.length, jellyPlaces);
+  live.add(jelly.group, jelly.anchor);
+  const jellyS = new Subject({
+    id: 'jellyfish', name: 'Electric jellyfish', from: FILMS.aquatic, group: jelly.anchor, radius: 2.5, base: 750, rarity: 'rare', crowd: true,
+    hint: 'Glowing jellyfish drifting over the drop-off where the reef ends. Blow the whistle and a wave of light runs out through them.',
+    poses: { glow: { label: 'All lit up', mult: 1.8 } },
+    onCall: () => { jelly.glow(camPos); jellyS.setPose('glow', 4); return true; }, maxDistance: 60,
+    update: (_dt, ride) => { const z = zOf(ride); jellyS.active = z < -2170 && z > -2250; },
+  });
+  subjects.push(jellyS);
+  const jellyLight = new THREE.Vector3();
+  const jellySpot = { from: road.u(-2168), to: road.u(-2246), pos: jellyLight, color: 0x8af0ff, intensity: 18, distance: 24 };
+  lights.add(jellySpot);
+
+  // ---------- the jaguar shark ----------
+  const shark = new JaguarShark();
+  live.add(shark.group);
+  // where it is relative to the sub, by the rider's z: far off in the dark, across the path ahead, then gliding
+  // alongside on the right while the sub slowly overtakes it, its eye level with the bubble; then down into the abyss
+  const SHARK: Array<[number, number, number, number]> = [
+    [-2194, -34, -16, -66], [-2210, -17, -8, -50], [-2222, -1, -4, -42], [-2232, 8.5, -1.6, -34], [-2246, 9.5, -0.6, -24],
+    [-2260, 8.2, 0.2, -10], [-2274, 6.8, 0.6, 2], [-2284, 7.6, -1.5, 9], [-2294, 11, -10, 19], [-2306, 15, -26, 32],
+  ];
+  const sharkCurve = new THREE.CatmullRomCurve3(SHARK.map(([, x, y, z]) => new THREE.Vector3(x, y, z)), false, 'centripetal');
+  const sharkAt = (z: number, out: THREE.Vector3) => {
+    const zc = Math.min(SHARK[0][0], Math.max(SHARK[SHARK.length - 1][0], z));
+    let i = 0;
+    while (i < SHARK.length - 2 && zc < SHARK[i + 1][0]) i++;
+    const k = (SHARK[i][0] - zc) / (SHARK[i][0] - SHARK[i + 1][0]);
+    sharkCurve.getPoint((i + k) / (SHARK.length - 1), out);
+    const r = road.at(zc);
+    return out.add(new THREE.Vector3(r.x, r.y, r.z));
+  };
+  const sharkP = new THREE.Vector3(), sharkNext = new THREE.Vector3(), sharkVel = new THREE.Vector3();
+  const sharkQ = new THREE.Quaternion(), sharkLook = new THREE.Matrix4();
+  let sharkInit = false;
+  const sharkS = new Subject({
+    id: 'jaguar-shark', name: 'The jaguar shark', from: FILMS.aquatic, group: shark.head, radius: 6, base: 1500, rarity: 'legendary',
+    hint: 'In the dark past the drop-off. Huge, spotted like a jaguar, its spots glowing. It crosses ahead and then glides alongside on your right, its eye level with the bubble. Blow the whistle and its spots blaze.',
+    poses: { glow: { label: 'Its spots blaze', mult: 2.0 } },
+    facing: forwardOf(shark.group),
+    onCall: () => { shark.flare(); sharkS.setPose('glow', 3.2); return true; }, maxDistance: 90,
+    update: (_dt, ride) => { const z = zOf(ride); sharkS.active = z < -2206 && z > -2298; },
+  });
+  subjects.push(sharkS);
+
+  if (DEBUG) console.warn(`[aq] built in ${Math.round(performance.now() - t0)} ms`);
   let riderZ = R.z0;
   let emitAcc = 0, dbgN = 0;
   const ventAcc = vents.map(() => 0);
@@ -195,10 +323,46 @@ function build(ctx: SetContext): BuiltSet {
         if (OFF.includes('inst')) reef.group.traverse((o) => { if ((o as THREE.InstancedMesh).isInstancedMesh) o.visible = false; });
         for (const c of reef.group.children) if (c.name && OFF.some((k) => c.name.startsWith(k))) c.visible = false;
       }
+      if (fog) reef.flats.forEach((m, i) => m.color.copy(fog.color).multiplyScalar(0.62 + i * 0.06));
       reef.deepGlow.color.setHex(0x9ff8ff).multiplyScalar(0.6 + 0.4 * Math.sin(t * 0.7) * Math.sin(t * 0.23));
 
       // the sub's lamp light runs just ahead of it in the deep
       ctx.vehicle.localToWorld(lampPos.set(0, 1.2, 6));
+
+      // ---- the reef's creatures ----
+      if (z > -2200) {
+        for (const sc of schools) sc.update(dt, t, camPos);
+        crabs.update(dt, t);
+        octo.update(dt, camPos);
+      }
+      // ---- the jellyfish: brighter as the light goes ----
+      if (z < -2160 && z > -2260) {
+        jelly.level = 0.55 + 0.45 * deep;
+        jelly.update(dt, camPos, fog);
+        jellyLight.set(camPos.x + 4, camPos.y + 2, camPos.z - 8);
+        jellySpot.intensity = 14 + 10 * deep + (jelly.glowing ? 22 : 0);
+      }
+      // ---- the jaguar shark ----
+      const sv = z < -2190 && z > -2310;
+      shark.group.visible = sv;
+      if (sv) {
+        sharkAt(z, sharkP);
+        sharkAt(z - 1.5, sharkNext);
+        sharkVel.subVectors(sharkNext, sharkP);
+        // where it is barely moving it keeps facing on along the path
+        sharkVel.addScaledVector(new THREE.Vector3(0, 0, -1), 0.35);
+        sharkVel.y *= 0.4;
+        sharkVel.normalize();
+        sharkLook.lookAt(new THREE.Vector3(), sharkVel.clone().negate(), new THREE.Vector3(0, 1, 0));
+        const q = new THREE.Quaternion().setFromRotationMatrix(sharkLook);
+        if (!sharkInit) { sharkQ.copy(q); sharkInit = true; } else sharkQ.slerp(q, 1 - Math.exp(-1.6 * dt));
+        shark.group.position.copy(sharkP);
+        shark.group.quaternion.copy(sharkQ);
+        shark.presence = smoothstep(-2192, -2206, z) * (1 - smoothstep(-2290, -2306, z));
+        shark.update(dt, camPos, 1);
+        // a slow pan to the right while it glides alongside
+        ctx.shot.yaw += -0.22 * zWindow(z, -2238, -2256, -2272, -2290);
+      }
     },
   };
   return set;

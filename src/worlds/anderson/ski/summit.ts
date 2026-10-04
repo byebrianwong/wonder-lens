@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { box, cone, cyl, mesh, roofGeometry, sphere, toon } from '../../../engine/Builders';
+import { box, cone, cyl, mergeStatic, mesh, roofGeometry, sphere, toon } from '../../../engine/Builders';
 import { Painter, boxUV, repeatUV } from '../../../engine/Paint';
 import { TAU, clamp } from '../../../engine/math';
 import { facadeTile, fishScales, planks, stucco } from '../textures';
@@ -55,6 +55,8 @@ export function flagpole(h: number, field: number, trim: number, kind: 'keys' | 
   const geo = new THREE.PlaneGeometry(1.1, 2.4, 4, 6);
   geo.translate(0.55, -1.2, 0);
   const f = new THREE.Mesh(geo, m(`ban${field}${trim}${kind}`, () => toon(0xffffff, { map: bannerTexture(field, trim, kind), side: THREE.DoubleSide, alphaTest: 0.5 })));
+  // the banner moves, so merging leaves it alone; the pole merges with the rest of the scenery
+  f.userData.keep = true;
   flag.add(f);
   g.add(flag);
   return { group: g, flag };
@@ -244,6 +246,11 @@ export function buildObservatory(): Observatory {
   const anchor = new THREE.Object3D();
   anchor.position.set(0, 9, 3);
   g.add(anchor);
+  // the dome and the telescope move: merge each one's parts, and keep them out of the scene-wide merge
+  mergeStatic(telescope);
+  telescope.traverse((o) => { o.userData.keep = true; });
+  mergeStatic(dome);
+  dome.traverse((o) => { o.userData.keep = true; });
   return { group: g, dome, telescope, anchor };
 }
 
@@ -367,6 +374,13 @@ function gondola() {
   g.add(box(2.6, 0.5, 0.5, iron(), 0, 0, 0));
   for (const x of [-1, 1]) g.add(cyl(0.38, 0.38, 0.3, iron(), x, 0.2, 0, 10).rotateX(Math.PI / 2));
   g.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
+  // the cabin swings and the whole gondola travels: merge its parts, and keep them out of the scene-wide merge
+  mergeStatic(hang);
+  const carriage = new THREE.Group();
+  for (const c of [...g.children]) if (c !== hang) carriage.add(c);
+  g.add(carriage);
+  mergeStatic(carriage);
+  g.traverse((o) => { o.userData.keep = true; });
   return g;
 }
 

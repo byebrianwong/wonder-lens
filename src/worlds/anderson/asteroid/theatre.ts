@@ -377,7 +377,7 @@ export function buildTheatre(rng: Rng): Theatre {
   // the grid overhead: a dark ceiling, pipes, and sky borders hanging from it with rows of lanterns
   {
     const gz = (S.z0 + S.back) / 2, gd = S.z0 - S.back;
-    const grid = mesh(new THREE.PlaneGeometry(S.half * 2, gd), new THREE.MeshLambertMaterial({ color: 0x1a1e24 }), 0, S.grid, gz);
+    const grid = mesh(new THREE.PlaneGeometry(S.half * 2, gd), new THREE.MeshBasicMaterial({ color: 0x2a3a4a, fog: false }), 0, S.grid, gz);
     grid.rotation.x = Math.PI / 2; statics.add(grid);
     const pipes: THREE.BufferGeometry[] = [];
     for (let z = S.z0 - 8; z > S.back + 10; z -= 6) pipes.push(rodGeometry(V(-S.half, S.grid - 1.5, z), V(S.half, S.grid - 1.5, z), 0.12, 5));
@@ -441,7 +441,9 @@ export function buildTheatre(rng: Rng): Theatre {
     const halo = mesh(new THREE.PlaneGeometry(R * 7, R * 7), sunHaloMat, 0, 0, 0.3); halo.renderOrder = 2; sun.add(halo);
     sun.position.set(30, 36, -1824);
     sun.lookAt(V(4, 4, -1600));
-    statics.add(sun);
+    // merged on its own (its lens changes colour at night, so it must keep its own material)
+    mergeStatic(sun);
+    live.add(sun);
     statics.add(mesh(rodGeometry(V(30, 40.6, -1826), V(30, S.grid, -1826), 0.2, 6), new THREE.MeshLambertMaterial({ color: 0x2c2e34 })));
   }
   const sunBeam = lightShaft(V(30, 33, -1820), V(10, STAGE_Y, -1760), 26, 0xffe8b8, 0.09);

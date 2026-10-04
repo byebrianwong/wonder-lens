@@ -137,6 +137,33 @@ export function makeAtariPuppet(): Atari {
   };
 }
 
+/**
+ * Fewer draw calls: meshes that hang still on the same joint and share a material are merged into one mesh
+ * on that joint (meshes with children, such as a hand holding a stick, are left alone).
+ */
+function mergeSiblings(root: THREE.Object3D) {
+  const parents: THREE.Object3D[] = [];
+  root.traverse((o) => parents.push(o));
+  for (const parent of parents) {
+    const buckets = new Map<THREE.Material, THREE.Mesh[]>();
+    for (const c of parent.children) {
+      const m = c as THREE.Mesh;
+      if (!m.isMesh || (m as THREE.SkinnedMesh).isSkinnedMesh || m.children.length || Array.isArray(m.material)) continue;
+      const list = buckets.get(m.material as THREE.Material) ?? [];
+      list.push(m); buckets.set(m.material as THREE.Material, list);
+    }
+    for (const [mm, list] of buckets) {
+      if (list.length < 2) continue;
+      const geos = list.map((m) => { m.updateMatrix(); const gg = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone(); for (const k of Object.keys(gg.attributes)) if (!['position', 'normal', 'uv'].includes(k)) gg.deleteAttribute(k); if (!gg.attributes.uv) gg.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(gg.attributes.position.count * 2), 2)); return gg.applyMatrix4(m.matrix); });
+      const merged = mergeGeometries(geos, false);
+      if (!merged) continue;
+      const out = new THREE.Mesh(merged, mm);
+      for (const m of list) parent.remove(m);
+      parent.add(out);
+    }
+  }
+}
+
 // ---------------- taiko drummers ----------------
 export interface Drummer {
   group: THREE.Group;
@@ -223,6 +250,7 @@ export function makeDrummer(seed: number, drumR = 0.62): Drummer {
   const outlines: THREE.Object3D[] = [];
   a.group.traverse((o) => { if (o.userData.outline) outlines.push(o); });
   for (const o of outlines) o.removeFromParent();
+  mergeSiblings(a.group);
   a.group.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) m.castShadow = true; });
 
   const sm = new StopMotion(12, seed);

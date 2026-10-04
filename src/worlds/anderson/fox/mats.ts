@@ -24,7 +24,7 @@ export function makeMats() {
     studioWall: lit(wallpaper(0xf0e2c0, 0xd8b080, 'stripe', 2), 0.3),
     studyWall: lit(wallpaper(0x4a6a50, 0x6a8a62, 'diamond', 3), 0.25),
     sittingWall: lit(wallpaper(0xe08a44, 0xf4d090, 'flower', 4), 0.3),
-    boysWall: lit(wallpaper(0xa8c4c8, 0xf0e8d0, 'dot', 5), 0.3),
+    boysWall: lit(wallpaper(0xd8a860, 0xa84a2a, 'dot', 5), 0.3),
     larderWall: lit(wallpaper(0xe8d8b0, 0xb88a50, 'diamond', 6), 0.25),
     kitchenFloor: lit(tiles(0xf0e0b8, 0xc8603a), 0.2),
     studioFloor: lit(boards(0xc08a50, 19, true), 0.2),
@@ -50,7 +50,7 @@ export function makeMats() {
     brick: lit(bricks(), 0.12),
     staves: lit(barrelStaves(), 0.15),
     barrelEnd: lit(barrelEnd(), 0.15),
-    cider: new THREE.MeshLambertMaterial({ map: ripples, emissive: 0xffffff, emissiveMap: ripples, emissiveIntensity: 0.75, transparent: true, opacity: 0.94 }),
+    cider: new THREE.MeshLambertMaterial({ map: ripples, emissive: 0xffffff, emissiveMap: ripples, emissiveIntensity: 0.55, transparent: true, opacity: 0.94 }),
     grass: lit(nightGrass(), 0.05),
     excavator: lit(excavatorPaint(), 0.05),
   };

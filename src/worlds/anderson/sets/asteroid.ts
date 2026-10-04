@@ -273,9 +273,9 @@ function build(ctx: SetContext): BuiltSet {
     // the beam reaches down to whatever is below: the bowl of the crater, or the rim
     const floorY = t < 6.6 ? STAGE_Y + 0.05 : rimTop.y;
     ufo.beam(ufoPos.y - 1 - floorY, beamK);
-    beamSpot.pos.set(ufoPos.x, floorY + 3, ufoPos.z);
+    beamSpot.pos.set(ufoPos.x, floorY + 7, ufoPos.z + 2);
     lights.boost.set(beamSpot, beamK);
-    beamSpot.intensity = 70;
+    beamSpot.intensity = 26;
     // the alien
     alien.group.visible = t > 2.4 && t < 12.4;
     let yaw = Math.PI * 0.5;
@@ -306,7 +306,7 @@ function build(ctx: SetContext): BuiltSet {
     else if (t >= 7.4 && t < 10.6) alienS.setPose('posing', 0.3);
     else if (t >= 10.6 && t < 12.4) alienS.setPose('floating', 0.3);
     if (t < 2.2) ufoS.setPose('descend', 0.3); else if (beamK > 0.5) ufoS.setPose('beam', 0.3);
-    if (t > 1 && t < 13) { kids.cue('point'); kidsS.setPose('point', 0.3); }
+    if (t > 1 && t < 13) { kids.cue('point'); kidsS.setPose('point', 0.3); } else if (t >= 13 && t - lastDt < 13) kids.cue('look');
     ufo.group.visible = t < 15.2;
   };
   let lastDt = 0;
@@ -399,11 +399,14 @@ function build(ctx: SetContext): BuiltSet {
       else lights.boost.set(flashSpot, 0);
 
       // ---- the general, the cowboys, the kids ----
-      if (z > -1790) general.update(dt, t, camPos);
+      if (general.group.visible) general.update(dt, t, camPos);
       if (z > -1712) cowboys.update(dt, t);
-      cowboys.group.visible = z > -1712;
+      cowboys.group.visible = z > -1712 && z < -1566;
       if (night > 0.6 && ufoT < 0) kids.cue('look');
-      kids.update(dt, t, camPos);
+      // the stargazers come on for the last act (they are a speck at the far end before that)
+      kids.group.visible = z < -1662;
+      if (kids.group.visible) kids.update(dt, t, camPos);
+      general.group.visible = z < -1590 && z > -1790;
 
       // ---- the meteorite glows when hit ----
       rockGlowT += dt;

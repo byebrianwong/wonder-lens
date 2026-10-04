@@ -2,10 +2,10 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { box, cone, cyl, mesh, sphere, toon } from '../../../engine/Builders';
 import { Painter, boxUV } from '../../../engine/Paint';
-import { Rng, fbm } from '../../../engine/math';
+import { Rng, fbm, lerp } from '../../../engine/math';
 import { planks } from '../textures';
 import { PAL } from '../kit';
-import { CH_OUT, SPOT, Z, type Plan } from './plan';
+import { CH_OUT, PROM, SPOT, Z, type Plan } from './plan';
 import { signTexture } from './textures';
 import { flagpole } from './summit';
 import { makeCrowd, makeJudges, type Crowd, type Judges } from './creatures';
@@ -64,9 +64,10 @@ export function buildDressing(plan: Plan, ground: (x: number, z: number) => numb
       const [a, b] = cols[fi++ % cols.length];
       const fp = flagpole(5.2, a, b, 'stripe');
       fp.group.position.set(p.x, ground(p.x, p.z) - 0.2, p.z);
-      fp.group.rotation.y = road.along(z) + (s > 0 ? Math.PI : 0) + Math.PI / 2;
-      live.add(fp.group);
-      flags.push(fp.flag);
+      fp.group.rotation.y = road.along(z) + (s > 0 ? Math.PI : 0) + Math.PI / 2 + 0.3;
+      // these whip past too fast to see them flutter: they merge with the rest of the scenery
+      fp.flag.traverse((o) => { o.userData.keep = false; });
+      statics.add(fp.group);
     }
   }
   const curveBoard = (z: number, s: number, text: string) => {
@@ -101,7 +102,7 @@ export function buildDressing(plan: Plan, ground: (x: number, z: number) => numb
       fp.group.position.copy(q).setY(road.at(Z.lip + 1).y - 0.2);
       fp.group.scale.setScalar(1.25);
       fp.group.rotation.y = road.along(Z.lip) + Math.PI / 2;
-      live.add(fp.group);
+      statics.add(fp.group);
       flags.push(fp.flag);
     }
     // little pennants along the in-run's side boards
@@ -231,17 +232,32 @@ export function buildDressing(plan: Plan, ground: (x: number, z: number) => numb
     ibexSpot.set(base.x + 1.2, base.y + 8.75, base.z - 0.6);
   }
 
-  // ---------- the snow cornice along the cliff edge ----------
+  // ---------- a rolled lip of snow along the cliff edge and round the promontory ----------
   {
     const parts: THREE.BufferGeometry[] = [];
-    for (let x = -46; x < 46; x += 3.2) {
-      if (Math.abs(x) < 2.2) continue;
-      const y = ground(x, Z.edge + 1.5);
-      const c = new THREE.SphereGeometry(1, 10, 6);
-      c.scale(2.2, 0.9 + rng.range(0, 0.5), 1.6);
-      c.translate(x + rng.range(-0.3, 0.3), y - 0.15, Z.edge - 0.2);
-      parts.push(c.toNonIndexed());
-    }
+    /** a lip from (xa, za) to (xb, zb), lying on the snow just inside the edge (offset (ix, iz) inwards) */
+    const lip = (xa: number, za: number, xb: number, zb: number, ix: number, iz: number, seed: number) => {
+      const len = Math.hypot(xb - xa, zb - za), n = Math.max(3, Math.round(len / 1.9));
+      const pts: THREE.Vector3[] = [];
+      for (let i = 0; i <= n; i++) {
+        const k = i / n, x = lerp(xa, xb, k), z = lerp(za, zb, k);
+        const w = Math.sin(i * 1.3 + seed) * 0.2;
+        pts.push(V(x + (iz !== 0 ? 0 : w), ground(x + ix * 1.4, z + iz * 1.4) - 0.25 + Math.sin(i * 0.9 + seed) * 0.1, z + (iz !== 0 ? w : 0)));
+      }
+      // squash the tube about its own height, so it lies low along the edge
+      const base = pts[0].y;
+      const tube = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map((p) => p.clone().setY(p.y - base))), n * 2, 0.8, 8, false);
+      tube.scale(1, 0.75, 1); tube.translate(0, base, 0);
+      parts.push(tube.toNonIndexed());
+      for (const p of [pts[0], pts[pts.length - 1]]) { const c = new THREE.SphereGeometry(0.8, 10, 8); c.scale(1, 0.75, 1); c.translate(p.x, p.y, p.z); parts.push(c.toNonIndexed()); }
+    };
+    const E = Z.edge - 0.15;
+    lip(-1.7, E, -46, E, 0, 1, 1);
+    lip(1.7, E, PROM.x0 - 0.3, E, 0, 1, 2);
+    lip(PROM.x0, E, PROM.x0, PROM.z1, 1, 0, 3);
+    lip(PROM.x0, PROM.z1, PROM.x1, PROM.z1, 0, 1, 4);
+    lip(PROM.x1, PROM.z1, PROM.x1, E, -1, 0, 5);
+    lip(PROM.x1 + 0.3, E, 46, E, 0, 1, 6);
     const cornice = new THREE.Mesh(mergeGeometries(parts, false)!, new THREE.MeshLambertMaterial({ color: 0xf8f6fc }));
     cornice.receiveShadow = true;
     statics.add(cornice);
@@ -249,7 +265,7 @@ export function buildDressing(plan: Plan, ground: (x: number, z: number) => numb
     const rocks: THREE.BufferGeometry[] = [];
     for (let i = 0; i < 40; i++) {
       const x = rng.range(-60, 60), y = rng.range(-36, 4);
-      if (Math.abs(x) < 12 && y < -2) continue;
+      if ((Math.abs(x) < 12 && y < -2) || (x > 2 && x < 18)) continue;
       const g = new THREE.DodecahedronGeometry(rng.range(1.5, 4), 0);
       g.scale(1.3, 1, 0.8);
       g.translate(x, y, Z.edge - 2.5 - rng.range(0, 3) - (4 - y) * 0.06);
