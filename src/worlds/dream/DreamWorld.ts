@@ -147,7 +147,7 @@ function build(ctx: WorldContext): BuiltWorld {
   const ridePos = new THREE.Vector3(), lastPos = new THREE.Vector3();
   let havePos = false;
   const tan = new THREE.Vector3(), prevTan = new THREE.Vector3(0, 0, -1);
-  let bank = 0, grinDone = false, freeT = -1;
+  let bank = 0, grinDone = false, freeT = -1, freeYaw = Math.PI, freePitch = 0, climbLift = 0;
   const mInv = new THREE.Matrix4(), mW = new THREE.Matrix4(), qW = new THREE.Quaternion(), pW = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
   const yAxis = new THREE.Vector3(0, 1, 0), xAxis = new THREE.Vector3(1, 0, 0);
   const camPos = new THREE.Vector3(), lookPick = new THREE.Vector3(), lookTarget = new THREE.Vector3();
@@ -302,12 +302,14 @@ function build(ctx: WorldContext): BuiltWorld {
         const extra = Math.atan2(ride.tangent.y, flat) - Math.atan2(ride.tangent.y * 0.35, flat);
         mount.root.position.set(0, 0, 0);
         mount.root.quaternion.setFromAxisAngle(xAxis, -extra * 0.9);
+        // nose up, the head rises into the view: lift the seat with it
+        climbLift = damp(climbLift, Math.max(0, Math.sin(extra * 0.9)) * 3.2, 4, dt);
         mount.root.userData.lastP = null;
         cb.running = true;
         cb.stride = moved;
         pickLook(dt);
         cb.lookTarget = lookHave ? lookTarget : null;
-        anchor.set(0, seat.y + cb.lift * 0.3 + (current.bump?.(z) ?? 0), seat.z);
+        anchor.set(0, seat.y + climbLift + cb.lift * 0.3 + (current.bump?.(z) ?? 0), seat.z);
         cameraAnchor.rotation.set(0, Math.PI, 0);
         freeT = -1;
       } else if (kind === 'haku') {
@@ -321,16 +323,24 @@ function build(ctx: WorldContext): BuiltWorld {
       } else {
         // the closing shot: the Catbus runs on ahead and away over the hill; the camera rises behind it
         if (freeT < 0) {
-          freeT = 0;
+          freeT = 0; freeYaw = Math.PI; freePitch = 0;
           const p0 = ridePos.clone();
           runOff.v0.copy(p0); runOff.v1.set(p0.x, p0.y, p0.z - 60); runOff.v2.set(p0.x + 26, p0.y + 10, p0.z - 120); runOff.v3.set(p0.x + 70, p0.y + 26, p0.z - 200);
           mount.root.userData.lastP = p0.clone();
         }
         freeT += dt;
-        const k = clamp(freeT / 16, 0, 1);
+        // up the hill in RUN seconds (the home scene shapes the hill to this curve), then on up off the
+        // top into the morning sky, faster and faster, before the album opens
+        const RUN = 7;
+        const k = clamp(freeT / RUN, 0, 1);
         const e = k * k * (3 - 2 * k) * 0.6 + k * 0.4;
         const p = runOff.getPointAt(e);
         const dir = runOff.getTangentAt(Math.min(e, 0.999));
+        if (freeT > RUN) {
+          const s = (freeT - RUN) * (14 + (freeT - RUN) * 4);
+          dir.setY(0).normalize();
+          p.addScaledVector(dir, s).y += s * 0.5;
+        }
         cb.running = true;
         cb.stride = (mount.root.userData.lastP as THREE.Vector3).distanceTo(p);
         (mount.root.userData.lastP as THREE.Vector3).copy(p);
@@ -339,7 +349,15 @@ function build(ctx: WorldContext): BuiltWorld {
         cb.lookTarget = null;
         const c = smoothstep(0, 7, freeT);
         anchor.set(0, seat.y + c * 9, seat.z - c * 7);
-        cameraAnchor.rotation.set(-0.16 * c, Math.PI, 0, 'YXZ');
+        // the camera turns to follow the Catbus as it runs off
+        vehicle.updateMatrixWorld(true);
+        lookPick.copy(p).y += 2.5;
+        vehicle.worldToLocal(lookPick).sub(anchor);
+        const wantYaw = Math.atan2(-lookPick.x, -lookPick.z), wantPitch = Math.atan2(lookPick.y, Math.hypot(lookPick.x, lookPick.z));
+        const f = smoothstep(0, 2.5, freeT);
+        freeYaw = damp(freeYaw, lerp(Math.PI, wantYaw < 0 ? wantYaw + Math.PI * 2 : wantYaw, f), 2, dt);
+        freePitch = damp(freePitch, lerp(0, clamp(wantPitch, -0.3, 0.35), f), 2, dt);
+        cameraAnchor.rotation.set(freePitch, freeYaw, 0, 'YXZ');
       }
       cb.update(dt, t);
 
