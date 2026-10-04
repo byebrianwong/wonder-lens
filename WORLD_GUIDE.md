@@ -1,6 +1,6 @@
-# Building a world for Window Seat
+# Building a world for Wonder Lens
 
-Window Seat is an on-rails 3D photo ride (Pokémon Snap style) built with Vite + TypeScript + three.js.
+Wonder Lens is an on-rails 3D photo ride (Pokémon Snap style) built with Vite + TypeScript + three.js.
 Every asset is procedural: geometry from primitives, textures from canvas, audio synthesised. No external files.
 
 ## Where things live
