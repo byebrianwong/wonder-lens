@@ -61,7 +61,6 @@ function optimizeAC(root: THREE.Object3D) {
 }
 
 function build(ctx: SetContext): BuiltSet {
-  const t0 = performance.now();
   const { road, lights, fx, shot } = ctx;
   const group = new THREE.Group();
   const rng = new Rng(1955);
@@ -320,10 +319,6 @@ function build(ctx: SetContext): BuiltSet {
     return bermY(x, z);
   };
 
-  if (import.meta.env.DEV) {
-    const count = (g: THREE.Object3D) => { let n = 0, c = 0; g.traverse((o) => { if ((o as THREE.Mesh).isMesh) { n++; if (o.castShadow) c++; } }); return `${n}/${c}`; };
-    console.warn(`[asteroid] built in ${Math.round(performance.now() - t0)} ms; meshes/casters: theatre ${count(theatre.statics)} + ${count(theatre.live)}, town ${count(town.statics)} + ${count(town.live)}, cast ${count(cast)}`);
-  }
 
   let cloudT = -1;
   return {

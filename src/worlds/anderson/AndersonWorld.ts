@@ -110,6 +110,13 @@ function build(ctx: WorldContext): BuiltWorld {
   const mountAt = (z: number) => mounts.find((m) => z <= m.z0 && z > m.z1) ?? null;
   let mount: MountDef | null = null;
 
+  // A subject is never active while its scene is hidden. The game updates subjects after the world, and a
+  // subject's own update may set `active` from the rider's z alone, so the guard wraps each subject's update.
+  const shown = new Set<BuiltSet>();
+  for (const s of list) for (const sub of s.subjects) {
+    const own = sub.update.bind(sub);
+    sub.update = (dt, ride) => { own(dt, ride); if (!shown.has(s)) sub.active = false; };
+  }
   const subjects = list.flatMap((s) => s.subjects);
   const occluders = list.flatMap((s) => s.occluders);
 
@@ -194,6 +201,7 @@ function build(ctx: WorldContext): BuiltWorld {
       for (const s of list) {
         const on = u >= s.show[0] && u <= s.show[1];
         s.group.visible = on;
+        if (on) shown.add(s); else shown.delete(s);
         if (on) s.update(dt, t, ride);
         else for (const sub of s.subjects) sub.active = false;
       }

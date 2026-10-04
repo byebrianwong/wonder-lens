@@ -32,7 +32,7 @@ import { Bubbles, LightShafts, SeaSurface, Specks } from '../aquatic/water';
  */
 
 const R = SETS.aquatic;
-const DEBUG = true;
+const DEBUG = false;
 const OFF = typeof location !== 'undefined' ? (new URLSearchParams(location.search).get('aqoff') ?? '').split(',') : [];
 const GOLD = new THREE.Color(0xffd690), WINDOW_GOLD = new THREE.Color(0xffe2b0);
 

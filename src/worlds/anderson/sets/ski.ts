@@ -145,11 +145,6 @@ function build(ctx: SetContext): BuiltSet {
   ibex.group.rotation.y = 0.9;
   live.add(ibex.group);
 
-  // DEBUG-COUNT
-  {
-    const tally = (o: THREE.Object3D) => { let n = 0, sh = 0; o.traverse((c) => { const m = c as THREE.Mesh; if ((m.isMesh || (c as THREE.Points).isPoints) && c.visible) { n++; if (m.castShadow) sh++; } }); return `${n}/${sh}`; };
-    console.warn(`[ski-count] statics ${tally(statics)} mountain ${tally(mountain.group)} jop ${tally(jop.group)} pair ${tally(pair.group)} skier ${tally(skier.group)} ibex ${tally(ibex.group)} monks ${tally(monks.group)} dress.live ${tally(dress.live)} sled ${tally(sled.group)}`);
-  }
   // ---------- photo subjects ----------
   const camPos = new THREE.Vector3();
   const eye = new THREE.Vector3();

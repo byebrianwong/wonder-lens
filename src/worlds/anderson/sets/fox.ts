@@ -54,16 +54,14 @@ export const LIGHTS: ZLightKey[] = [
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
 function build(ctx: SetContext): BuiltSet {
-  const t0 = performance.now();
   const { road, lights } = ctx;
   const rng = new Rng(4040);
   const group = new THREE.Group();
   const m = makeMats();
-  console.warn(`[fox]   materials ${Math.round(performance.now() - t0)} ms`);
   const zOf = (ride: { position: THREE.Vector3 }) => ride.position.z;
 
   // ---------------- the sets ----------------
-  const tm = <T,>(name: string, f: () => T) => { const a = performance.now(); const r = f(); console.warn(`[fox]   ${name} ${Math.round(performance.now() - a)} ms`); return r; };
+  const tm = <T,>(_name: string, f: () => T) => f();
   tm('mats', () => 0);
   const home = tm('home', () => buildHome(road, rng, m));
   const town = tm('town', () => buildTown(road, rng, m));
@@ -94,7 +92,6 @@ function build(ctx: SetContext): BuiltSet {
   for (let i = 0; i < N; i++) { const s = dropFrom[i % 2]; dirtPos.set([s.x + drng.range(-1.5, 1.5), drng.range(Y.town, s.y), s.z + drng.range(-1.5, 1.5)], i * 3); dirtVel[i] = drng.range(0, 6); }
 
   // ---------------- the cast ----------------
-  const tc = performance.now();
   const mrFox = makeMrFox();
   mrFox.group.position.copy(home.spots.mrFox);
   const mrsFox = makeMrsFox();
@@ -113,7 +110,6 @@ function build(ctx: SetContext): BuiltSet {
   const wolf = makeWolf();
   wolf.group.position.copy(hill.spots.wolf.pos); wolf.group.rotation.y = hill.spots.wolf.yaw; wolf.group.scale.setScalar(1.6);
   group.add(mrFox.group, mrsFox.group, boys.group, kylie.group, badger.group, rabbit.group, moles.group, rat.group, wolf.group);
-  console.warn(`[fox]   cast ${Math.round(performance.now() - tc)} ms`);
 
   // ---------------- lights ----------------
   const L = (z0: number, z1: number, pos: THREE.Vector3, color: number, intensity: number, distance: number, flicker?: number) => lights.add({ from: road.u(z0), to: road.u(z1), pos, color, intensity, distance, flicker });
@@ -234,7 +230,6 @@ function build(ctx: SetContext): BuiltSet {
   };
 
   const cam = new THREE.Vector3();
-  console.warn(`[fox] built in ${Math.round(performance.now() - t0)} ms`);
   return {
     id: 'fox', group, show: showRange(road, R, 12, 6), occluders: home.occluders, subjects, floor, water: Y.cider,
     update(dt, t, ride) {

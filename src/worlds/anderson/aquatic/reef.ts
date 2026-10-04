@@ -521,7 +521,6 @@ export function buildReef(road: Road, lowDetail: boolean): Reef {
     group.add(ig);
   }
 
-  console.warn('[aq] reef', dbg.join(' '));
   // ---------- the painted flats at the back of the set ----------
   const flats: THREE.MeshBasicMaterial[] = [];
   {

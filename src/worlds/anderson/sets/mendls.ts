@@ -52,7 +52,7 @@ function build(ctx: SetContext): BuiltSet {
   const F = Y.floor;
 
   // ---------- the rooms ----------
-  const T0 = performance.now(); const tick = (n: string) => console.warn(`[mendls] ${n} ${Math.round(performance.now() - T0)}ms`);
+  const tick = (_n: string) => { /* build stages, for timing while developing */ };
   const rooms = buildRooms(ctx.lowDetail);
   tick('rooms');
   statics.add(rooms.statics);
