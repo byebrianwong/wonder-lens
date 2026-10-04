@@ -93,6 +93,11 @@ export interface BuiltWorld {
    * still reads as a jolt.
    */
   speedAt?(u: number): number;
+  /**
+   * Optional: how loud the vehicle's own sound is along the ride (0..1, default 1), for a world whose rider
+   * changes vehicle (the train's clatter stops while the rider is on a toboggan).
+   */
+  vehicleAt?(u: number): number;
   dispose(): void;
 }
 
