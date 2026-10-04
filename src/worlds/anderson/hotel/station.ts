@@ -142,8 +142,9 @@ export function buildStation(m: HotelMats): Station {
   for (const s of [-1, 1]) {
     const w = S.terraceHalf - S.edge;
     g.add(tbox(w, top - 0.1 - TOWN_Y + 1, zLen, m.ashlar, 4, s * (S.edge + w / 2), (top - 0.1 + TOWN_Y - 1) / 2, zMid, 2));
-    // platform paving (under the canopies) and snow beyond
+    // platform paving (under the canopies and swept beyond them) and snow at the sides
     g.add(tbox(S.outer - S.edge - 0.5, 0.12, S.z0 - S.z1, m.paving, 2, s * ((S.outer + S.edge + 0.5) / 2), top - 0.06, (S.z0 + S.z1) / 2));
+    g.add(tbox(2.2, 0.16, S.canopyZ1 - S.z1, m.snow, 8, s * (S.outer - 0.9), top - 0.03, (S.canopyZ1 + S.z1) / 2));
     g.add(tbox(S.terraceHalf - S.outer, 0.14, zLen, m.snow, 8, s * ((S.terraceHalf + S.outer) / 2), top - 0.05, zMid));
     // the platform ends beyond the canopies, under snow
     g.add(tbox(S.outer - S.edge - 0.5, 0.12, S.z1 - S.terraceZ1, m.snow, 8, s * ((S.outer + S.edge + 0.5) / 2), top - 0.05, (S.z1 + S.terraceZ1) / 2));
@@ -179,7 +180,7 @@ export function buildStation(m: HotelMats): Station {
       }
     }
     // roof: a shallow slab, boards underneath, snow on top, lifting a little towards the track
-    const cw = S.outer + 0.4 - (S.edge + 0.2), cx = s * (S.edge + 0.2 + cw / 2), cz0 = 72, cz1 = 10.5, cl = cz0 - cz1;
+    const cw = S.outer + 0.4 - (S.edge + 0.2), cx = s * (S.edge + 0.2 + cw / 2), cz0 = S.canopyZ0, cz1 = S.canopyZ1, cl = cz0 - cz1;
     const under = mesh(repeatUV(new THREE.PlaneGeometry(cw, cl), 1, cl / 4), boards, cx, S.canopyY - 0.18, (cz0 + cz1) / 2);
     under.rotation.x = Math.PI / 2; under.rotation.y = 0;
     g.add(under);
@@ -201,6 +202,12 @@ export function buildStation(m: HotelMats): Station {
       g.add(cyl(0.025, 0.025, 1.0, m.iron, x, S.canopyY - 0.7, z, 5));
       g.add(cyl(0.16, 0.24, 0.18, m.brass, x, S.canopyY - 1.25, z, 10));
       g.add(sphere(0.3, m.lamp, x, S.canopyY - 1.6, z, 12, 10));
+    }
+    // lamp standards on the open ends of the platforms
+    for (const z of [24, 13]) {
+      const x = s * (S.edge + 2.2);
+      g.add(cyl(0.07, 0.11, 4.2, m.iron, x, top + 2.1, z, 8), cyl(0.24, 0.3, 0.3, m.iron, x, top + 0.15, z, 8));
+      g.add(cyl(0.12, 0.2, 0.2, m.brass, x, top + 4.25, z, 8), sphere(0.32, m.lamp, x, top + 4.6, z, 12, 10));
     }
     // benches against the outer edge, facing the track
     for (const z of s < 0 ? [50, 18] : [58, 34]) {

@@ -78,19 +78,46 @@ export function ashlar(color = 0xe2cfc8, seed = 7) {
   return p.texture({ repeat: [1, 1] });
 }
 
-/** Rough rock for the cliff's cut faces and the viaduct's footings. One tile = 6 x 6 units. */
+/**
+ * The cliff's rock: pinkish-mauve stone in slanting strata, split by dark vertical cracks into tall facets,
+ * lit on one side, with snow caught on the tops of the steps. One tile = 9 x 9 units.
+ */
 export function rock(color = 0x9a8a8e, seed = 9) {
   const S = 256;
   const p = new Painter(S, S, seed).fill(css(color));
   const g = p.g, rng = p.rng;
-  for (let i = 0; i < 70; i++) {
-    const x = rng.range(0, S), y = rng.range(0, S), w = rng.range(20, 70), h = rng.range(10, 30);
-    g.fillStyle = css(color, rng.range(0.82, 1.15)); g.beginPath();
-    g.moveTo(x, y); g.lineTo(x + w, y + rng.range(-6, 6)); g.lineTo(x + w * 0.8, y + h); g.lineTo(x + w * 0.1, y + h * 0.9); g.closePath(); g.fill();
-    g.strokeStyle = css(color, 0.62); g.lineWidth = 1.5; g.stroke();
+  // tall facets, each lighter on its left side and darker on its right
+  let x = 0;
+  while (x < S) {
+    const w = rng.range(14, 40), k = rng.range(0.86, 1.12);
+    const gr = g.createLinearGradient(x, 0, x + w, 0);
+    gr.addColorStop(0, css(color, k * 1.14)); gr.addColorStop(0.55, css(color, k)); gr.addColorStop(1, css(color, k * 0.8));
+    g.fillStyle = gr; g.fillRect(x, 0, w, S);
+    x += w;
   }
-  // snow caught on the ledges
-  for (let i = 0; i < 40; i++) { g.fillStyle = 'rgba(250,248,255,0.85)'; g.fillRect(rng.range(0, S), rng.range(0, S), rng.range(10, 40), rng.range(2, 4)); }
+  // strata: faint slanting bands across
+  for (let i = 0; i < 14; i++) {
+    const y = rng.range(0, S), t = rng.range(3, 10);
+    g.fillStyle = rng.next() < 0.5 ? 'rgba(255,230,235,0.12)' : 'rgba(60,30,50,0.12)';
+    g.beginPath(); g.moveTo(0, y); g.lineTo(S, y - 18); g.lineTo(S, y - 18 + t); g.lineTo(0, y + t); g.closePath(); g.fill();
+  }
+  // cracks
+  g.strokeStyle = css(color, 0.5); g.lineCap = 'round';
+  for (let i = 0; i < 22; i++) {
+    let cx = rng.range(0, S), cy = rng.range(-20, S * 0.5);
+    g.lineWidth = rng.range(1.2, 3);
+    g.beginPath(); g.moveTo(cx, cy);
+    const len = rng.range(40, 160);
+    for (let s = 0; s < 8; s++) { cx += rng.range(-5, 5); cy += len / 8; g.lineTo(cx, cy); }
+    g.stroke();
+  }
+  // snow on little steps
+  for (let i = 0; i < 26; i++) {
+    const sx = rng.range(0, S), sy = rng.range(0, S), sw = rng.range(8, 34);
+    g.fillStyle = 'rgba(250,248,255,0.92)';
+    g.beginPath(); g.moveTo(sx, sy); g.quadraticCurveTo(sx + sw / 2, sy - 4, sx + sw, sy); g.lineTo(sx + sw - 3, sy + 3); g.lineTo(sx + 2, sy + 3); g.closePath(); g.fill();
+    g.fillStyle = 'rgba(160,140,180,0.25)'; g.fillRect(sx + 2, sy + 3, sw - 4, 2);
+  }
   return p.texture({ repeat: [1, 1] });
 }
 

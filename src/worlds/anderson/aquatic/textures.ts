@@ -1,4 +1,3 @@
-import * as THREE from 'three';
 import { Painter } from '../../../engine/Paint';
 import { Rng, TAU } from '../../../engine/math';
 import { css } from '../textures';
@@ -39,7 +38,7 @@ export function sandTexture() {
 /** Porous reef rock in lilac and pink, with pits and encrusting dots. One tile = 4 x 4 units. White-ish, so a colour can tint it. */
 export function rockTexture() {
   const S = 256;
-  const p = new Painter(S, S, 503).fill('#d8cfe0');
+  const p = new Painter(S, S, 503).fill('#d4c8dc');
   const g = p.g, rng = p.rng;
   p.dabs({ n: 90, colors: ['#e8dcec', '#c4b8d0', '#efd8e0', '#cfd8e4'], r: [8, 30], alpha: [0.2, 0.4] });
   for (let i = 0; i < 260; i++) {

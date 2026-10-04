@@ -5,7 +5,7 @@ import { TAU } from '../../../engine/math';
 import { facadeTile } from '../textures';
 import { topiary } from '../kit';
 import { FUTURA } from '../film';
-import { CORNICE, FUNI, HOTEL, TERRACE } from './plan';
+import { CORNICE, FUNI, HOTEL, LOBBY, TERRACE } from './plan';
 import { GBH, hotelSign, frontDoor, balustrade } from './textures';
 import { onionGeometry } from './station';
 import { shade, tbox, tplane, type HotelMats } from './mats';
@@ -80,40 +80,43 @@ export function buildExterior(m: HotelMats): Exterior {
   const dorm = new THREE.MeshLambertMaterial({ map: dormT.map, emissive: 0xffe0b0, emissiveMap: dormT.emissive, emissiveIntensity: 0.6 });
   const TILE_W = 4 * BAY, TILE_H = 2 * ST;
 
-  // ---------- the main block: arcade, five storeys, cornice ----------
+  // ---------- the shell: a front facade, side and back walls (the lobby fills the inside) ----------
   const upH = HOTEL.storey * HOTEL.storeys;
+  const inner = LOBBY.front, wallD = front - inner;
   for (const s of [-1, 1]) {
-    // the wings (between the pavilion and the towers), full depth
+    // the wings' fronts, between the pavilion and the towers
     const ww = WING - PAV, wx = s * (PAV + ww / 2);
-    g.add(tbox(ww, HOTEL.gf, depth, arcade, BAY, wx, base + HOTEL.gf / 2, zc, HOTEL.gf));
-    g.add(tbox(ww, upH, depth, pink, TILE_W, wx, gfTop + upH / 2, zc, TILE_H));
-    // the side walls behind the towers
-    g.add(tbox(TOWER - WING, HOTEL.gf + upH, depth - 7.2, pink, TILE_W, s * (WING + (TOWER - WING) / 2), base + (HOTEL.gf + upH) / 2, zc - 3.6, TILE_H));
+    g.add(tbox(ww, HOTEL.gf, wallD, arcade, BAY, wx, base + HOTEL.gf / 2, front - wallD / 2, HOTEL.gf));
+    g.add(tbox(ww, upH, wallD, pink, TILE_W, wx, gfTop + upH / 2, front - wallD / 2, TILE_H));
+    // the side walls, from behind the towers to the back
+    const sz0 = front - 7.2, sl = sz0 - back;
+    g.add(tbox(2.4, HOTEL.gf, sl, arcade, BAY, s * (TOWER - 1.2), base + HOTEL.gf / 2, sz0 - sl / 2, HOTEL.gf));
+    g.add(tbox(2.4, upH, sl, pink, TILE_W, s * (TOWER - 1.2), gfTop + upH / 2, sz0 - sl / 2, TILE_H));
   }
+  g.add(tbox(TOWER * 2, HOTEL.gf + upH, 2.4, pink, TILE_W, 0, base + (HOTEL.gf + upH) / 2, back + 1.2, TILE_H));
   // the pavilion: ground floor around the doorway, storeys above, projecting forward
-  const pf = front + HOTEL.pavOut, pd = HOTEL.pavOut + 6, pzc = pf - pd / 2;
+  const pf = front + HOTEL.pavOut, pd = pf - inner, pzc = pf - pd / 2;
   {
     const dh = HOTEL.doorHalf, dTop = base + HOTEL.doorH;
     for (const s of [-1, 1]) g.add(tbox(PAV - dh, HOTEL.gf, pd, arcade, BAY, s * (dh + (PAV - dh) / 2), base + HOTEL.gf / 2, pzc, HOTEL.gf));
     g.add(tbox(dh * 2, gfTop - dTop, pd, m.cream, 3, 0, (gfTop + dTop) / 2, pzc));
     g.add(tbox(PAV * 2, upH, pd, pav, TILE_W, 0, gfTop + upH / 2, pzc, TILE_H));
-    // the pavilion behind its front block, so the roofline closes up
-    g.add(tbox(PAV * 2, HOTEL.gf + upH, depth - pd + HOTEL.pavOut, pink, TILE_W, 0, base + (HOTEL.gf + upH) / 2, (front - HOTEL.pavOut - pd + back) / 2 + HOTEL.pavOut, TILE_H));
-    // the doorway: an arch of cream voussoirs, a fanlight, a keystone with the crossed keys
+    // the doorway: an arch of cream voussoirs, a fanlight, a keystone
     const arch = mesh(new THREE.TorusGeometry(dh + 0.35, 0.5, 8, 24, Math.PI), m.cream, 0, dTop, pf + 0.15);
     g.add(arch);
-    const fan = mesh(new THREE.CircleGeometry(dh, 24, 0, Math.PI), new THREE.MeshLambertMaterial({ color: 0xf8e0b0, emissive: 0xffd8a0, emissiveIntensity: 0.6 }), 0, dTop, pf - 0.4);
-    g.add(fan);
     g.add(box(1.0, 1.3, 0.6, m.gold, 0, dTop + dh + 0.3, pf + 0.2));
-    // the doorway's reveal (the passage through the thick wall) and its ceiling
-    for (const s of [-1, 1]) g.add(tbox(0.3, HOTEL.doorH, pd + 2.8, m.pinkDeep, 3, s * (dh + 0.15), base + HOTEL.doorH / 2, pf - (pd + 2.8) / 2));
-    g.add(box(dh * 2 + 0.6, 0.3, pd + 2.8, m.cream, 0, dTop + 0.15, pf - (pd + 2.8) / 2));
+    // the doorway's reveal (the passage through the thick wall)
+    for (const s of [-1, 1]) g.add(tbox(0.3, HOTEL.doorH, pd, m.pinkDeep, 3, s * (dh + 0.15), base + HOTEL.doorH / 2, pzc));
+    g.add(box(dh * 2 + 0.6, 0.3, pd, m.cream, 0, dTop + 0.15, pzc));
   }
-  // cornices and string courses round the whole front
+  // cornices and string courses round the front and along the sides (a frame, not a slab: the lobby is inside)
   g.add(box(TOWER * 2 + 1.0, 0.5, 1.2, m.white, 0, gfTop, front + 0.3));
   g.add(box(PAV * 2 + 0.8, 0.5, 1.0, m.white, 0, gfTop, pf + 0.2));
-  g.add(box(TOWER * 2 + 1.2, 0.8, depth + 1.2, m.white, 0, CORNICE + 0.3, zc));
+  g.add(box(TOWER * 2 + 1.2, 0.8, 3.4, m.white, 0, CORNICE + 0.3, front - 1.1));
+  for (const s of [-1, 1]) g.add(box(3.4, 0.8, depth, m.white, s * (TOWER - 1.0), CORNICE + 0.3, zc));
   g.add(box(PAV * 2 + 1.0, 0.8, 1.2, m.white, 0, CORNICE + 0.3, pf + 0.1));
+  // a flat roof over everything above the lobby's glass, under the mansards
+  g.add(box(TOWER * 2, 0.4, depth, m.snow, 0, LOBBY.glass + 0.9, zc));
 
   // ---------- striped awnings over the arcade windows of the wings ----------
   for (const s of [-1, 1]) {
@@ -158,8 +161,8 @@ export function buildExterior(m: HotelMats): Exterior {
   }
   // the pavilion's attic storey and its pediment
   const attTop = roofY + 4.6;
-  g.add(tbox(PAV * 2, attTop - roofY, 10, pav, TILE_W, 0, (attTop + roofY) / 2, pf - 5, TILE_H));
-  g.add(box(PAV * 2 + 1, 0.7, 10.8, m.white, 0, attTop + 0.3, pf - 5));
+  g.add(tbox(PAV * 2, attTop - roofY, pd, pav, TILE_W, 0, (attTop + roofY) / 2, pzc, TILE_H));
+  g.add(box(PAV * 2 + 1, 0.7, pd + 0.8, m.white, 0, attTop + 0.3, pzc));
   // a mansard over the middle of the main block, behind the pavilion, to carry the dome
   {
     const r = mansard(PAV * 2 + 1, depth - 8, rh, 0.72, m.roof); r.position.set(0, roofY + rh / 2, zc - 4); g.add(r);

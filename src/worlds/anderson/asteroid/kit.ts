@@ -141,3 +141,93 @@ export function castAll(o: THREE.Object3D, cast = true, receive = true) {
   o.traverse((c) => { const m = c as THREE.Mesh; if (m.isMesh) { m.castShadow = cast; m.receiveShadow = receive; } });
   return o;
 }
+
+// ---------------------------------------------------------------------------------------------------------
+// Fewer draw calls: one material for every plain-coloured Lambert surface (the colour goes into the vertices),
+// one plaster texture for every pastel wall, and an atlas for every lettered sign
+// ---------------------------------------------------------------------------------------------------------
+
+const flatV = new THREE.MeshLambertMaterial({ vertexColors: true });
+const flatVDouble = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+
+function paintVertices(geo: THREE.BufferGeometry, c: THREE.Color) {
+  const n = geo.attributes.position.count;
+  const a = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(a, 3));
+}
+
+/**
+ * Give every mesh under `root` whose material is a plain Lambert colour (no map, no glow, opaque) the shared
+ * vertex-coloured material instead, and every mesh with a tintable map (material.userData.tintable: a white
+ * texture tinted by the material colour) one shared material per map. Run before mergeStatic.
+ */
+export function unifyColours(root: THREE.Object3D) {
+  const byMap = new Map<string, THREE.MeshLambertMaterial>();
+  const meshes: THREE.Mesh[] = [];
+  root.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && !(m as THREE.InstancedMesh).isInstancedMesh && !Array.isArray(m.material) && !m.userData.keep) meshes.push(m); });
+  for (const m of meshes) {
+    const mat = m.material as THREE.MeshLambertMaterial;
+    if (mat.type !== 'MeshLambertMaterial' || mat.transparent || mat.alphaTest > 0 || mat.vertexColors) continue;
+    if (mat.emissive && mat.emissive.getHex() !== 0 && mat.emissiveIntensity > 0) continue;
+    let target: THREE.MeshLambertMaterial | null = null;
+    if (!mat.map) target = mat.side === THREE.DoubleSide ? flatVDouble : flatV;
+    else if (mat.userData.tintable) {
+      const k = `${mat.map.uuid}|${mat.side}`;
+      target = byMap.get(k) ?? null;
+      if (!target) { target = new THREE.MeshLambertMaterial({ map: mat.map, vertexColors: true, side: mat.side }); byMap.set(k, target); }
+    }
+    if (!target) continue;
+    m.geometry = m.geometry.clone();
+    paintVertices(m.geometry, mat.color);
+    m.material = target;
+  }
+  return root;
+}
+
+/**
+ * A texture atlas for signs: lettered panels are copied into one big canvas, so every sign in the scene can
+ * share one material (and one more for the signs that light up at night).
+ */
+export class SignAtlas {
+  readonly canvas: HTMLCanvasElement;
+  private g: CanvasRenderingContext2D;
+  private x = 0; private y = 0; private row = 0;
+  readonly texture: THREE.CanvasTexture;
+  readonly size: number;
+  constructor(size = 2048) {
+    this.size = size;
+    this.canvas = document.createElement('canvas');
+    this.canvas.width = this.canvas.height = size;
+    this.g = this.canvas.getContext('2d')!;
+    this.g.fillStyle = '#808080'; this.g.fillRect(0, 0, size, size);
+    this.texture = new THREE.CanvasTexture(this.canvas);
+    this.texture.colorSpace = THREE.SRGBColorSpace;
+    this.texture.anisotropy = 4;
+  }
+  /** Copy a canvas texture's picture in (scaled by `k`); returns its UV rectangle [u0, v0, u1, v1]. */
+  put(tex: THREE.Texture, k = 1): [number, number, number, number] {
+    const img = tex.image as HTMLCanvasElement;
+    const w = Math.ceil(img.width * k), h = Math.ceil(img.height * k), pad = 4;
+    if (this.x + w + pad > this.size) { this.x = 0; this.y += this.row + pad; this.row = 0; }
+    if (this.y + h > this.size) throw new Error('sign atlas full');
+    const x = this.x, y = this.y;
+    // smear the edges into the padding so mipmaps do not bleed the neighbours in
+    this.g.drawImage(img, x - 2, y - 2, w + 4, h + 4);
+    this.g.drawImage(img, x, y, w, h);
+    this.x += w + pad; this.row = Math.max(this.row, h);
+    tex.dispose();
+    const S = this.size;
+    return [x / S, 1 - (y + h) / S, (x + w) / S, 1 - y / S];
+  }
+  /** A w x h plane facing +z showing that rectangle of the atlas. */
+  plane(r: [number, number, number, number], w: number, h: number) {
+    return this.remap(new THREE.PlaneGeometry(w, h), r);
+  }
+  /** Squeeze a geometry's 0..1 UVs into a rectangle of the atlas. */
+  remap<T extends THREE.BufferGeometry>(g: T, r: [number, number, number, number]) {
+    const uv = g.attributes.uv as THREE.BufferAttribute;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, r[0] + uv.getX(i) * (r[2] - r[0]), r[1] + uv.getY(i) * (r[3] - r[1]));
+    return g;
+  }
+}

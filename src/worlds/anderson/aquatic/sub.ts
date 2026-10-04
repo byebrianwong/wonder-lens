@@ -18,8 +18,8 @@ import { Z } from './plan';
  */
 
 const AXIS = 0.35;
-const EYE = new THREE.Vector3(0, 1.95, 1.0);
-const DOME = { y: 1.55, z: 1.0, r: 0.98 };
+const EYE = new THREE.Vector3(0, 1.95, 0.3);
+const DOME = { y: 1.55, z: 0.25, r: 0.98 };
 /** the hull's radius along its length (z), stern to nose */
 const PROFILE: Array<[number, number]> = [
   [-4.7, 0.001], [-4.6, 0.3], [-4.3, 0.6], [-3.8, 0.88], [-3.1, 1.06], [-2.2, 1.17], [-1.0, 1.22], [0.4, 1.22],
@@ -46,12 +46,12 @@ function hullPaint() {
   for (const u of [0.32, 0.68]) { g.fillStyle = css(RED); g.fillRect(u * W - 7, 0, 14, H); g.fillStyle = '#fbf6ea'; g.fillRect(u * W + (u < 0.5 ? -11 : 7), 0, 4, H); }
   // the name on both flanks, reading along the hull with the letters' tops towards the top of the hull
   for (const [u, rot] of [[0.255, Math.PI / 2], [0.745, -Math.PI / 2]] as Array<[number, number]>) {
-    g.save(); g.translate(u * W, H * 0.44); g.rotate(rot);
+    g.save(); g.translate(u * W, H * 0.6); g.rotate(rot);
     // the old name, painted over in a fresher yellow that does not quite match
-    g.font = `bold 34px ${FUTURA}`; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillStyle = 'rgba(90,70,30,0.32)'; g.fillText('J A C Q U E L I N E', 0, 22);
-    g.fillStyle = css(YELLOW, 1.06); g.globalAlpha = 0.82; g.fillRect(-150, 6, 300, 32); g.globalAlpha = 1;
-    g.fillStyle = '#1e1e22'; g.font = `bold 38px ${FUTURA}`; g.fillText('DEEP SEARCH', 0, -18);
+    g.font = `bold 22px ${FUTURA}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = 'rgba(90,70,30,0.4)'; g.fillText('J A C Q U E L I N E', 0, 18);
+    g.fillStyle = css(YELLOW, 1.07); g.globalAlpha = 0.8; g.fillRect(-100, 7, 200, 22); g.globalAlpha = 1;
+    g.fillStyle = '#1e1e22'; g.font = `bold 26px ${FUTURA}`; g.fillText('DEEP SEARCH', 0, -12);
     g.restore();
   }
   return p.texture();
@@ -124,7 +124,7 @@ export function buildDeepSearch(): DeepSearch {
     // add points between for a smooth patch
     const pts: THREE.Vector2[] = [];
     for (let k = 0; k <= 10; k++) {
-      const z = 1.75 + (k / 10) * 1.0;
+      const z = 1.85 + (k / 10) * 1.05;
       let r = 1;
       for (let i = 0; i < PROFILE.length - 1; i++) if (z >= PROFILE[i][0] && z <= PROFILE[i + 1][0]) r = THREE.MathUtils.lerp(PROFILE[i][1], PROFILE[i + 1][1], (z - PROFILE[i][0]) / (PROFILE[i + 1][0] - PROFILE[i][0]));
       pts.push(new THREE.Vector2(r + 0.008, z));
@@ -139,36 +139,36 @@ export function buildDeepSearch(): DeepSearch {
 
   // ---------- the bubble's turret, collar and the little cockpit ----------
   add(mesh(new THREE.CylinderGeometry(DOME.r + 0.02, DOME.r + 0.08, 0.75, 36, 1, true), yellow, 0, DOME.y - 0.36, DOME.z));
-  const collar = mesh(new THREE.TorusGeometry(DOME.r + 0.03, 0.065, 8, 48), brass, 0, DOME.y, DOME.z);
+  const collar = mesh(new THREE.TorusGeometry(DOME.r + 0.02, 0.045, 8, 48), brass, 0, DOME.y, DOME.z);
   collar.rotation.x = Math.PI / 2;
   add(collar);
-  // bolts round the collar
-  for (let i = 0; i < 24; i++) { const a = (i / 24) * TAU; add(mesh(new THREE.SphereGeometry(0.03, 6, 4), brass, Math.cos(a) * (DOME.r + 0.06), DOME.y + 0.06, DOME.z + Math.sin(a) * (DOME.r + 0.06))); }
   const floor = mesh(new THREE.CircleGeometry(DOME.r, 36), charToon({ color: 0x5a2a2a, rim: 0 }), 0, DOME.y - 0.02, DOME.z);
   floor.rotation.x = -Math.PI / 2;
   add(floor);
   // the panel at the front of the bubble: brass, with a depth gauge, a compass and the sonar
+  // (the panel's faces tilt up towards the rider's eye; local +x is the rider's left)
   const panel = new THREE.Group();
-  panel.add(mesh(new THREE.BoxGeometry(1.1, 0.16, 0.34), charToon({ color: 0x3a2a24, rim: 0.2 }), 0, 0.08, 0));
-  panel.add(mesh(new THREE.BoxGeometry(1.14, 0.03, 0.38), brass, 0, 0.17, 0));
+  panel.add(mesh(new THREE.BoxGeometry(0.72, 0.12, 0.26), charToon({ color: 0x3a2a24, rim: 0.2 }), 0, 0.06, 0));
+  panel.add(mesh(new THREE.BoxGeometry(0.75, 0.025, 0.29), brass, 0, 0.13, 0));
   const faceMat = (t: THREE.Texture) => new THREE.MeshBasicMaterial({ map: t });
+  const TILT = -(Math.PI / 2 + 0.55);
   const dial = (tex: THREE.Texture, x: number, r: number) => {
-    const d = mesh(new THREE.CircleGeometry(r, 24), faceMat(tex), x, 0.2, 0.0);
-    d.rotation.x = -1.0;
-    const ring = mesh(new THREE.TorusGeometry(r, 0.012, 5, 24), brass, x, 0.2, 0);
-    ring.rotation.x = -1.0;
+    const d = mesh(new THREE.CircleGeometry(r, 24), faceMat(tex), x, 0.15, 0.0);
+    d.rotation.set(TILT, 0, Math.PI);
+    const ring = mesh(new THREE.TorusGeometry(r, 0.01, 5, 24), brass, x, 0.15, 0);
+    ring.rotation.set(TILT, 0, 0);
     panel.add(d, ring);
     return d;
   };
-  dial(gaugeFace('FATHOMS'), -0.34, 0.11);
-  dial(gaugeFace('COMPASS', '#e8f0f6'), 0.34, 0.09);
-  const sonar = dial(sonarFace(), 0, 0.14);
-  panel.position.set(0, DOME.y - 0.06, DOME.z + 0.58);
+  dial(gaugeFace('FATHOMS'), 0.23, 0.075);
+  dial(gaugeFace('COMPASS', '#e8f0f6'), -0.23, 0.065);
+  const sonar = dial(sonarFace(), 0, 0.095);
+  panel.position.set(0, DOME.y - 0.08, DOME.z + 0.64);
   add(panel);
-  // a red knit beanie left on the panel
+  // a red knit beanie left beside the panel
   {
-    const cap = mesh(new THREE.SphereGeometry(0.1, 12, 8, 0, TAU, 0, Math.PI * 0.55), charToon({ color: 0xc8202a, rim: 0.3 }), 0.48, DOME.y + 0.11, DOME.z + 0.5);
-    cap.rotation.z = 0.3;
+    const cap = mesh(new THREE.SphereGeometry(0.1, 12, 8, 0, TAU, 0, Math.PI * 0.55), charToon({ color: 0xc8202a, rim: 0.3 }), 0.5, DOME.y - 0.01, DOME.z + 0.45);
+    cap.rotation.z = 0.25;
     add(cap);
   }
 
@@ -184,12 +184,12 @@ export function buildDeepSearch(): DeepSearch {
     lp.add(rim);
     lp.add(mesh(new THREE.CircleGeometry(0.17, 18), lampGlass, 0, 0, 0.175));
     // the bracket to the hull
-    lp.add(mesh(new THREE.BoxGeometry(0.12, 0.3, 0.14), steel, -s * 0.12, -0.14, -0.04));
-    lp.position.set(s * 0.98, AXIS + 0.22, 2.6);
+    lp.add(mesh(new THREE.BoxGeometry(0.12, 0.3, 0.14), steel, -s * 0.1, -0.16, -0.06));
+    lp.position.set(s * 0.92, AXIS + 0.5, 2.85);
     lp.rotation.y = s * 0.06;
     add(lp);
     const anchor = new THREE.Object3D();
-    anchor.position.set(s * 0.98, AXIS + 0.22, 2.8);
+    anchor.position.set(s * 0.92, AXIS + 0.5, 3.05);
     group.add(anchor);
     lamps.push(anchor);
   }
@@ -247,27 +247,27 @@ export function buildDeepSearch(): DeepSearch {
     sh.closePath();
     const g = new THREE.ExtrudeGeometry(sh, { depth: 1.15, bevelEnabled: true, bevelThickness: 0.08, bevelSize: 0.06, bevelSegments: 2, curveSegments: 10 });
     g.rotateX(-Math.PI / 2);
-    const sail = mesh(g, yellow, 0, AXIS + 0.95, -1.25);
+    const sail = mesh(g, yellow, 0, AXIS + 0.95, -1.85);
     add(sail);
     // a white band round the top, and the emblem on each side
-    const band = mesh(new THREE.CylinderGeometry(1, 1, 0.12, 24, 1, true), cream, 0, AXIS + 2.0, -1.25);
+    const band = mesh(new THREE.CylinderGeometry(1, 1, 0.12, 24, 1, true), cream, 0, AXIS + 2.0, -1.85);
     band.scale.set(W / 2 + 0.07, 1, L / 2 + 0.07);
     add(band);
     const emb = noseEmblem();
     for (const s of [-1, 1]) {
-      const d = mesh(new THREE.CircleGeometry(0.28, 24), new THREE.MeshLambertMaterial({ map: emb, transparent: true, alphaTest: 0.3 }), s * (W / 2 + 0.075), AXIS + 1.55, -1.25);
+      const d = mesh(new THREE.CircleGeometry(0.28, 24), new THREE.MeshLambertMaterial({ map: emb, transparent: true, alphaTest: 0.3 }), s * (W / 2 + 0.075), AXIS + 1.55, -1.85);
       d.rotation.y = s * Math.PI / 2;
       add(d);
       // two little portholes
-      for (const z of [-0.7, -1.75]) {
+      for (const z of [-1.3, -2.35]) {
         const ring = mesh(new THREE.TorusGeometry(0.1, 0.025, 6, 16), brass, s * (W / 2 + 0.07), AXIS + 1.5, z);
         ring.rotation.y = Math.PI / 2;
         add(ring);
       }
     }
     // periscope and a rail
-    add(mesh(new THREE.CylinderGeometry(0.045, 0.05, 1.3, 8), steel, 0.18, AXIS + 2.55, -1.6));
-    add(mesh(new THREE.BoxGeometry(0.12, 0.12, 0.3), steel, 0.18, AXIS + 3.2, -1.5));
+    add(mesh(new THREE.CylinderGeometry(0.045, 0.05, 1.3, 8), steel, 0.18, AXIS + 2.55, -2.2));
+    add(mesh(new THREE.BoxGeometry(0.12, 0.12, 0.3), steel, 0.18, AXIS + 3.2, -2.1));
   }
   // portholes along the flanks, lit warm from inside
   const warm = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffd890).multiplyScalar(1.1) });
@@ -314,7 +314,7 @@ export function buildDeepSearch(): DeepSearch {
   group.add(stern);
 
   // ---------- the pennant and the beacon (animated) ----------
-  const pole = mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.1, 6), steel, -0.22, AXIS + 2.65, -1.95);
+  const pole = mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.1, 6), steel, -0.22, AXIS + 2.65, -2.55);
   add(pole);
   const flagTex = canvasTexture(128, 64, (g) => {
     g.fillStyle = '#8ec8ee'; g.beginPath(); g.moveTo(0, 0); g.lineTo(128, 26); g.lineTo(128, 38); g.lineTo(0, 64); g.closePath(); g.fill();
@@ -322,26 +322,26 @@ export function buildDeepSearch(): DeepSearch {
   });
   const flagGeo = new THREE.PlaneGeometry(0.9, 0.42, 8, 1);
   flagGeo.translate(-0.45, 0, 0);
-  const flag = mesh(flagGeo, new THREE.MeshLambertMaterial({ map: flagTex, side: THREE.DoubleSide, transparent: true, alphaTest: 0.4 }), -0.22, AXIS + 3.0, -1.95);
+  const flag = mesh(flagGeo, new THREE.MeshLambertMaterial({ map: flagTex, side: THREE.DoubleSide, transparent: true, alphaTest: 0.4 }), -0.22, AXIS + 3.0, -2.55);
   flag.rotation.y = Math.PI / 2;
   body.add(flag);
   const flagBase = (flagGeo.attributes.position as THREE.BufferAttribute).array.slice() as Float32Array;
   const beaconMat = new THREE.MeshBasicMaterial({ color: 0xff3a2a });
-  body.add(mesh(new THREE.SphereGeometry(0.08, 10, 8), beaconMat, 0.18, AXIS + 2.18, -0.55));
+  body.add(mesh(new THREE.SphereGeometry(0.08, 10, 8), beaconMat, 0.18, AXIS + 2.18, -1.15));
 
   // ---------- the needle on the depth gauge ----------
-  const needle = mesh(new THREE.BoxGeometry(0.008, 0.085, 0.004), new THREE.MeshBasicMaterial({ color: 0xc8202a }), 0, 0, 0);
-  needle.geometry.translate(0, 0.035, 0);
+  const needle = mesh(new THREE.BoxGeometry(0.006, 0.06, 0.004), new THREE.MeshBasicMaterial({ color: 0xc8202a }), 0, 0, 0);
+  needle.geometry.translate(0, 0.025, 0);
   const needleHolder = new THREE.Group();
-  needleHolder.position.set(-0.34, DOME.y - 0.06 + 0.205, DOME.z + 0.58 + 0.006);
-  needleHolder.rotation.x = -1.0;
+  needleHolder.position.set(0.23, DOME.y - 0.08 + 0.152, DOME.z + 0.64 - 0.001);
+  needleHolder.rotation.set(TILT, 0, Math.PI);
   needleHolder.add(needle);
   body.add(needleHolder);
-  const sweep = mesh(new THREE.PlaneGeometry(0.012, 0.13), new THREE.MeshBasicMaterial({ color: 0x8affb0, transparent: true, opacity: 0.85 }), 0, 0, 0);
-  sweep.geometry.translate(0, 0.065, 0);
+  const sweep = mesh(new THREE.PlaneGeometry(0.01, 0.09), new THREE.MeshBasicMaterial({ color: 0x8affb0, transparent: true, opacity: 0.85 }), 0, 0, 0);
+  sweep.geometry.translate(0, 0.045, 0);
   const sweepHolder = new THREE.Group();
-  sweepHolder.position.set(0, DOME.y - 0.06 + 0.207, DOME.z + 0.58 + 0.004);
-  sweepHolder.rotation.x = -1.0;
+  sweepHolder.position.set(0, DOME.y - 0.08 + 0.153, DOME.z + 0.64 - 0.001);
+  sweepHolder.rotation.set(TILT, 0, Math.PI);
   sweepHolder.add(sweep);
   body.add(sweepHolder);
   void sonar;
@@ -388,10 +388,9 @@ export function buildDeepSearch(): DeepSearch {
   const dome = mesh(new THREE.SphereGeometry(DOME.r, 40, 16, 0, TAU, 0, Math.PI / 2), domeMat, 0, DOME.y, DOME.z);
   dome.renderOrder = 9000;
   body.add(dome);
-  // a thin brass rib over the top of the bubble, front to back
-  const rib = mesh(new THREE.TorusGeometry(DOME.r + 0.005, 0.022, 6, 40, Math.PI), brass, 0, DOME.y, DOME.z);
-  rib.rotation.y = Math.PI / 2;
-  add(rib);
+  // the outside of the glass, for anyone looking at the sub (the rider, inside, never sees these faces)
+  const shell = mesh(new THREE.SphereGeometry(DOME.r, 32, 12, 0, TAU, 0, Math.PI / 2), new THREE.MeshLambertMaterial({ color: 0xd8f4ff, transparent: true, opacity: 0.22, depthWrite: false, emissive: 0x204050 }), 0, DOME.y, DOME.z);
+  body.add(shell);
 
   statics.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { m.castShadow = true; m.receiveShadow = false; } });
   mergeStatic(statics);
@@ -425,7 +424,7 @@ export function buildDeepSearch(): DeepSearch {
     const cone = new THREE.ConeGeometry(2.6, 15, 20, 1, true);
     cone.translate(0, -7.5, 0);
     cone.rotateX(-Math.PI / 2);
-    const m = mesh(cone, beamMat, s * 0.98, AXIS + 0.22, 2.8);
+    const m = mesh(cone, beamMat, s * 0.92, AXIS + 0.5, 3.05);
     m.rotation.y = s * 0.06;
     m.renderOrder = 5;
     body.add(m);

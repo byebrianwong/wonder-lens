@@ -8,8 +8,8 @@ import { planks } from '../textures';
 import { texMat } from '../kit';
 import { FUTURA } from '../film';
 import { HOUSE, LIGHTHOUSE, PY } from './plan';
-import { MK, brittenSleeve, clapboard, houseBay, roomWall, rug, shingles, wallpaper, type PaperKind, type WallThing } from './textures';
-import { KID, bake, binoculars, brotherKid, flat, megaphone, mrBishop, mrsBishop, newspaper, recordPlayer, suzyKid, type Adult, type Kid } from './figures';
+import { MK, brittenSleeve, clapboard, houseBay, paintPaper, paintRoomWall, rug, shingles, wallShade, type PaperKind, type WallThing } from './textures';
+import { KID, bake, binoculars, brotherKid, flat, megaphone, mrBishop, mrsBishop, newspaper, recordPlayer, suzyKid, swapMat, torsoOf, unify, lighten, type Kid } from './figures';
 
 /*
  * Summer's End, the Bishops' red house, built like the film's opening: a dollhouse whose front has been taken
@@ -27,6 +27,8 @@ const F = HOUSE.floors;
 const D = HOUSE.depth, ZF = HOUSE.front, ZB = HOUSE.back;
 const ROOM_H = 3.3, WALL_T = 0.24;
 const EAVE = F[2] + 0.25;
+/** the brothers' size (kid figures are about 2.4 tall) */
+const BRO = 0.56;
 
 /** A painted material that carries a little of its own light, so rooms in shade still read. */
 const paintMat = (map: THREE.Texture, k = 0.28) => new THREE.MeshLambertMaterial({ map, emissive: 0xfff0dc, emissiveMap: map, emissiveIntensity: k });
@@ -83,7 +85,7 @@ function quad(a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vec
   g.setAttribute('position', new THREE.Float32BufferAttribute([a, b, c, d].flatMap((v) => [v.x, v.y, v.z]), 3));
   const w = a.distanceTo(b) / tile, h = b.distanceTo(c) / tile;
   g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, w, 0, w, h, 0, h], 2));
-  g.setIndex([0, 1, 2, 0, 2, 3, 0, 2, 1, 0, 3, 2]);
+  g.setIndex([0, 1, 2, 0, 2, 3]);
   g.computeVertexNormals();
   return new THREE.Mesh(g, mat);
 }
@@ -117,6 +119,7 @@ export function buildSummersEnd(): SummersEnd {
   const atticFloor = paintMat(planks(0x9a7a56, 7112), 0.18);
   const ceilMat = new THREE.MeshLambertMaterial({ color: 0xf6efe0, emissive: 0x3a342a });
   const atticCeil = paintMat(planks(0xb89a72, 7113), 0.2);
+  atticCeil.side = THREE.DoubleSide;
   const outerWall = texMat(houseBay({ wall: MK.red, trim: MK.trim, shutter: 0x2f4a3a, seed: 7114 }));
   const roofMat = texMat(shingles(0x4a4a46, 7115));
   const trimMat = flat(MK.trim, 0.2);
@@ -250,35 +253,68 @@ export function buildSummersEnd(): SummersEnd {
   for (const side of [-1, 1] as const) halves.push(buildHalf(side));
   const halfOf = (side: number) => halves[side < 0 ? 0 : 1];
 
-  // ---------- the rooms ----------
-  const paperCache = new Map<string, THREE.Material>();
-  const paperMat = (r: Room) => {
-    const k = `${r.paper}${r.base}${r.ink}`;
-    let m = paperCache.get(k);
-    if (!m) { m = paintMat(wallpaper(r.paper, r.base, r.ink, 7130 + paperCache.size)); paperCache.set(k, m); }
-    return m;
-  };
-  for (const r of ROOMS) {
-    const g = halfOf(r.side);
-    const X = (l: number) => r.side * l;
-    const y0 = F[r.floor];
-    const z0 = ZF - WALL_T - r.slot * 10 + (r.slot ? 0.1 : 0), z1 = ZF - (r.slot + 1) * 10 + (r.slot < 2 ? 0.1 : WALL_T);
-    const w = z0 - z1, zm = (z0 + z1) / 2;
-    // the painted back wall
-    const back = mesh(new THREE.PlaneGeometry(w, ROOM_H), paintMat(roomWall({ w, h: ROOM_H, paper: r.paper, base: r.base, ink: r.ink, dado: r.dado, things: r.things, seed: 7140 + r.slot + r.floor * 3 + (r.side > 0 ? 6 : 0) })), X(D - WALL_T - 0.01), y0 + ROOM_H / 2, zm);
-    back.rotation.y = r.side < 0 ? Math.PI / 2 : -Math.PI / 2;
-    g.add(back);
-    // wallpaper on the side walls
-    const pm = paperMat(r);
-    for (const [z, face] of [[z0 - 0.002, -1], [z1 + 0.002, 1]] as const) {
-      const sw = mesh(repeatUV(new THREE.PlaneGeometry(D - WALL_T - 0.02, ROOM_H), (D - WALL_T) / 2, ROOM_H / 2), pm, X((D - WALL_T) / 2), y0 + ROOM_H / 2, z);
-      sw.rotation.y = face < 0 ? Math.PI : 0;
-      g.add(sw);
-    }
-    if (r.rug) {
-      const rg = mesh(new THREE.PlaneGeometry(w * 0.55, (D - WALL_T) * 0.55), paintMat(rug(r.rug[0], r.rug[1], 7160 + r.slot), 0.2), X((D - WALL_T) * 0.5), y0 + 0.02, zm);
-      rg.rotation.x = -Math.PI / 2; rg.rotation.z = Math.PI / 2; rg.receiveShadow = true;
-      g.add(rg);
+  // ---------- the rooms: each floor of each half paints all its walls into one canvas ----------
+  {
+    const S = 44, AW = 2048, AH = 2 * Math.ceil(ROOM_H * S) + 4, rowH = Math.ceil(ROOM_H * S);
+    const atlases = new Map<string, { p: Painter; mat: THREE.MeshLambertMaterial; backX: number; sideX: number }>();
+    const atlasOf = (side: number, floor: number) => {
+      const k = `${side}${floor}`;
+      let a = atlases.get(k);
+      if (!a) { const p = new Painter(AW, AH, 7140 + floor * 2 + (side > 0 ? 1 : 0)); a = { p, mat: paintMat(p.texture({ wrap: false })), backX: 0, sideX: 0 }; atlases.set(k, a); }
+      return a;
+    };
+    /** a plane whose UVs pick a pixel region of an atlas */
+    const atlasPlane = (w: number, h: number, mat: THREE.Material, px: number, py: number, pw: number, ph: number) => {
+      const geo = new THREE.PlaneGeometry(w, h);
+      const uv = geo.attributes.uv as THREE.BufferAttribute;
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, (px + uv.getX(i) * pw) / AW, 1 - (py + (1 - uv.getY(i)) * ph) / AH);
+      return new THREE.Mesh(geo, mat);
+    };
+    const rugP = [new Painter(512, 320, 7161), new Painter(512, 320, 7162)];
+    const rugMats = rugP.map((p) => paintMat(p.texture({ wrap: false }), 0.2));
+    const rugSlot = [0, 0];
+    for (const r of ROOMS) {
+      const g = halfOf(r.side);
+      const X = (l: number) => r.side * l;
+      const y0 = F[r.floor];
+      const z0 = ZF - WALL_T - r.slot * 10 + (r.slot ? 0.1 : 0), z1 = ZF - (r.slot + 1) * 10 + (r.slot < 2 ? 0.1 : WALL_T);
+      const w = z0 - z1, zm = (z0 + z1) / 2;
+      const a = atlasOf(r.side, r.floor);
+      const bw = Math.round(w * S);
+      // the painted back wall
+      paintRoomWall(a.p.g, a.p.rng, { w, h: ROOM_H, paper: r.paper, base: r.base, ink: r.ink, dado: r.dado, things: r.things }, a.backX, 0, S);
+      const back = atlasPlane(w, ROOM_H, a.mat, a.backX, 0, bw, rowH);
+      back.position.set(X(D - WALL_T - 0.01), y0 + ROOM_H / 2, zm);
+      back.rotation.y = r.side < 0 ? Math.PI / 2 : -Math.PI / 2;
+      g.add(back);
+      a.backX += bw + 4;
+      // wallpaper on the side walls
+      for (const [z, face] of [[z0 - 0.002, -1], [z1 + 0.002, 1]] as const) {
+        const sw = Math.round((D - WALL_T) * S);
+        a.p.g.save(); a.p.g.translate(a.sideX, rowH + 4);
+        paintPaper(a.p.g, a.p.rng, r.paper, r.base, r.ink, 0, 0, sw, rowH, S);
+        if (r.dado !== undefined) { a.p.g.fillStyle = `#${r.dado.toString(16).padStart(6, '0')}`; a.p.g.fillRect(0, rowH - S, sw, S); a.p.g.fillStyle = 'rgba(255,255,255,0.2)'; a.p.g.fillRect(0, rowH - S - 3, sw, 3); }
+        a.p.g.fillStyle = '#6a4a34'; a.p.g.fillRect(0, rowH - 0.16 * S, sw, 0.16 * S);
+        wallShade(a.p.g, sw, rowH);
+        a.p.g.restore();
+        const m = atlasPlane(D - WALL_T - 0.02, ROOM_H, a.mat, a.sideX, rowH + 4, sw, rowH);
+        m.position.set(X((D - WALL_T) / 2), y0 + ROOM_H / 2, z);
+        m.rotation.y = face < 0 ? Math.PI : 0;
+        g.add(m);
+        a.sideX += sw + 4;
+      }
+      if (r.rug) {
+        const hi = r.side < 0 ? 0 : 1, k = rugSlot[hi]++;
+        const img = rug(r.rug[0], r.rug[1], 7160 + r.slot).image as HTMLCanvasElement;
+        rugP[hi].g.drawImage(img, (k % 2) * 256, Math.floor(k / 2) * 160);
+        const rg = atlasPlane(w * 0.55, (D - WALL_T) * 0.55, rugMats[hi], (k % 2) * 256, Math.floor(k / 2) * 160, 256, 160);
+        // the atlas helper assumes the 2048 x AH canvas: rescale to the rug canvas
+        const uv = rg.geometry.attributes.uv as THREE.BufferAttribute;
+        for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) * AW) / 512, 1 - ((1 - uv.getY(i)) * AH) / 320);
+        rg.position.set(X((D - WALL_T) * 0.5), y0 + 0.02, zm);
+        rg.rotation.x = -Math.PI / 2; rg.rotation.z = Math.PI / 2; rg.receiveShadow = true;
+        g.add(rg);
+      }
     }
   }
 
@@ -472,16 +508,17 @@ export function buildSummersEnd(): SummersEnd {
   const bros: Kid[] = [];
   const rp = recordPlayer(1.4);
   {
-    rp.group.position.set(1.15, 0, 0); rp.group.rotation.y = -Math.PI / 2; brosG.add(rp.group);
+    // the record player in front of them, between the boys and the track, turned so they can see the record
+    rp.group.position.set(4.5, 0, 1.3); rp.group.rotation.y = -Math.PI / 2 - 0.5; brosG.add(rp.group);
     for (let i = 0; i < 3; i++) {
       const k = brotherKid(i);
-      k.group.scale.setScalar(KID.small);
+      k.group.scale.setScalar(BRO);
       // lying on the stomach, head towards the cut (local +x of brosG), propped on the elbows
       const holder = new THREE.Group();
       holder.add(k.group);
       // head towards +x, face down: the kid's y becomes +x, its z becomes -y
       k.group.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(V(0, 0, -1), V(1, 0, 0), V(0, -1, 0)));
-      k.group.position.set(-1.12 * KID.small, 0.16, 0);
+      k.group.position.set(-1.12 * BRO, 0.16 * BRO / 0.48, 0);
       k.neck.rotation.x = -1.15;
       k.shoulder.forEach((s, j) => { s.rotation.set(-1.45, 0, (j ? 1 : -1) * 0.3); });
       k.elbow.forEach((e) => { e.rotation.set(-1.6, 0, 0); });
@@ -490,9 +527,17 @@ export function buildSummersEnd(): SummersEnd {
       holder.position.set(2.6 + (i === 1 ? 0.35 : 0), 0, (i - 1) * 0.95);
       holder.rotation.y = (i - 1) * -0.18;
       brosG.add(holder);
-      bake(k.group, [k.head]);
       bros.push(k);
     }
+    // the brothers dress alike: give them the same cloth so their bodies merge into one
+    const top0 = torsoOf(bros[0]).material as THREE.Material;
+    const bot0 = (bros[0].pelvis.children.find((c) => (c as THREE.Mesh).isMesh) as THREE.Mesh).material as THREE.Material;
+    for (const k of bros.slice(1)) {
+      swapMat(k.group, torsoOf(k).material as THREE.Material, top0);
+      swapMat(k.group, (k.pelvis.children.find((c) => (c as THREE.Mesh).isMesh) as THREE.Mesh).material as THREE.Material, bot0);
+    }
+    lighten(brosG);
+    bake(brosG, [...bros.map((k) => k.head), rp.record], false);
     // the half's +x points into the house (its cut faces +x); the boys' heads point at the cut
     brosG.position.set(-(D - WALL_T) + 0.6, F[0], ZF - 5.2);
     halves[0].add(brosG);
@@ -509,7 +554,9 @@ export function buildSummersEnd(): SummersEnd {
     mg.position.set(0, -0.33, 0.1); mg.rotation.x = Math.PI / 2;
     mom.elbow[0].add(mg);
     halves[0].add(mom.group);
-    bake(mom.group, [mom.head, mom.shoulder[0], mom.elbow[0]]);
+    mom.group.scale.multiplyScalar(1.12);
+    lighten(mom.group);
+    bake(mom.group, [mom.head, mom.shoulder[0], mom.elbow[0]], false);
   }
   // Mr. Bishop in his armchair, reading the paper
   const dad = mrBishop();
@@ -524,7 +571,9 @@ export function buildSummersEnd(): SummersEnd {
     dad.group.position.set(5.0 - 0.15, F[0] + 0.05, ZF - 10 + 1.4);
     dad.group.rotation.y = -Math.PI / 2 - 0.6;
     halves[1].add(dad.group);
-    bake(dad.group, [dad.head, dad.elbow[0], dad.elbow[1]]);
+    dad.group.scale.multiplyScalar(1.15);
+    lighten(dad.group);
+    bake(dad.group, [dad.head, dad.elbow[0], dad.elbow[1]], false);
   }
 
   // ---------- the lighthouse ----------
@@ -576,15 +625,18 @@ export function buildSummersEnd(): SummersEnd {
     suzyG.position.set(0, LIGHTHOUSE.gallery + 0.15, LIGHTHOUSE.r - 0.25);
     lighthouse.add(suzyG);
     bino.position.set(0, -0.02, 0.36);
+    lighten(suzy.group, 48, 32);
     bake(suzy.group, [suzy.head, suzy.shoulder[0], suzy.shoulder[1], suzy.elbow[0], suzy.elbow[1]]);
     mergeStatic(bino);
     bino.traverse((o) => { o.userData.keep = true; });
     suzy.head.add(bino);
   }
 
-  // ---------- optimise the static parts ----------
+  // ---------- optimise the static parts: only the shell casts shadows ----------
+  const shellMats = new Set<THREE.Material>([section, sectionDark, outerWall, roofMat, trimMat]);
   for (const h of halves) {
-    h.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && !(m.material as THREE.Material).transparent) { m.castShadow = true; m.receiveShadow = true; } });
+    h.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { m.castShadow = shellMats.has(m.material as THREE.Material) || (m.material as THREE.Material).type === 'MeshLambertMaterial' && !!(m.material as THREE.MeshLambertMaterial).map && m.geometry.type === 'ExtrudeGeometry'; m.receiveShadow = true; } });
+    unify(h);
   }
   // the characters move, so keep them out of the merge
   const keepOut = [brosG, mom.group, dad.group];

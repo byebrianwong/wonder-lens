@@ -24,7 +24,7 @@ export const STATION = {
   /** the terrace the station stands on */
   terraceHalf: 17, terraceZ0: 92, terraceZ1: 4,
   /** canopy columns, and the canopies' height */
-  colX: 6.4, colZ: [62, 54, 46, 38, 30, 22, 14], canopyY: Y0 + 7.4,
+  colX: 6.4, colZ: [66, 58, 50, 42, 34], canopyY: Y0 + 7.4, canopyZ0: 72, canopyZ1: 30,
   /** the twin clock towers at the platforms' far end */
   towerX: 13.6, towerZ: 8, towerW: 4.6, towerTop: Y0 + 15.2,
   /** the station hall behind the train */
@@ -37,7 +37,7 @@ export const FUNI = {
   /** the red car's track, right of the train's */
   x: 4.6, z0: -40, z1: -150,
   /** where the cliff meets the valley floor, and where its top edge is */
-  cliffFoot: -46, cliffTop: -148,
+  cliffFoot: -122, cliffTop: -148,
 };
 
 export const TERRACE = { y: 46, z0: -150, z1: -160, half: 44 };
@@ -61,7 +61,7 @@ export const LOBBY = {
   /** the two galleries' floors, and the aisles' top ceiling */
   g1: 54, g2: 61, ceil: 68,
   /** the stained glass over the nave */
-  glass: 72,
+  glass: 70.4,
   /** columns along z */
   colZ: [-172, -187, -202, -217, -232, -247],
 };
@@ -77,33 +77,57 @@ export const DOORS = { open0: -138, open1: -150, close0: -184, close1: -190 };
 /** the doors at the top of the stairs open as the whip pan starts */
 export const TOP_DOORS = { open0: -279, open1: -287 };
 
+/** z of the foot of the cliff at a given x: it curves forward at the sides, like the wall of a bowl round the town. */
+export const cliffFootAt = (x: number) => FUNI.cliffFoot + x * x * 0.0011;
+/** z of the cliff's top edge at a given x. */
+export const cliffTopAt = (x: number) => FUNI.cliffTop + 2 + x * x * 0.0011;
+
 /**
- * Ground height outside: the valley floor with the town, the cliff up to the hotel's terrace, mountains
- * either side and behind. The funicular's corridor is cut down below the rails so the trestle shows.
+ * The rock face: z of the face at a height y and an x, sheer with overhangs and buttresses. The terrain's
+ * own slope is kept just behind it.
+ */
+export function cliffFaceZ(x: number, y: number) {
+  const v = clamp((y - TOWN_Y) / (TERRACE.y - TOWN_Y), 0, 1);
+  const zf = cliffFootAt(x), zt = cliffTopAt(x);
+  // mostly sheer, steepening at the top, with a bulge of rock in the middle
+  const k = Math.pow(v, 0.85);
+  const bulge = Math.sin(v * Math.PI) * 2.5;
+  const ribs = Math.sin(x * 0.21 + Math.sin(x * 0.05) * 3) * 1.4 + fbm(x * 0.07, y * 0.12, 3) * 4 - 2;
+  return lerp(zf, zt, k) + bulge + ribs;
+}
+
+/**
+ * Ground height outside: the valley floor with the town, the cliff (nearly sheer) up to the hotel's terrace,
+ * mountains either side and behind. The funicular climbs on a trestle over the town, so its corridor is
+ * kept below the rails.
  */
 export function groundHeight(x: number, z: number, railY: (z: number) => number) {
   const ax = Math.abs(x);
   const n = fbm(x * 0.02 + 3.1, z * 0.02 - 1.7, 4);
+  const crag = fbm(x * 0.09 - 7.3, z * 0.05 + 2.2, 3);
   // the valley floor, gently rolling
   let h = TOWN_Y + (n - 0.5) * 1.4;
-  // the cliff: its foot curves forward at the sides, like the walls of a bowl round the town
-  const foot = FUNI.cliffFoot + ax * ax * 0.0016;
-  const k = clamp((foot - z) / (foot - FUNI.cliffTop - 6 + ax * 0.05), 0, 1.6);
-  // a steep face with a couple of ledges
-  const face = smoothstep(0, 1, Math.min(k, 1)) * 0.82 + 0.18 * smoothstep(0.15, 0.55, k) + 0.1 * smoothstep(0.65, 0.95, k);
-  const cliffH = lerp(TOWN_Y, TERRACE.y - 2, Math.min(1.1, face)) + (n - 0.5) * 6 * Math.sin(Math.min(k, 1) * Math.PI);
-  if (z < foot) h = Math.max(h, cliffH);
+  // the cliff: a steep face from its foot to its top edge (the rock face mesh stands just in front of it)
+  const foot = cliffFootAt(x) - 3 + (crag - 0.5) * 4;
+  const top = cliffTopAt(x) - 1;
+  if (z < foot) {
+    const k = clamp((foot - z) / (foot - top), 0, 1);
+    const face = smoothstep(0, 1, k) * 0.8 + 0.2 * smoothstep(0.2, 0.45, k) + 0.08 * smoothstep(0.6, 0.8, k) - 0.08;
+    h = Math.max(h, lerp(TOWN_Y, TERRACE.y - 2, clamp(face, 0, 1)) + (crag - 0.5) * 10 * Math.sin(k * Math.PI));
+  }
   // above the cliff: the plateau rises into the mountain behind the hotel
-  if (z < FUNI.cliffTop) h = Math.max(h, TERRACE.y - 2 + smoothstep(FUNI.cliffTop - 20, FUNI.cliffTop - 260, z) * 120 + (n - 0.5) * 10);
+  if (z < top) h = Math.max(h, TERRACE.y - 2 + smoothstep(HOTEL.back - 4, HOTEL.back - 240, z) * 130 * smoothstep(20, 60, ax + Math.max(0, HOTEL.back - 20 - z)) + (n - 0.5) * 8 * smoothstep(top, top - 40, z));
   // the valley's sides rise into mountains
-  const side = smoothstep(120, 300, ax);
+  const side = smoothstep(110, 290, ax);
   h += side * (150 + (n - 0.5) * 80) * (0.6 + 0.4 * smoothstep(100, -100, z));
   // behind the station the valley rises gently towards the far hills
   h += smoothstep(150, 330, z) * 60 * (0.7 + n * 0.6);
-  // the funicular's corridor: never higher than 2.5 below the rails
+  // the hotel stands on a level plateau: keep the ground under its footprint below the lobby's floor
+  if (z < top + 2 && z > HOTEL.back - 8 && ax < HOTEL.half + 8) h = Math.min(h, TERRACE.y - 2.5);
+  // the funicular's corridor: never higher than 1.5 below the rails
   if (z < FUNI.z0 + 6 && z > FUNI.cliffTop - 2) {
-    const cut = railY(z) - 2.5;
-    const w = 1 - smoothstep(6, 16, Math.abs(x - 2));
+    const cut = railY(z) - 1.5;
+    const w = 1 - smoothstep(6, 12, Math.abs(x - 2.3));
     if (h > cut) h = lerp(h, cut, w);
   }
   return h;

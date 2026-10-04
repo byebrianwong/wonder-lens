@@ -25,7 +25,14 @@ export const ICING = { z0: -306, z1: -396 };
 export const OVENS = { z0: -398, z1: -440, x: 30 };
 
 /** Side conveyors carrying Courtesans, either side of the belt. */
-export const SIDE = { x: 13, z0: -300, z1: -440 };
+export const SIDE = { x: 14, z0: -301, z1: -440 };
+
+/** The twin stand mixers at the start of the line, and the rivers of cream that run from them. */
+export const MIXER = { x: 7.5, z: -325 };
+export const RIVER = { x: 7.5, z0: -330, z1: -440, w: 3 };
+
+/** Gantries across the hall carrying the piping bags over the side lines. */
+export const BAGS = [-342, -366, -390];
 
 /** The octagonal rotunda round the tower; `a` is the apothem (centre to the middle of a wall). */
 export const ROT = { z: -473, a: 28, wallTop: 90, domeTop: 124, oculus: 7 };
@@ -37,14 +44,14 @@ export const TOWER = { x: 0, z: -473, standTop: 56, baseR: 8.4, rings: 10 };
 export const SHOP = { back: -501, front: -557, halfW: 30, top: 86 };
 
 /** The storefront window, seen from inside (its glass is at SHOP.front). */
-export const WINDOW = { halfW: 17, y0: 52, y1: 82 };
+export const WINDOW = { halfW: 17, y0: 49.5, y1: 80 };
 
 /** Agatha's packing table at the end of the belt, and where she stands behind it. */
-export const PACK = { z: -549.5, agathaZ: -553.4 };
+export const PACK = { z: -551, depth: 3.6, agathaZ: -555.4 };
 
 /** The ribbon-tying machine on the right side of the shop. */
 export const RIBBON = { x: 17, z: -527 };
 
 /** Herr Mendl at the right-hand ovens; Zero by the shop's door on the left. */
-export const MENDL = { x: 17.5, z: -417 };
-export const ZERO = { x: -16, z: -538 };
+export const MENDL = { x: 20, z: -418 };
+export const ZERO = { x: -12.5, z: -543, yaw: 0.85 };

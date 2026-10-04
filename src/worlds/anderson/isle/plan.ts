@@ -23,7 +23,7 @@ export const PYLONS = [-1862, -1905, -1945, -2008];
 export const SEA_PYLONS = [-2150, -2290];
 
 /** the loading station: a long iron shed the rider starts in */
-export const STATION = { z0: -1788, z1: -1830, half: 10, eave: 11, ridge: 15, floor: 0.4 };
+export const STATION = { z0: -1786, z1: -1830, cx: 4.5, half: 11.5, eave: 12, ridge: 16, floor: 0.5 };
 
 /** the island's edge: a cliff of bales down to the sea */
 export const EDGE_Z = -2046;

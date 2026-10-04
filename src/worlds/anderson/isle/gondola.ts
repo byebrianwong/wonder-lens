@@ -9,7 +9,7 @@ import type { Road } from '../layout';
 import type { MountDef, SetContext } from '../common';
 import { texMat } from '../kit';
 import { CABLE_H, PYLON_X, PYLONS, RETURN_X, SEA, SEA_PYLONS, ZSNAP } from './plan';
-import { baleAtlas, corrugated, gondolaSide, hazard, jpSign, lattice, rustIron } from './paint';
+import { baleAtlas, corrugated, gondolaInner, gondolaSide, hazard, jpSign, lattice, rustIron } from './paint';
 
 /*
  * The trash gondola line: the rider's car (a rusty open bucket with a bale of trash in it, hung from a yoke
@@ -58,9 +58,9 @@ const M = (key: string, make: () => THREE.Material) => { let m = mats.get(key); 
 export function carMaterials() {
   return {
     side: M('side', () => texMat(gondolaSide('7号'))),
-    inner: M('inner', () => { const t = rustIron(0x7a4632, 211, 0.9).clone(); t.needsUpdate = true; t.repeat.set(1.5, 0.6); return texMat(t); }),
+    inner: M('inner', () => texMat(gondolaInner())),
     plate: M('plate', () => texMat(rustIron(0x6a3e2c, 213, 1))),
-    steel: M('steel', () => texMat(rustIron(0x3e4442, 215, 0.45))),
+    steel: M('steel', () => texMat(rustIron(0x56605a, 215, 0.45))),
     hazard: M('hazard', () => texMat(hazard())),
     cube: M('cube', () => new THREE.MeshLambertMaterial({ map: baleAtlas(), color: 0xc8a070 })),
     strap: M('strap', () => toon(0x2a2a28)),

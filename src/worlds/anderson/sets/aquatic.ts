@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Rng, smoothstep } from '../../../engine/math';
+import { FogCuller } from '../../../engine/Culling';
 import type { Subject } from '../../../game/Subject';
 import { SETS } from '../layout';
 import { showRange, type BuiltSet, type SetContext, type SetModule, type ZLightKey } from '../common';
@@ -25,12 +26,14 @@ import { Bubbles, LightShafts, SeaSurface, Specks } from '../aquatic/water';
  */
 
 const R = SETS.aquatic;
+const DEBUG = true;
+const OFF = typeof location !== 'undefined' ? (new URLSearchParams(location.search).get('aqoff') ?? '').split(',') : [];
 const GOLD = new THREE.Color(0xffd690), WINDOW_GOLD = new THREE.Color(0xffe2b0);
 
 const UNDER = (z: number, o: Partial<ZLightKey>): ZLightKey => ({
-  z, skyTop: 0xb8f4f0, skyMid: 0x3aa0bc, skyBottom: 0x0e3a5a, fog: 0x3aa6c0, fogDensity: 0.02,
-  sunDir: [0.25, 1, -0.35], sunColor: 0xe8fff0, sunIntensity: 1.5, hemiSky: 0xb0f0f0, hemiGround: 0x2a6a80, hemiIntensity: 1.25,
-  exposure: 1.05, bloom: 0.45, saturation: 1.12, sunGlow: 0, sunSize: 0, horizonHeight: 0.35, tint: 0xf4ffff, ...o,
+  z, skyTop: 0xb8f4f0, skyMid: 0x2a92b2, skyBottom: 0x0e3a5a, fog: 0x2a92b2, fogDensity: 0.02,
+  sunDir: [0.25, 1, -0.35], sunColor: 0xeafff2, sunIntensity: 1.3, hemiSky: 0xa8ecf0, hemiGround: 0x1a4a6a, hemiIntensity: 1.0,
+  exposure: 1.05, bloom: 0.45, saturation: 1.2, sunGlow: 0, sunSize: 0, horizonHeight: 0.35, tint: 0xf4ffff, ...o,
 });
 const SUNDOWN = (z: number, o: Partial<ZLightKey> = {}): ZLightKey => ({
   z, skyTop: 0x4a3a8a, skyMid: 0xe07a9a, skyBottom: 0xffb46a, fog: 0xf0a08a, fogDensity: 0.0042,
@@ -48,7 +51,7 @@ const GOLDEN: Partial<ZLightKey> = {
 
 export const LIGHTS: ZLightKey[] = [
   UNDER(-2090, {}),
-  UNDER(-2150, { fog: 0x2a94b4, fogDensity: 0.022, sunIntensity: 1.35, hemiIntensity: 1.15 }),
+  UNDER(-2150, { fog: 0x2288aa, skyMid: 0x2288aa, fogDensity: 0.022, sunIntensity: 1.2, hemiIntensity: 0.95 }),
   UNDER(-2190, { fog: 0x1a6a94, skyMid: 0x1a6a94, fogDensity: 0.025, sunIntensity: 0.9, hemiIntensity: 0.9, exposure: 1.1, bloom: 0.6 }),
   UNDER(-2212, DEEP),
   UNDER(-2272, DEEP),
@@ -68,10 +71,14 @@ function build(ctx: SetContext): BuiltSet {
   const { road, lights } = ctx;
   const group = new THREE.Group();
   const rng = new Rng(2090);
+  const t0 = performance.now();
 
   // ---------- the sea floor and the reef ----------
   const reef = buildReef(road, ctx.lowDetail);
   group.add(reef.group);
+  const culler = new FogCuller();
+  culler.threshold = 0.97;
+  culler.addChildren(reef.group);
 
   // ---------- the water ----------
   const sea = new SeaSurface();
@@ -85,9 +92,9 @@ function build(ctx: SetContext): BuiltSet {
     }
     return out;
   };
-  const reefShafts = new LightShafts(shaftList(-2092, -2196, ctx.lowDetail ? 16 : 26, new THREE.Vector3(-0.25, -1, 0.35).normalize(), [16, 30]));
+  const reefShafts = new LightShafts(shaftList(-2092, -2196, ctx.lowDetail ? 10 : 16, new THREE.Vector3(-0.25, -1, 0.35).normalize(), [16, 30]));
   group.add(reefShafts.mesh);
-  const kelpShafts = new LightShafts(shaftList(-2284, -2346, ctx.lowDetail ? 12 : 20, new THREE.Vector3(0.3, -1, 0.5).normalize(), [18, 28]));
+  const kelpShafts = new LightShafts(shaftList(-2284, -2346, ctx.lowDetail ? 9 : 14, new THREE.Vector3(0.3, -1, 0.5).normalize(), [18, 28]));
   kelpShafts.uniforms.uColor.value.set(0xffd8a0);
   group.add(kelpShafts.mesh);
   const bubbles = new Bubbles(ctx.lowDetail ? 240 : 380);
@@ -104,6 +111,7 @@ function build(ctx: SetContext): BuiltSet {
     return new THREE.Vector3(x, reef.floor(x, z) + 0.3, z);
   });
 
+  if (DEBUG) console.warn(`[aq] reef+water built in ${Math.round(performance.now() - t0)} ms`);
   // ---------- the Deep Search ----------
   const sub = buildDeepSearch();
 
@@ -111,11 +119,12 @@ function build(ctx: SetContext): BuiltSet {
   const lampPos = new THREE.Vector3();
   lights.add({ from: road.u(-2186), to: road.u(-2300), pos: lampPos, color: 0xfff0d8, intensity: 34, distance: 28 });
 
+  if (DEBUG) console.warn(`[aq] built in ${Math.round(performance.now() - t0)} ms`);
   const subjects: Subject[] = [];
   const camPos = new THREE.Vector3();
   const tmp = new THREE.Vector3();
   let riderZ = R.z0;
-  let emitAcc = 0;
+  let emitAcc = 0, dbgN = 0;
   const ventAcc = vents.map(() => 0);
 
   const set: BuiltSet = {
@@ -129,6 +138,19 @@ function build(ctx: SetContext): BuiltSet {
       tickSea(t);
       ctx.camera.getWorldPosition(camPos);
       const fog = ctx.scene.fog as THREE.FogExp2 | null;
+      if (fog) culler.update(ctx.camera, fog);
+      if (DEBUG && ++dbgN === 30) {
+        let tris = 0, calls = 0;
+        const fr = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(ctx.camera.projectionMatrix, ctx.camera.matrixWorldInverse));
+        group.traverseVisible((o) => {
+          const m = o as THREE.Mesh;
+          if (!m.isMesh) return;
+          if (m.frustumCulled && m.geometry.boundingSphere) { const bs = (m as THREE.InstancedMesh).isInstancedMesh ? (m as THREE.InstancedMesh).boundingSphere : m.geometry.boundingSphere; if (bs && !fr.intersectsSphere(bs.clone().applyMatrix4(m.matrixWorld))) return; }
+          const n = (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3;
+          tris += n * ((m as THREE.InstancedMesh).isInstancedMesh ? (m as THREE.InstancedMesh).count : 1); calls++;
+        });
+        console.warn(`[aq] my set: ~${calls} meshes, ~${Math.round(tris / 1000)}k tris in view`);
+      }
       const deep = deepness(z), up = surfaced(z);
       const camDepth = Math.max(0, -camPos.y);
 
@@ -142,8 +164,8 @@ function build(ctx: SetContext): BuiltSet {
       reefShafts.update(fog); kelpShafts.update(fog);
       reefShafts.mesh.visible = z > -2215;
       kelpShafts.mesh.visible = z < -2262 && up < 1;
-      reefShafts.uniforms.uOpacity.value = 0.32 * (1 - deep);
-      kelpShafts.uniforms.uOpacity.value = 0.34 * smoothstep(-2262, -2290, z);
+      reefShafts.uniforms.uOpacity.value = 0.5 * (1 - deep);
+      kelpShafts.uniforms.uOpacity.value = 0.5 * smoothstep(-2262, -2290, z);
 
       // bubbles: the splash at the start, the sub's wake, the vents
       const stern = sub.stern.getWorldPosition(tmp);
@@ -165,6 +187,14 @@ function build(ctx: SetContext): BuiltSet {
       snow.update(t, camPos, new THREE.Vector3(0.05, -0.18, 0.04), fog);
       plankton.uniforms.uAmount.value = deep;
       plankton.update(t, camPos, new THREE.Vector3(0.1, 0.06, -0.05), fog);
+      if (OFF.length > 1 || OFF[0]) {
+        reef.group.visible = !OFF.includes('reef');
+        reefShafts.mesh.visible &&= !OFF.includes('shafts'); kelpShafts.mesh.visible &&= !OFF.includes('shafts');
+        bubbles.points.visible = !OFF.includes('bubbles'); snow.points.visible &&= !OFF.includes('specks'); plankton.points.visible &&= !OFF.includes('specks');
+        sea.mesh.visible = !OFF.includes('sea'); sub.mount.group.visible = !OFF.includes('sub');
+        if (OFF.includes('inst')) reef.group.traverse((o) => { if ((o as THREE.InstancedMesh).isInstancedMesh) o.visible = false; });
+        for (const c of reef.group.children) if (c.name && OFF.some((k) => c.name.startsWith(k))) c.visible = false;
+      }
       reef.deepGlow.color.setHex(0x9ff8ff).multiplyScalar(0.6 + 0.4 * Math.sin(t * 0.7) * Math.sin(t * 0.23));
 
       // the sub's lamp light runs just ahead of it in the deep

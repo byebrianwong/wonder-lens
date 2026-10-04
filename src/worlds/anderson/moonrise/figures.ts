@@ -32,11 +32,74 @@ export const KID = { tall: 0.6, scout: 0.58, small: 0.48 };
 
 // ---------------------------------------------------------------- baking
 /**
+ * Resample every finely divided sphere-based mesh under `root` (sculpted hair, skulls) onto a coarser grid of
+ * the same layout, keeping its shape, normals and UVs. For figures seen from a distance.
+ */
+export function lighten(root: THREE.Object3D, ws = 36, hs = 24) {
+  const swaps = new Map<THREE.BufferGeometry, THREE.BufferGeometry>();
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh) return;
+    const g = m.geometry as THREE.SphereGeometry;
+    if (g.type !== 'SphereGeometry' || !g.parameters || g.parameters.widthSegments <= ws + 4) return;
+    let lo = swaps.get(g);
+    if (!lo) {
+      const W0 = g.parameters.widthSegments, H0 = g.parameters.heightSegments;
+      const src = g.attributes.position as THREE.BufferAttribute, srcN = g.attributes.normal as THREE.BufferAttribute;
+      lo = new THREE.SphereGeometry(1, ws, hs);
+      const pos = lo.attributes.position as THREE.BufferAttribute, nrm = lo.attributes.normal as THREE.BufferAttribute;
+      for (let iy = 0; iy <= hs; iy++) for (let ix = 0; ix <= ws; ix++) {
+        const j = Math.round((iy / hs) * H0) * (W0 + 1) + Math.round((ix / ws) * W0), k = iy * (ws + 1) + ix;
+        pos.setXYZ(k, src.getX(j), src.getY(j), src.getZ(j));
+        nrm.setXYZ(k, srcN.getX(j), srcN.getY(j), srcN.getZ(j));
+      }
+      lo.computeBoundingSphere();
+      swaps.set(g, lo);
+    }
+    m.geometry = lo;
+  });
+  return root;
+}
+
+const vcMats = new Map<string, THREE.Material>();
+/**
+ * Give every plain-coloured cel material under `root` (charToon or toon, no map) one shared material per
+ * shading style, with the colour moved into the geometry's vertex colours, so a merge can put a whole
+ * room of furniture (or a figure's skin, socks and shoes) into one draw call. Geometries are cloned first,
+ * since primitives are often shared.
+ */
+export function unify(root: THREE.Object3D) {
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || (m as THREE.InstancedMesh).isInstancedMesh || Array.isArray(m.material) || m.userData.keep) return;
+    const mat = m.material as THREE.MeshToonMaterial;
+    if (mat.type !== 'MeshToonMaterial' || mat.map || mat.vertexColors || mat.transparent || mat.emissiveMap) return;
+    const rim = (mat.userData.rim as { value: number } | undefined)?.value;
+    const key = `${rim ?? 'toon'}|${mat.emissive.getHexString()}|${mat.side}|${mat.gradientMap?.uuid}`;
+    let shared = vcMats.get(key);
+    if (!shared) {
+      shared = rim !== undefined
+        ? charToon({ color: 0xffffff, rim, emissive: mat.emissive.clone(), side: mat.side, gradientMap: mat.gradientMap, vertexColors: true })
+        : new THREE.MeshToonMaterial({ color: 0xffffff, emissive: mat.emissive.clone(), side: mat.side, gradientMap: mat.gradientMap, vertexColors: true });
+      vcMats.set(key, shared);
+    }
+    const g = m.geometry.clone();
+    const n = g.attributes.position.count, c = mat.color, arr = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { arr[i * 3] = c.r; arr[i * 3 + 1] = c.g; arr[i * 3 + 2] = c.b; }
+    g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+    m.geometry = g;
+    m.material = shared;
+  });
+  return root;
+}
+
+/**
  * Merge a figure's meshes by material: the meshes of each part in `moving` stay with that part (so it can
  * still turn), everything else goes to `root`. Parts may nest (a forearm inside an upper arm).
  */
 export function bake(root: THREE.Object3D, moving: THREE.Object3D[], castShadow = true) {
   root.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && !m.userData.outline) m.castShadow = castShadow; });
+  unify(root);
   const set = new Set(moving);
   const nearestMoving = (p: THREE.Object3D) => {
     const out: THREE.Object3D[] = [];
@@ -421,7 +484,7 @@ function collect(root: THREE.Object3D, exclude: THREE.Object3D[]) {
     const m = o as THREE.Mesh;
     if (m.isMesh && !Array.isArray(m.material)) {
       const g = (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()).applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld));
-      for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
+      for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv', 'color'].includes(k)) g.deleteAttribute(k);
       if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
       const mat = m.material as THREE.Material;
       if (!by.has(mat)) by.set(mat, []);
@@ -471,7 +534,7 @@ export class Troop {
       { name: 'legR', root: k.hip[0], parent: 'body', exclude: [] },
       { name: 'legL', root: k.hip[1], parent: 'body', exclude: [] },
     ];
-    for (const t of templates) t.group.updateWorldMatrix(true, true);
+    for (const t of templates) { lighten(t.group, 32, 20); unify(t.group); t.group.updateWorldMatrix(true, true); }
     const d0 = defs(t0);
     d0.forEach((d, i) => {
       const parent = d.parent ? d0.findIndex((x) => x.name === d.parent) : -1;

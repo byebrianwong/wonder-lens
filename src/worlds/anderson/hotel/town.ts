@@ -1,11 +1,12 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildTerrain, cyl, box, mesh, sphere, type Placement } from '../../../engine/Builders';
 import { HeightGrid } from '../../../engine/HeightGrid';
 import { addGroundDetail, paintedDetailTexture } from '../../../engine/Ground';
 import { fluffyForest } from '../../../engine/Foliage';
 import { Rng, clamp, smoothstep, TAU } from '../../../engine/math';
 import { facadeTile } from '../textures';
-import { FUNI, STATION, TOWN_Y, VIADUCT } from './plan';
+import { FUNI, STATION, TERRACE, TOWN_Y, VIADUCT, cliffFaceZ, cliffFootAt } from './plan';
 import { forestBand, GBH, mountainBand, roofTiles, townWall } from './textures';
 import { onionGeometry } from './station';
 import { shade, tbox, type HotelMats } from './mats';
@@ -23,7 +24,8 @@ const ROOFS = [0x8a2a3a, 0x4a5a7a, 0xb8604a, 0x3a6a6a, 0x6a3a5a];
 /** Where nothing of the town may stand: the station terrace, the viaduct, the bathhouse, the church, the pond. */
 const KEEP_OUT: Array<[number, number, number, number]> = [
   [-STATION.terraceHalf - 3, STATION.terraceHalf + 3, STATION.terraceZ1 - 4, STATION.terraceZ0 + 4],
-  [-VIADUCT.half - 4, VIADUCT.half + 4, FUNI.cliffFoot - 4, STATION.terraceZ1 + 2],
+  [-VIADUCT.half - 4, VIADUCT.half + 4, VIADUCT.z1 - 2, STATION.terraceZ1 + 2],
+  [-5, FUNI.x + 7, FUNI.cliffTop, VIADUCT.z1],
   [-48, -9, -40, -6],
   [10, 38, -42, -10],
   [26, 62, 6, 38],
@@ -85,7 +87,7 @@ export function buildValley(m: HotelMats, height: (x: number, z: number) => numb
   const grid = new HeightGrid(-300, 300, -440, 340, 4, height);
   const groundMat = new THREE.MeshLambertMaterial({ vertexColors: true });
   addGroundDetail(groundMat, paintedDetailTexture(1932), { scaleA: 30, scaleB: 8, strength: 0.55 });
-  const snowC = new THREE.Color(0xf4f2fa), snowShade = new THREE.Color(0xdcd8ee), rockC = new THREE.Color(0x8e7e8a), rockD = new THREE.Color(0x6a5e6e), townC = new THREE.Color(0xeeeaf4);
+  const snowC = new THREE.Color(0xf4f2fa), snowShade = new THREE.Color(0xdcd8ee), rockC = new THREE.Color(0x8a7480), rockD = new THREE.Color(0x5e4e5a), townC = new THREE.Color(0xeeeaf4);
   const terrain = buildTerrain({
     xMin: -300, xMax: 300, zMin: -440, zMax: 340, res: 4, chunk: 260, height: (x, z) => grid.sample(x, z),
     color: (x, z, y, slope, out) => {
@@ -102,16 +104,65 @@ export function buildValley(m: HotelMats, height: (x: number, z: number) => numb
   g.add(terrain);
   const occluders: THREE.Object3D[] = [terrain];
 
+  // ---------- the cliff: a sheer face of pinkish rock with snow on its ledges ----------
+  const ledgeTrees: Placement[] = [];
+  {
+    const nx = 136, ny = 30, x0 = -170, x1 = 170, y0 = TOWN_Y - 2.5, y1 = TERRACE.y + 0.6;
+    const pos: number[] = [], uv: number[] = [], idx: number[] = [];
+    for (let j = 0; j <= ny; j++) for (let i = 0; i <= nx; i++) {
+      const x = x0 + (x1 - x0) * (i / nx), y = y0 + (y1 - y0) * (j / ny);
+      pos.push(x, y, cliffFaceZ(x, y)); uv.push(x / 9, y / 9);
+      if (i < nx && j < ny) { const a = j * (nx + 1) + i; idx.push(a, a + 1, a + nx + 1, a + 1, a + nx + 2, a + nx + 1); }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    if ((geo.attributes.normal as THREE.BufferAttribute).getZ(nx * 3) < 0) { for (let i = 0; i < idx.length; i += 3) { const t = idx[i + 1]; idx[i + 1] = idx[i + 2]; idx[i + 2] = t; } geo.setIndex(idx); geo.computeVertexNormals(); }
+    const face = mesh(geo, m.rock);
+    face.receiveShadow = true;
+    g.add(face);
+    occluders.push(face);
+    // snow lying along ledges, in broken runs
+    const ledges: THREE.BufferGeometry[] = [];
+    const lr = new Rng(404);
+    for (const ly of [2, 13, 24, 35]) {
+      let x = x0 + lr.range(0, 10);
+      while (x < x1) {
+        const len = lr.range(6, 22);
+        if (lr.next() < 0.62 && !(x < FUNI.x + 6 && x + len > -6)) {
+          const segs = Math.ceil(len / 2);
+          const lp: number[] = [], li: number[] = [];
+          for (let k = 0; k <= segs; k++) {
+            const xx = x + (len * k) / segs, zf = cliffFaceZ(xx, ly), out = 1.4 + Math.sin(k * 1.3) * 0.5;
+            lp.push(xx, ly + 0.5, zf + out, xx, ly + 0.5, zf - 1.5, xx, ly - 0.6, zf + out - 0.2);
+            if (k < segs) { const a = k * 3; li.push(a, a + 1, a + 3, a + 1, a + 4, a + 3, a + 2, a, a + 5, a, a + 3, a + 5); }
+            if (k % 3 === 1 && lr.next() < 0.6) ledgeTrees.push({ x: xx, y: ly + 0.3, z: zf + 0.6, scale: lr.range(0.45, 0.7), rot: lr.range(0, TAU) });
+          }
+          const lg = new THREE.BufferGeometry();
+          lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3));
+          lg.setIndex(li); lg.computeVertexNormals();
+          ledges.push(lg.toNonIndexed());
+        }
+        x += len + lr.range(4, 14);
+      }
+    }
+    const lm = new THREE.Mesh(mergeGeometries(ledges, false)!, new THREE.MeshLambertMaterial({ color: 0xf6f4fc, side: THREE.DoubleSide }));
+    lm.receiveShadow = true;
+    g.add(lm);
+  }
+
   // ---------- the houses ----------
   const houses: House[] = [];
-  for (let bx = -138; bx < 138; bx += 30) for (let bz = -60; bz < 190; bz += 26) {
+  for (let bx = -138; bx < 138; bx += 30) for (let bz = -136; bz < 190; bz += 26) {
     // a perimeter block: houses along its four sides, a garden in the middle
     const x0 = bx + 3, x1 = bx + 27, z0 = bz + 3, z1 = bz + 23;
     const centre = Math.hypot((x0 + x1) / 2, (z0 + z1) / 2 - 10);
     const tall = 1 - smoothstep(30, 120, centre);
     const tryHouse = (x: number, z: number, w: number, d: number, rot: number) => {
-      const foot = FUNI.cliffFoot + x * x * 0.0016;
-      if (z < foot + 5 || Math.abs(x) > 128 || kept(x, z, 1)) return;
+      const foot = cliffFootAt(x);
+      if (z < foot + 7 || Math.abs(x) > 128 || kept(x, z, 1)) return;
       const y = grid.sample(x, z);
       if (y > TOWN_Y + 2.5) return;
       const h = rng.range(4.2, 6) + tall * rng.range(1.5, 3.5);
@@ -230,11 +281,11 @@ export function buildValley(m: HotelMats, height: (x: number, z: number) => numb
   const small: Placement[] = [];
   const tr = new Rng(77);
   // in the town: in the middle of the blocks and along the pond
-  for (let bx = -138; bx < 138; bx += 30) for (let bz = -60; bz < 190; bz += 26) {
+  for (let bx = -138; bx < 138; bx += 30) for (let bz = -136; bz < 190; bz += 26) {
     for (let k = 0; k < 2; k++) {
       const x = bx + 15 + tr.range(-5, 5), z = bz + 13 + tr.range(-4, 4);
-      const foot = FUNI.cliffFoot + x * x * 0.0016;
-      if (z < foot + 3 || kept(x, z) || Math.abs(x) > 130) continue;
+      const foot = cliffFootAt(x);
+      if (z < foot + 5 || kept(x, z) || Math.abs(x) > 130) continue;
       small.push({ x, y: grid.sample(x, z) - 0.2, z, scale: tr.range(0.45, 0.7), rot: tr.range(0, TAU) });
     }
   }
@@ -245,10 +296,10 @@ export function buildValley(m: HotelMats, height: (x: number, z: number) => numb
     const y = grid.sample(x, z);
     const slope = grid.slope(x, z);
     if (slope > 0.62) continue;
-    if (Math.abs(x) < 14 && z < FUNI.z0 + 8 && z > FUNI.cliffTop - 30) continue;
+    if (x > -8 && x < FUNI.x + 10 && z < FUNI.z0 + 8 && z > FUNI.cliffTop - 30) continue;
     if (kept(x, z, 4)) continue;
     // keep them out of the town itself, thick on the cliff and the lower mountains
-    const inTown = y < TOWN_Y + 2.5 && Math.abs(x) < 128 && z > FUNI.cliffFoot;
+    const inTown = y < TOWN_Y + 2.5 && Math.abs(x) < 128 && z > cliffFootAt(x);
     if (inTown && tr.next() > 0.08) continue;
     if (y > 150 && tr.next() < 0.7) continue;
     // nothing right in front of the hotel's terrace or across the view of the facade
@@ -257,7 +308,7 @@ export function buildValley(m: HotelMats, height: (x: number, z: number) => numb
   }
   const firStyle = { shape: 'conifer' as const, trunk: 0x4a3a34, leaves: [0x2e4c48, 0x36544c, 0x2a4440, 0x3e5c52], snow: 0.85, density: 0.9 };
   g.add(fluffyForest(firStyle, trees, tr, { castShadow: false, variants: 3 }));
-  g.add(fluffyForest({ ...firStyle, density: 0.8 }, small, tr, { castShadow: true, variants: 2 }));
+  g.add(fluffyForest({ ...firStyle, density: 0.8 }, [...small, ...ledgeTrees], tr, { castShadow: true, variants: 2 }));
 
   // ---------- the painted Alps behind everything, and Gabelmeister's Peak ----------
   const backdrop = new THREE.Group();

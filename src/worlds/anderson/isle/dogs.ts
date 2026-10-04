@@ -238,14 +238,14 @@ let eyeMat: THREE.Material | null = null;
 function eyeMaterial() {
   return eyeMat ??= (() => {
     const p = new Painter(256, 128, 3);
-    p.fill('#f2ead8');
-    // the iris and pupil face +z (a quarter of the way across a sphere's texture)
+    p.fill('#e8dcc4');
+    // a big dark iris filling most of the eye, as on the puppets: only a rim of white at the edges
     p.at([0, 0, 1], (g) => {
-      g.fillStyle = '#5a3a1e'; g.beginPath(); g.arc(0, 0, 26, 0, TAU); g.fill();
-      g.fillStyle = '#2a1a0e'; g.beginPath(); g.arc(0, 0, 21, 0, TAU); g.fill();
-      g.fillStyle = '#0a0806'; g.beginPath(); g.arc(0, 0, 13, 0, TAU); g.fill();
-      g.fillStyle = '#ffffff'; g.beginPath(); g.arc(-8, -9, 5, 0, TAU); g.fill();
-      g.beginPath(); g.arc(7, 7, 2.2, 0, TAU); g.fill();
+      g.fillStyle = '#3a2412'; g.beginPath(); g.arc(0, 0, 44, 0, TAU); g.fill();
+      g.fillStyle = '#5a3a1c'; g.beginPath(); g.arc(0, 4, 34, 0, TAU); g.fill();
+      g.fillStyle = '#0a0604'; g.beginPath(); g.arc(0, 0, 22, 0, TAU); g.fill();
+      g.fillStyle = '#ffffff'; g.beginPath(); g.arc(-12, -13, 8, 0, TAU); g.fill();
+      g.beginPath(); g.arc(10, 10, 3, 0, TAU); g.fill();
     });
     return new THREE.MeshPhongMaterial({ map: p.texture(), shininess: 90, specular: 0x666666 });
   })();
@@ -347,8 +347,8 @@ export function makeDog(o: DogOpts): Dog {
   const longHair = o.long ?? 0;
   const torso = sculpt((d, out) => {
     const t = d.z;
-    const w = 0.145 * GI * (1 + 0.1 * t);
-    const h = 0.15 * (1 + 0.28 * smoothstep(-0.3, 0.6, t)) * (1 - 0.12 * Math.exp(-(((t + 0.35) / 0.3) ** 2)));
+    const w = 0.158 * GI * (1 + 0.1 * t);
+    const h = 0.162 * (1 + 0.28 * smoothstep(-0.3, 0.6, t)) * (1 - 0.12 * Math.exp(-(((t + 0.35) / 0.3) ** 2)));
     const c = BY - 0.01 - 0.05 * smoothstep(-0.2, 0.7, t);
     const tf = 1 + o.shag * 0.22 * clump(d, o.seed) + (d.y < 0 ? longHair * 0.5 * (-d.y) ** 2 : 0);
     out.set(d.x * w * tf, c + d.y * h * tf, t * A);
@@ -358,7 +358,7 @@ export function makeDog(o: DogOpts): Dog {
   // ---- neck ----
   {
     const c = new THREE.CatmullRomCurve3([J.chest.clone().add(V(0, 0.0, 0.02)), J.neck.clone(), J.head.clone().add(V(0, -0.03, -0.02))]);
-    const g = taperedTube(c, 0.115 * GI, 0.085, 10, 12);
+    const g = taperedTube(c, 0.125 * GI, 0.095, 10, 12);
     tuft(g, o.shag * 0.03 + longHair * 0.02, o.seed + 3);
     stripUV(g, 0.5, 1, 0.2, 0.15);
     parts.push(skinPart(clean(g), ['chest', 'neck', 'head'], segs, order));
@@ -368,12 +368,12 @@ export function makeDog(o: DogOpts): Dog {
     const front = s[0] === 'f';
     const pts = (front ? [0, 1, 2] : [0, 1, 2, 3]).map((k) => J[`${s}${k}`].clone());
     pts.unshift(pts[0].clone().add(V(0, 0.09, front ? 0.0 : 0.02)));
-    const r0 = (front ? 0.06 : 0.075) * GI, r1 = 0.035;
+    const r0 = (front ? 0.074 : 0.092) * GI, r1 = 0.042;
     const g = taperedTube(new THREE.CatmullRomCurve3(pts), r0, r1, 14, 9);
     tuft(g, o.shag * 0.02, o.seed + 5);
     stripUV(g, 0, 0.5);
     const paw = new THREE.SphereGeometry(1, 10, 7);
-    paw.scale(0.05, 0.034, 0.072).translate(pts[pts.length - 1].x, 0.03, pts[pts.length - 1].z + 0.035);
+    paw.scale(0.058, 0.038, 0.08).translate(pts[pts.length - 1].x, 0.03, pts[pts.length - 1].z + 0.035);
     stripUV(paw, 0, 0.5, 0.012, 0.004);
     const names = front ? ['chest', `${s}0`, `${s}1`, `${s}2`] : ['hips', `${s}0`, `${s}1`, `${s}2`, `${s}3`];
     parts.push(skinPart(clean(g), names, segs, order));
@@ -485,13 +485,13 @@ export function makeDog(o: DogOpts): Dog {
   outline(headMesh, INK, 1.3, 0.012);
   // eyes
   const eyeGeo: THREE.BufferGeometry[] = [];
-  const eyeR = 0.026 * HS;
+  const eyeR = 0.029 * HS;
   for (const s of [-1, 1]) {
     const e = V(s * 0.45, 0.3, 0.84).normalize();
     headShape(e, tmp);
     const g = new THREE.SphereGeometry(eyeR, 12, 10);
     g.rotateY(s * 0.42);
-    g.translate(tmp.x * 0.93, tmp.y * 0.95, tmp.z * 0.93);
+    g.translate(tmp.x * 0.89, tmp.y * 0.92, tmp.z * 0.89);
     eyeGeo.push(g);
   }
   const eyes = new THREE.Mesh(mergeGeometries(eyeGeo, false)!, eyeMaterial());
@@ -577,13 +577,13 @@ export function makeDog(o: DogOpts): Dog {
 
 // ---------------- the dogs of the film ----------------
 export const DOGS = {
-  chief: (): DogOpts => ({ coat: 0x24222a, coat2: 0x46444e, pattern: 'plain', ears: 'up', shag: 0.85, length: 1.08, leg: 1.12, girth: 0.88, snout: 1.25, head: 1.0, iris: 0x4a3418, brows: 0.2, jaw: true, scale: 1.75, seed: 101 }),
-  rex: (): DogOpts => ({ coat: 0x8e8c88, coat2: 0xe6e0d4, pattern: 'plain', ears: 'fold', shag: 1.0, long: 0.6, length: 1.0, leg: 0.95, girth: 1.05, snout: 0.9, head: 1.08, brows: 1, scale: 1.65, seed: 111, tip: 0xe6e0d4 }),
-  king: (): DogOpts => ({ coat: 0xe2d6bc, coat2: 0x8a5a36, pattern: 'saddle', ears: 'flop', earColor: 0x8a5a36, shag: 0.35, length: 1.05, leg: 0.92, girth: 1.18, snout: 0.95, head: 1.15, brows: 0.3, scale: 1.7, seed: 121 }),
-  boss: (): DogOpts => ({ coat: 0xb88e5e, coat2: 0x5a4030, pattern: 'mask', ears: 'flop', earColor: 0x6a4a34, shag: 0.4, length: 1.0, leg: 0.98, girth: 1.05, snout: 0.75, head: 1.1, scale: 1.65, seed: 131, jersey: { color: 0xf2eee2, trim: 0x2a3a6a, text: 'DRAGONS', num: '8' } }),
-  duke: (): DogOpts => ({ coat: 0x7a5034, coat2: 0xeee4d2, pattern: 'blaze', ears: 'long', earColor: 0x5a3a26, shag: 0.55, long: 0.2, length: 1.0, leg: 1.0, girth: 1.0, snout: 1.05, head: 1.02, socks: 0xeee4d2, brows: 0.4, scale: 1.65, seed: 141 }),
-  nutmeg: (): DogOpts => ({ coat: 0xecd6a6, coat2: 0xf6ead0, pattern: 'plain', ears: 'long', earColor: 0xd8b276, shag: 0.25, long: 1.0, length: 0.98, leg: 1.02, girth: 0.95, snout: 1.05, head: 1.0, fringe: true, collar: 0xc8323c, scale: 1.65, seed: 151 }),
-  spots: (): DogOpts => ({ coat: 0xf0ece2, coat2: 0x3a3a40, pattern: 'spots', ears: 'up', earColor: 0xf0ece2, nose: 0xd88a8a, shag: 0.15, length: 1.02, leg: 1.1, girth: 0.92, snout: 1.15, head: 1.05, scale: 1.7, seed: 161, collar: 0x5a6a8a }),
+  chief: (): DogOpts => ({ coat: 0x24222a, coat2: 0x46444e, pattern: 'plain', ears: 'up', shag: 0.85, length: 1.08, leg: 1.12, girth: 0.88, snout: 1.25, head: 1.0, iris: 0x4a3418, brows: 0.2, jaw: true, scale: 2.25, seed: 101 }),
+  rex: (): DogOpts => ({ coat: 0x8e8c88, coat2: 0xe6e0d4, pattern: 'plain', ears: 'fold', shag: 1.0, long: 0.6, length: 1.0, leg: 0.95, girth: 1.05, snout: 0.9, head: 1.08, brows: 1, scale: 2.15, seed: 111, tip: 0xe6e0d4 }),
+  king: (): DogOpts => ({ coat: 0xe2d6bc, coat2: 0x8a5a36, pattern: 'saddle', ears: 'flop', earColor: 0x8a5a36, shag: 0.35, length: 1.05, leg: 0.92, girth: 1.18, snout: 0.95, head: 1.15, brows: 0.3, scale: 2.2, seed: 121 }),
+  boss: (): DogOpts => ({ coat: 0xb88e5e, coat2: 0x5a4030, pattern: 'mask', ears: 'flop', earColor: 0x6a4a34, shag: 0.4, length: 1.0, leg: 0.98, girth: 1.05, snout: 0.75, head: 1.1, scale: 2.15, seed: 131, jersey: { color: 0xf2eee2, trim: 0x2a3a6a, text: 'DRAGONS', num: '8' } }),
+  duke: (): DogOpts => ({ coat: 0x7a5034, coat2: 0xeee4d2, pattern: 'blaze', ears: 'long', earColor: 0x5a3a26, shag: 0.55, long: 0.2, length: 1.0, leg: 1.0, girth: 1.0, snout: 1.05, head: 1.02, socks: 0xeee4d2, brows: 0.4, scale: 2.15, seed: 141 }),
+  nutmeg: (): DogOpts => ({ coat: 0xecd6a6, coat2: 0xf6ead0, pattern: 'plain', ears: 'long', earColor: 0xd8b276, shag: 0.25, long: 1.0, length: 0.98, leg: 1.02, girth: 0.95, snout: 1.05, head: 1.0, fringe: true, collar: 0xc8323c, scale: 2.15, seed: 151 }),
+  spots: (): DogOpts => ({ coat: 0xf0ece2, coat2: 0x3a3a40, pattern: 'spots', ears: 'up', earColor: 0xf0ece2, nose: 0xd88a8a, shag: 0.15, length: 1.02, leg: 1.1, girth: 0.92, snout: 1.15, head: 1.05, scale: 2.2, seed: 161, collar: 0x5a6a8a }),
 };
 
 // ---------------- life ----------------

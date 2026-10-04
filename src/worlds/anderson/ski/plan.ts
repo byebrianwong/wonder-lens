@@ -43,6 +43,8 @@ export const SPOT = {
   ibex: new THREE.Vector3(-25, 0, -808),
 };
 export const VALLEY = -62;
+/** flat-topped crags: [top centre, radius of the flat top] */
+const KNOBS: Array<[THREE.Vector3, number]> = [[SPOT.obs, 12.5], [SPOT.station, 7.5], [SPOT.chapel, 12]];
 
 export interface Plan {
   road: Road;
@@ -182,6 +184,11 @@ export function makePlan(road: Road): Plan {
     h = Math.max(h, VALLEY + side * (150 + n2 * 90));
     // crags poking through the snow beside the run
     h += (fbm(x * 0.09, z * 0.09, 2) - 0.5) * 3 * smoothstep(40, 90, al);
+    // the summit's crags: the observatory's knob with the cable car station, and the chapel's terrace
+    for (const [k, r] of KNOBS) {
+      const d = Math.hypot(x - k.x, z - k.z);
+      if (d < r + 16) h = Math.max(h, k.y - 0.02 - 34 * Math.pow(smoothstep(r, r + 16, d), 0.7) + (d > r ? n1 * 1.5 : 0));
+    }
     return h;
   };
 

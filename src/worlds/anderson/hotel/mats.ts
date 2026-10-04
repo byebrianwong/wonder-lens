@@ -26,7 +26,7 @@ export function hotelMats() {
     brass,
     ashlar: tex(ashlar(0xe0cbc6, 7)),
     ashlarDark: tex(ashlar(0xc8b2b2, 8)),
-    rock: tex(rock(0x9a8c94, 9)),
+    rock: tex(rock(0x8e7680, 9)),
     paving: tex(paving(0xe6dcd6, 11)),
     snow: tex(snow(17)),
     roof: tex(fishScales(GBH.burgundy, 5)),

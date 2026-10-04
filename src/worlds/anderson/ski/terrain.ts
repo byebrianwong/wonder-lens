@@ -118,7 +118,7 @@ export function buildMountain(plan: Plan, avoid: (x: number, z: number) => boole
 
   // ---------- firs dusted with snow ----------
   {
-    const style = { shape: 'conifer' as const, trunk: 0x4a3428, leaves: [0x2c5848, 0x356452, 0x24483e, 0x3a5e58], snow: 0.85, density: 0.9 };
+    const style = { shape: 'conifer' as const, trunk: 0x4a3428, leaves: [0x3e6e60, 0x4a7a6a, 0x34604f, 0x4e7470], snow: 1, density: 0.95 };
     const nearPl: Placement[] = [], farPl: Placement[] = [];
     const tryTree = (x: number, z: number, list: Placement[], s: [number, number]) => {
       if (avoid(x, z)) return;

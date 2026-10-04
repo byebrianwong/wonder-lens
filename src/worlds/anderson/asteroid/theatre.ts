@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { glow, mesh } from '../../../engine/Builders';
+import { glow, mergeStatic, mesh } from '../../../engine/Builders';
 import { repeatUV } from '../../../engine/Paint';
 import { Rng, TAU, clamp, lerp, smoothstep } from '../../../engine/math';
 import { lightShaft } from '../common';
@@ -74,7 +74,7 @@ export function buildTheatre(rng: Rng): Theatre {
     const ROW = 1.6, front = ARCH.apron - 3.2;
     const rows = Math.floor((front - (H.z0 + 3)) / ROW);
     // (the television camera stands in a gap in the seats on the left)
-    const tvGap = (x: number, z: number) => x < -4.5 && x > -10.5 && z < -1536 && z > -1545;
+    const tvGap = (x: number, z: number) => x < -7.6 && x > -13.6 && z < -1522.5 && z > -1531.5;
     for (let i = 0; i < rows; i++) {
       const z = front + i * ROW, y = HOUSE_Y + i * 0.13;
       for (const s of [-1, 1]) {
@@ -207,8 +207,8 @@ export function buildTheatre(rng: Rng): Theatre {
       const tally = lettering([{ text: 'ON THE AIR', font: `bold 40px ${FUTURA}`, color: '#ffffff', y: 0.55 }], { w: 256, h: 64, bg: '#2a2a2a' });
       const sign = mesh(new THREE.PlaneGeometry(1.2, 0.3), new THREE.MeshBasicMaterial({ map: tally }), 0, 4.65, 0.86); tv.add(sign);
       tv.add(mesh(boxAt(3.4, 0.4, 3.4, 0, 0.2, 0), darkPlaster));
-      tv.position.set(-7.2, HOUSE_Y + 2.2, -1540);
-      tv.rotation.y = 0.1;
+      tv.position.set(-10.6, HOUSE_Y + 2.95, -1527);
+      tv.rotation.y = -0.18;
       statics.add(tv);
     }
   }
@@ -383,14 +383,14 @@ export function buildTheatre(rng: Rng): Theatre {
     for (let z = S.z0 - 8; z > S.back + 10; z -= 6) pipes.push(rodGeometry(V(-S.half, S.grid - 1.5, z), V(S.half, S.grid - 1.5, z), 0.12, 5));
     statics.add(mesh(merge(pipes), new THREE.MeshLambertMaterial({ color: 0x3a3e44 })));
   }
-  const borderMat = new THREE.MeshLambertMaterial({ map: skyBorder(), side: THREE.DoubleSide });
+  const borderMat = new THREE.MeshBasicMaterial({ map: skyBorder(), side: THREE.DoubleSide, fog: false });
   const lanternBody: THREE.Matrix4[] = [];
-  const BORDERS = [-1600, -1652, -1706, -1762, -1814];
+  const BORDERS = [-1606, -1676, -1746, -1812];
   {
-    const bw = S.half * 2 - 4, bh = 18, by = S.grid - bh / 2;
+    const bw = S.half * 2 - 4, bh = 13, by = S.grid - bh / 2;
     const borderGeos: THREE.BufferGeometry[] = [], hems: THREE.BufferGeometry[] = [];
     for (const z of BORDERS) {
-      const g = repeatUV(new THREE.PlaneGeometry(bw, bh), bw / 40, 1); g.translate(0, by, z); borderGeos.push(g);
+      const g = repeatUV(new THREE.PlaneGeometry(bw, bh), bw / 60, 1); g.translate((z % 7) * 9, by, z); borderGeos.push(g);
       hems.push(rodGeometry(V(-bw / 2, S.grid - bh + 0.1, z), V(bw / 2, S.grid - bh + 0.1, z), 0.15, 6));
       // a batten of lanterns just downstage of each border, aimed down at the stage
       for (let x = -76; x <= 76; x += 9.5) {
@@ -441,7 +441,7 @@ export function buildTheatre(rng: Rng): Theatre {
     const halo = mesh(new THREE.PlaneGeometry(R * 7, R * 7), sunHaloMat, 0, 0, 0.3); halo.renderOrder = 2; sun.add(halo);
     sun.position.set(30, 36, -1824);
     sun.lookAt(V(4, 4, -1600));
-    live.add(sun);
+    statics.add(sun);
     statics.add(mesh(rodGeometry(V(30, 40.6, -1826), V(30, S.grid, -1826), 0.2, 6), new THREE.MeshLambertMaterial({ color: 0x2c2e34 })));
   }
   const sunBeam = lightShaft(V(30, 33, -1820), V(10, STAGE_Y, -1760), 26, 0xffe8b8, 0.09);
@@ -454,6 +454,7 @@ export function buildTheatre(rng: Rng): Theatre {
     moon.add(mesh(new THREE.CircleGeometry(5.2, 40), new THREE.MeshLambertMaterial({ color: 0x9a8a6a }), 0, 0, -0.05));
     const wires = merge([rodGeometry(V(-3, 3.8, 0), V(-3, 60, 0), 0.04, 4), rodGeometry(V(3, 3.8, 0), V(3, 60, 0), 0.04, 4)]);
     moon.add(mesh(wires, new THREE.MeshBasicMaterial({ color: 0x2a3a40 })));
+    mergeStatic(moon);
     moon.position.set(-34, 92, -1818);
     moon.rotation.y = 0.15;
     live.add(moon);
@@ -573,7 +574,7 @@ export function buildTheatre(rng: Rng): Theatre {
       shaft.opacity = 0.09 * (1 - k);
       sunBeam.visible = k < 0.99;
       lensMat.color.copy(lensDay).lerp(lensNight, k);
-      borderMat.color.setScalar(1 - k * 0.55).lerp(new THREE.Color(0x2a6a8a), k * 0.35);
+      borderMat.color.setRGB(1 - k * 0.86, 1 - k * 0.76, 1 - k * 0.72);
     },
     update(dt, t, _z, night) {
       // the moon and the stars come down on their lines when the lights go to night

@@ -112,23 +112,39 @@ export function buildFunicularTrack(road: Road, m: HotelMats, ground: (x: number
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(idx); geo.computeVertexNormals();
     g.add(new THREE.Mesh(geo, rail));
   }
-  // the trestle's bents, down to the rock
-  for (let z = z0 - 1; z > z1 + 4; z -= 5.5) {
+  // the trestle: tapered bents of cream ironwork down to the ground, tied and crossed every few metres,
+  // with struts along between neighbouring bents
+  const beam = (a: THREE.Vector3, b: THREE.Vector3, w: number, mat: THREE.Material) => {
+    const d = b.clone().sub(a);
+    const bm = mesh(new THREE.BoxGeometry(w, d.length(), w), mat);
+    bm.position.copy(a).addScaledVector(d, 0.5);
+    bm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+    g.add(bm);
+  };
+  const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+  const legX = (side: number, y: number, top: number) => (side < 0 ? deckL + 0.3 : deckR - 0.3) + side * (top - y) * 0.09;
+  let prev: { z: number; levels: number[] } | null = null;
+  for (let z = z0 - 1; z > z1 + 3; z -= 6) {
     const top = road.at(z).y - 1.0;
-    for (const x of [deckL + 0.3, deckR - 0.3]) {
-      const gy = ground(x, z) - 0.6;
-      const h = top - gy;
-      if (h < 0.4) continue;
-      g.add(box(0.36, h, 0.36, m.cream, x, gy + h / 2, z));
-      g.add(box(0.9, 0.5, 0.9, m.ashlarDark, x, gy + 0.2, z));
+    const gy = Math.min(ground(legX(-1, top - 10, top), z), ground(legX(1, top - 10, top), z)) - 0.8;
+    if (top - gy < 0.6) { prev = null; continue; }
+    for (const s of [-1, 1]) {
+      beam(V(legX(s, top, top), top, z), V(legX(s, gy, top), gy, z), 0.4, m.cream);
+      g.add(box(1.2, 0.8, 1.2, m.ashlarDark, legX(s, gy, top), gy + 0.3, z));
     }
-    const gyL = ground(deckL, z), gyR = ground(deckR, z), low = Math.max(gyL, gyR);
-    // ties every 3 units of height and crossed braces between them
-    for (let y = top - 3; y > low; y -= 3) {
-      g.add(box(deckW - 0.6, 0.2, 0.2, m.cream, deckMid, y, z));
-      const d = Math.hypot(deckW - 0.6, 3), a = Math.atan2(3, deckW - 0.6);
-      for (const s of [-1, 1]) { const br = box(d, 0.12, 0.12, m.cream, deckMid, y + 1.5, z); br.rotation.z = s * a; g.add(br); }
+    const levels: number[] = [];
+    for (let y = top - 4; y > gy + 1; y -= 4) {
+      levels.push(y);
+      beam(V(legX(-1, y, top), y, z), V(legX(1, y, top), y, z), 0.22, m.cream);
+      const y2 = Math.min(top, y + 4);
+      beam(V(legX(-1, y, top), y, z), V(legX(1, y2, top), y2, z), 0.14, m.cream);
+      beam(V(legX(1, y, top), y, z), V(legX(-1, y2, top), y2, z), 0.14, m.cream);
     }
+    if (prev) for (const y of levels.filter((_, i) => i % 2 === 0)) for (const s of [-1, 1]) {
+      const ptop = road.at(prev.z).y - 1.0;
+      beam(V(legX(s, y, top), y, z), V(legX(s, y, ptop) , y, prev.z), 0.16, m.cream);
+    }
+    prev = { z, levels };
   }
   // the valley station: a little pink pavilion over the bottom of the car's track
   {

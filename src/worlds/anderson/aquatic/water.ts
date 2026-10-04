@@ -79,30 +79,31 @@ export class SeaSurface {
         uniform vec3 uWindow; uniform vec3 uUnder; uniform float uUnderLight;
         varying vec3 vWorld; varying float vFogDepth;
         ${FOG_GLSL}
-        float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-        float noise(vec2 p) {
-          vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
-          return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-        }
-        float ripples(vec2 p) {
-          return noise(p * 0.7 + vec2(uTime * 0.31, uTime * 0.17)) * 0.6 + noise(p * 1.9 - vec2(uTime * 0.42, -uTime * 0.27)) * 0.4;
-        }
         void main() {
           float dist = length(cameraPosition - vWorld);
-          float e = 0.12;
-          float r0 = ripples(vWorld.xz), rx = ripples(vWorld.xz + vec2(e, 0.0)), rz = ripples(vWorld.xz + vec2(0.0, e));
-          float amp = 0.7 * (1.0 - smoothstep(15.0, 140.0, dist));
-          vec3 n = normalize(vec3(-(rx - r0) / e * amp * 0.3, 1.0, -(rz - r0) / e * amp * 0.3));
+          // four travelling waves (cheap: the slopes come straight from the cosines)
+          vec2 p = vWorld.xz;
+          const vec2 d1 = vec2(0.8, 0.6), d2 = vec2(-0.55, 0.84), d3 = vec2(0.24, -0.97), d4 = vec2(-0.93, -0.37);
+          float a1 = dot(p, d1) * 1.15 + uTime * 1.05, a2 = dot(p, d2) * 1.7 - uTime * 1.25;
+          float a3 = dot(p, d3) * 2.6 + uTime * 0.85, a4 = dot(p, d4) * 3.7 - uTime * 1.6;
+          float h = sin(a1) * 0.4 + sin(a2) * 0.3 + sin(a3) * 0.2 + sin(a4) * 0.1;
+          vec2 g = d1 * cos(a1) * 0.46 + d2 * cos(a2) * 0.51 + d3 * cos(a3) * 0.52 + d4 * cos(a4) * 0.37;
+          float amp = 0.32 * (1.0 - smoothstep(15.0, 160.0, dist));
+          vec3 n = normalize(vec3(-g.x * amp, 1.0, -g.y * amp));
+          float r0 = h * 0.5 + 0.5;
+          float r1 = 0.5 + 0.5 * sin(a2 * 1.7 + a3 * 0.6) * sin(a1 * 1.3 - a4 * 0.4);
           vec3 col; float alpha;
           if (cameraPosition.y < vWorld.y) {
             // from below: Snell's window straight overhead, mirror-dark water beyond it
             vec3 D = normalize(vWorld - cameraPosition);
             float c = dot(D, n);
-            float win = smoothstep(0.6, 0.74, c);
-            float edge = exp(-pow((c - 0.66) * 14.0, 2.0));
-            // the shimmer: bright wobbling lines in the window
-            float sh = smoothstep(0.55, 0.9, r0 + 0.25 * noise(vWorld.xz * 3.1 + uTime));
-            col = mix(uUnder * 0.75, uWindow, win) + uWindow * (edge * 0.45 + sh * 0.35 * win);
+            float win = smoothstep(0.62, 0.78, c);
+            float edge = exp(-pow((c - 0.68) * 12.0, 2.0));
+            // the ceiling: bright wobbling lines where the ripples focus the light, everywhere; the window brighter still
+            float lines = smoothstep(0.62, 0.95, r0) + 0.7 * smoothstep(0.78, 1.0, r1);
+            float near = 1.0 - smoothstep(10.0, 60.0, dist);
+            vec3 ceil = uUnder * 1.08 + uWindow * lines * (0.18 + 0.3 * near);
+            col = mix(ceil, uWindow * 1.2, win) + uWindow * (edge * 0.55 + lines * win * 0.35);
             col *= uUnderLight;
             alpha = 1.0;
           } else {
@@ -114,7 +115,7 @@ export class SeaSurface {
             vec3 sky = mix(uSkyHorizon, uSkyTop, smoothstep(0.0, 0.5, R.y));
             col = mix(body, sky, clamp(fres * 0.95 + 0.18, 0.0, 1.0));
             float sd = clamp(dot(R, uSunDir), 0.0, 1.0);
-            float glit = pow(sd, 260.0) * 3.0 + pow(sd, 40.0) * 0.5 * smoothstep(0.55, 0.85, r0);
+            float glit = pow(sd, 260.0) * 3.0 + pow(sd, 40.0) * 0.5 * smoothstep(0.55, 0.85, r1);
             col += uSunColor * glit * (1.0 - smoothstep(350.0, 900.0, dist) * 0.5);
             col += uSunColor * pow(sd, 6.0) * 0.12;
             alpha = 0.93;

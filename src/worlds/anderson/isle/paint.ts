@@ -19,7 +19,7 @@ const once = (key: string, make: () => THREE.Texture) => { let t = cache.get(key
 
 /**
  * The faces of the trash bales: 4 x 2 tiles of compressed rubbish in greys (the shader tints each bale by
- * its colour band): crumpled scraps, cans, bottles, newsprint, a tyre, and two steel straps round the bale.
+ * its colour band): crumpled scraps, cans, bottles, newsprint, and two steel straps round the bale.
  */
 export function baleAtlas() {
   return once('bales', () => {
@@ -68,7 +68,7 @@ export function baleAtlas() {
         g.restore();
       }
       // newsprint: a pale scrap with lines of type
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0, nn = r.int(0, 2); i < nn; i++) {
         const cx = x0 + r.range(10, T - 60), cy = y0 + r.range(10, T - 50);
         g.save(); g.translate(cx, cy); g.rotate(r.range(-0.5, 0.5));
         g.fillStyle = '#e4dccb'; g.fillRect(0, 0, r.range(30, 52), r.range(22, 38));
@@ -76,8 +76,6 @@ export function baleAtlas() {
         for (let k = 0; k < 6; k++) g.fillRect(4, 4 + k * 5, r.range(14, 40), 2);
         g.restore();
       }
-      // now and then a bit of a tyre
-      if (r.chance(0.5)) { g.strokeStyle = '#2e2c2a'; g.lineWidth = 12; g.beginPath(); g.arc(x0 + r.range(30, T - 30), y0 + r.range(30, T - 30), r.range(26, 40), r.range(0, 3), r.range(3.5, 5.5)); g.stroke(); }
       // two steel straps across the bale, with a buckle
       for (const k of [0.3, 0.72]) {
         const y = y0 + T * k + r.range(-6, 6);
@@ -192,6 +190,38 @@ export function gondolaSide(num: string) {
     g.fillStyle = '#8a4e36';
     for (let x = 0; x < W * 0.72; x += 46) g.fillRect(x + 20, H * 0.5 - 70, 4, 140);
     p.dabs({ n: 120, colors: ['#8a4e36', '#6a3a24'], r: [1, 5], alpha: [0.5, 0.9], y: [0.28, 0.8] });
+    return p.texture();
+  });
+}
+
+/**
+ * The inside of the gondola: faded grey-green paint, worn through along the ribs, with rust runs, scratches
+ * from the bales and a chalked tally. One tile spans one wall (4 x 1 units).
+ */
+export function gondolaInner() {
+  return once('ginner', () => {
+    const W = 512, H = 128;
+    const p = new Painter(W, H, 87).fill('#6c7a6c');
+    p.dabs({ n: 40, colors: ['#768676', '#627062', '#7a8a78'], r: [10, 40], alpha: [0.15, 0.3], squash: 0.5 });
+    const g = p.g, r = p.rng;
+    // rust runs from the rim and along the seams
+    for (let i = 0; i < 70; i++) {
+      const x = r.range(0, W), l = r.range(10, 70), y = r.chance(0.6) ? 0 : r.range(0, H * 0.6);
+      const gr = g.createLinearGradient(0, y, 0, y + l);
+      gr.addColorStop(0, 'rgba(130,64,34,0.65)'); gr.addColorStop(1, 'rgba(130,64,34,0)');
+      g.fillStyle = gr; g.fillRect(x, y, r.range(1.5, 5), l);
+    }
+    for (let x = 0; x <= W; x += 102) { g.fillStyle = 'rgba(120,60,32,0.55)'; g.fillRect(x - 4, 0, 8, H); g.fillStyle = 'rgba(30,26,22,0.4)'; g.fillRect(x - 1, 0, 2, H); }
+    // a band of bare rust along the bottom, where the trash sits
+    const bg = g.createLinearGradient(0, H * 0.7, 0, H);
+    bg.addColorStop(0, 'rgba(110,56,30,0)'); bg.addColorStop(1, 'rgba(110,56,30,0.8)');
+    g.fillStyle = bg; g.fillRect(0, H * 0.7, W, H * 0.3);
+    // scratches
+    g.strokeStyle = 'rgba(210,200,180,0.35)'; g.lineWidth = 1;
+    for (let i = 0; i < 40; i++) { const x = r.range(0, W), y = r.range(10, H - 10); g.beginPath(); g.moveTo(x, y); g.lineTo(x + r.range(-30, 30), y + r.range(-4, 4)); g.stroke(); }
+    // a chalked tally of loads
+    g.strokeStyle = 'rgba(236,232,220,0.75)'; g.lineWidth = 2.5;
+    for (let k = 0; k < 3; k++) { const x0 = 300 + k * 30; for (let j = 0; j < 4; j++) { g.beginPath(); g.moveTo(x0 + j * 5, 40); g.lineTo(x0 + j * 5 + 1, 64); g.stroke(); } g.beginPath(); g.moveTo(x0 - 3, 58); g.lineTo(x0 + 20, 44); g.stroke(); }
     return p.texture();
   });
 }

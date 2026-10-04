@@ -5,12 +5,13 @@ import { Drift } from '../../../engine/Particles';
 import { clamp, smoothstep } from '../../../engine/math';
 import { SETS } from '../layout';
 import { FILMS, optimize, showRange, subCurve, zWindow, type BuiltSet, type SetContext, type SetModule, type ZLightKey } from '../common';
-import { DOORS, FUNI, HOTEL as H, STATION, TERRACE, Y0, groundHeight } from '../hotel/plan';
+import { DESK, DOORS, FUNI, HOTEL as H, LIFT, LOBBY, STAIRS, STATION, TERRACE, TOP_DOORS, Y0, groundHeight } from '../hotel/plan';
 import { hotelMats } from '../hotel/mats';
 import { buildStation } from '../hotel/station';
 import { buildValley } from '../hotel/town';
 import { buildFunicularTrack, makeFunicularCar } from '../hotel/funicular';
 import { buildExterior } from '../hotel/exterior';
+import { buildLobby } from '../hotel/lobby';
 
 /*
  * Part One: The Grand Budapest Hotel (1932). The ride starts at Nebelsbad station in the snow, crosses the
@@ -23,7 +24,7 @@ import { buildExterior } from '../hotel/exterior';
 const R = SETS.hotel;
 
 const DAY: Omit<ZLightKey, 'z'> = {
-  skyTop: 0x7ea6dc, skyMid: 0xbcd2ee, skyBottom: 0xf4dde6, fog: 0xeadfe8, fogDensity: 0.0021,
+  skyTop: 0x6c9ad8, skyMid: 0xb4cdee, skyBottom: 0xf4dde6, fog: 0xe8dce8, fogDensity: 0.0014,
   sunDir: [-0.42, 0.62, 0.58], sunColor: 0xfff0e4, sunIntensity: 2.0, hemiSky: 0xd8e4f8, hemiGround: 0xf0e2ea, hemiIntensity: 0.95,
   exposure: 0.95, bloom: 0.3, saturation: 1.12, sunGlow: 0.5, sunSize: 0.02, horizonHeight: 0.1, cloudShadow: 0,
 };
@@ -65,6 +66,18 @@ function build(ctx: SetContext): BuiltSet {
   statics.add(track);
   statics.updateMatrixWorld(true);
   optimize(statics);
+
+  // ---------- inside: the lobby ----------
+  const lobby = buildLobby(road, m);
+  inside.add(lobby.group);
+  lobby.group.children[0].updateMatrixWorld(true);
+  optimize(lobby.group.children[0]);
+  const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+  ctx.lights.add({ from: road.u(-92), to: road.u(-136), pos: V(0, H.base + 6, H.front + 6), color: 0xffd0a0, intensity: 16, distance: 22 });
+  ctx.lights.add({ from: road.u(-150), to: road.u(-296), pos: V(0, LOBBY.glass - 9, -196), color: 0xffd6a8, intensity: 60, distance: 60 });
+  ctx.lights.add({ from: road.u(-172), to: road.u(-296), pos: V(0, LOBBY.glass - 9, -250), color: 0xffd6a8, intensity: 60, distance: 60 });
+  ctx.lights.add({ from: road.u(-172), to: road.u(-262), pos: V(DESK.x + 2, LOBBY.floor + 4.5, DESK.z), color: 0xffc890, intensity: 20, distance: 18, flicker: 0.3 });
+  ctx.lights.add({ from: road.u(-172), to: road.u(-262), pos: V(LIFT.x - 3, LOBBY.floor + 4, LIFT.z), color: 0xffb8a8, intensity: 14, distance: 14 });
 
   // ---------- the red funicular car ----------
   const car = makeFunicularCar(0.4);
@@ -120,6 +133,12 @@ function build(ctx: SetContext): BuiltSet {
       const z = ride.position.z;
       ctx.camera.getWorldPosition(camPos);
       outside.visible = z > DOORS.close1;
+      inside.visible = z < DOORS.open0 + 10;
+      // the doors at the top of the stairs open as the whip pan begins
+      const top = smoothstep(TOP_DOORS.open0, TOP_DOORS.open1, z);
+      lobby.topDoors[0].rotation.y = top * 1.5;
+      lobby.topDoors[1].rotation.y = -top * 1.5;
+      void STAIRS;
       // doors: open as the train arrives, close behind it
       const open = smoothstep(DOORS.open0, DOORS.open1, z) * (1 - smoothstep(DOORS.close0, DOORS.close1, z));
       ext.doors[0].rotation.y = open * 1.62;

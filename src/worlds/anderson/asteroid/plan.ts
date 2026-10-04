@@ -27,10 +27,10 @@ export const STAGE = { z0: -1566, half: 120, grid: 64, cycZ: -1730, cycR: 120, b
 /** the floor cloth painted as desert sand (bare stage boards beyond it) */
 export const CLOTH = { half: 76, z0: -1570, z1: -1846 };
 
-export const TRACK = { runwayEnd: -1574, bedStart: -1572, buffer: -1804 };
+export const TRACK = { runwayEnd: -1574, bedStart: -1572, buffer: -1799.5 };
 export const ROAD = { x: -14, half: 3.6, z0: -1572, z1: -1792 };
 
-export const SIGN = { x: 9.5, z: -1590 };
+export const SIGN = { x: 10.5, z: -1583 };
 export const VENDING = { x: 6.6, z: -1616 };
 export const MOTEL = { x: 21, z0: -1600, step: 13, n: 5, office: -1592 };
 export const GAS = { x: -27, z: -1606 };
@@ -40,12 +40,25 @@ export const COWBOYS = { x: 11.5, z: -1672 };
 export const OVERPASS = { z: -1690, deck: 10.5, x0: 86, end: -25, half: 4.4 };
 export const PODIUM = { x: -25, z: -1724 };
 export const OBSERVATORY = { x: 36, z: -1758, dish: [21, -1778] as [number, number] };
-export const CRATER = { x: 0, z: -1822, r: 15, rim: 2.2 };
-export const AUGIE = { x: -6.8, z: -1797 };
-export const STARGAZERS = { x: 8, z: -1799 };
+export const CRATER = { x: 0, z: -1818, r: 13, rim: 2.2 };
+export const AUGIE = { x: -6, z: -1801, dayX: -17.6, dayZ: -1612 };
+export const STARGAZERS = { x: 7, z: -1803.5 };
+
+/** The crater's ring of sand: [distance from the centre beyond the rim, height] from the foot to the crest, and inside. */
+export const BERM: Array<[number, number]> = [[8, 0], [5, 0.5], [2, 1.6], [0, 2.2], [-1.5, 2.05], [-4, 0.9], [-7, 0.12], [-8, 0.02]];
+/** Height of the stage floor at (x, z), counting the crater's ring of sand. */
+export function bermY(x: number, z: number) {
+  const d = Math.hypot(x - CRATER.x, z - CRATER.z) - CRATER.r;
+  if (d >= BERM[0][0] || d <= BERM[BERM.length - 1][0]) return STAGE_Y + (d <= -8 ? 0.05 : 0);
+  for (let i = 0; i < BERM.length - 1; i++) {
+    const [d0, h0] = BERM[i], [d1, h1] = BERM[i + 1];
+    if (d <= d0 && d >= d1) return STAGE_Y + h0 + (h1 - h0) * ((d0 - d) / (d0 - d1));
+  }
+  return STAGE_Y;
+}
 
 /** the lighting cue: day until LIGHTS.a, night from LIGHTS.b */
-export const NIGHT = { a: -1700, b: -1722 };
+export const NIGHT = { a: -1698, b: -1718 };
 
 /** Asteroid City's palette: turquoise sky, peach and salmon desert, mint and coral buildings, chrome. */
 export const AC = {

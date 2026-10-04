@@ -98,7 +98,7 @@ export function shingles(color: number, seed = 5) {
 
 export type PaperKind = 'stripe' | 'floral' | 'diamond' | 'dots' | 'check' | 'boats' | 'plain';
 /** Draw a wallpaper pattern into a region of a canvas. `s` is pixels per unit. */
-function paintPaper(g: CanvasRenderingContext2D, rng: Rng, kind: PaperKind, base: number, ink: number, x0: number, y0: number, w: number, h: number, s: number) {
+export function paintPaper(g: CanvasRenderingContext2D, rng: Rng, kind: PaperKind, base: number, ink: number, x0: number, y0: number, w: number, h: number, s: number) {
   g.save();
   g.beginPath(); g.rect(x0, y0, w, h); g.clip();
   g.fillStyle = css(base); g.fillRect(x0, y0, w, h);
@@ -157,11 +157,21 @@ export type WallThing =
  * pictures, shelves, doors and windows are painted on the flat). `w` x `h` in units; positions in units from
  * the bottom left. A dado rail and skirting run along the bottom.
  */
-export function roomWall(o: { w: number; h: number; paper: PaperKind; base: number; ink: number; dado?: number; things: WallThing[]; seed?: number }) {
+export interface WallSpec { w: number; h: number; paper: PaperKind; base: number; ink: number; dado?: number; things: WallThing[]; seed?: number }
+export function roomWall(o: WallSpec) {
   const s = 56;
   const W = Math.round(o.w * s), H = Math.round(o.h * s);
   const p = new Painter(W, H, o.seed ?? 11);
-  const g = p.g, rng = p.rng;
+  paintRoomWall(p.g, p.rng, o, 0, 0, s);
+  return p.texture({ wrap: false });
+}
+
+/** Paint a room's back wall into the region of a canvas at (x0, y0), `s` pixels per unit (for atlases). */
+export function paintRoomWall(g: CanvasRenderingContext2D, rng: Rng, o: WallSpec, x0: number, y0: number, s: number) {
+  const W = Math.round(o.w * s), H = Math.round(o.h * s);
+  g.save();
+  g.beginPath(); g.rect(x0, y0, W, H); g.clip();
+  g.translate(x0, y0);
   paintPaper(g, rng, o.paper, o.base, o.ink, 0, 0, W, H, s);
   const X = (u: number) => u * s, Y = (v: number) => H - v * s;
   if (o.dado !== undefined) {
@@ -256,8 +266,15 @@ export function roomWall(o: { w: number; h: number; paper: PaperKind; base: numb
     }
   }
   // the lamp-lit top of the wall and a little shade at the floor
-  p.vgrad([[0, 'rgba(255,236,200,0.18)'], [0.4, 'rgba(255,236,200,0)'], [0.85, 'rgba(0,0,0,0)'], [1, 'rgba(40,20,10,0.18)']]);
-  return p.texture({ wrap: false });
+  wallShade(g, W, H);
+  g.restore();
+}
+
+/** A warm light at the top of a wall and a little shade at the floor, over a W x H region at the origin. */
+export function wallShade(g: CanvasRenderingContext2D, W: number, H: number) {
+  const gr = g.createLinearGradient(0, 0, 0, H);
+  gr.addColorStop(0, 'rgba(255,236,200,0.18)'); gr.addColorStop(0.4, 'rgba(255,236,200,0)'); gr.addColorStop(0.85, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(40,20,10,0.18)');
+  g.fillStyle = gr; g.fillRect(0, 0, W, H);
 }
 
 /** An oriental rug, red and indigo with a border. Fills the canvas. */
@@ -282,7 +299,9 @@ export function brittenSleeve() {
   const g = p.g;
   g.fillStyle = '#c8402a'; g.fillRect(0, 0, S, 70);
   g.fillStyle = '#f2e6c8'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.font = `bold 30px ${FUTURA}`; g.fillText('BENJAMIN BRITTEN', S / 2, 36);
+  let fs = 30; g.font = `bold ${fs}px ${FUTURA}`;
+  while (g.measureText('BENJAMIN BRITTEN').width > S - 20 && fs > 10) { fs -= 1; g.font = `bold ${fs}px ${FUTURA}`; }
+  g.fillText('BENJAMIN BRITTEN', S / 2, 36);
   g.fillStyle = '#2a3550'; g.font = 'italic bold 25px Georgia, serif';
   g.fillText("The Young Person's", S / 2, 100); g.fillText('Guide to the', S / 2, 130); g.fillText('Orchestra', S / 2, 160);
   // instruments in a row

@@ -105,7 +105,7 @@ function ring(r: number, y0: number, y1: number, tex: THREE.Texture, order: numb
   return m;
 }
 
-export function buildPanorama() {
+export function buildPanorama(ground: (x: number, z: number) => number) {
   const group = new THREE.Group();
   const W = 2048, H = 512;
   const rng = new Rng(611);
@@ -118,24 +118,25 @@ export function buildPanorama() {
     return out;
   };
   const far = paintRange(W, H, range(14, 160, 330, 120, 220, { x: W - 10, h: 300, w: 170 }), {
-    snowLit: '#f6eef4', snowShade: '#d4dcf2', rockLit: '#c8bcd8', rockShade: '#a8b0d4', base: '#dcdff2', haze: 'rgba(220,223,242,A)', hazeK: 0.42,
+    snowLit: '#fbe6ee', snowShade: '#b8c6ee', rockLit: '#c2a8cc', rockShade: '#8e9ad0', base: '#dcdff2', haze: 'rgba(220,223,242,A)', hazeK: 0.3,
   }, 612);
   const mid = paintRange(W, H, range(12, 150, 300, 100, 190, { x: W, h: 430, w: 150 }), {
-    snowLit: '#fff2f4', snowShade: '#c4d0f0', rockLit: '#b8a6c8', rockShade: '#8890c0', base: '#dcdff2', haze: 'rgba(220,223,242,A)', hazeK: 0.24,
+    snowLit: '#ffe6ee', snowShade: '#a4b6ea', rockLit: '#b896bc', rockShade: '#6e7cc0', base: '#dcdff2', haze: 'rgba(220,223,242,A)', hazeK: 0.14,
   }, 613);
   const near = paintRange(W, H, range(16, 70, 170, 90, 200, { x: W - 330, h: 150, w: 170 }), {
-    snowLit: '#fff6f6', snowShade: '#bccaee', rockLit: '#9e8cb4', rockShade: '#6c74a8', base: '#d8dcf0', haze: 'rgba(216,220,240,A)', hazeK: 0.16, forest: '#3a5a6a',
+    snowLit: '#fff0f2', snowShade: '#9eb2e6', rockLit: '#a07ea8', rockShade: '#545ea0', base: '#d8dcf0', haze: 'rgba(216,220,240,A)', hazeK: 0.08, forest: '#2e4e5e',
   }, 614);
   group.add(ring(980, -120, 560, far, -3), ring(820, -110, 430, mid, -2), ring(660, -100, 190, near, -1));
 
   // ---------- the Grand Budapest on its hill in the valley ----------
-  const hotel = buildHotelMiniature();
+  const hotel = buildHotelMiniature(ground);
   group.add(hotel.group);
   return { group, hotel };
 }
 
 /** The Grand Budapest as the film's miniature: a pink palace on a crag above the spa town, with its funicular. */
-export function buildHotelMiniature() {
+export function buildHotelMiniature(ground: (x: number, z: number) => number = () => -62) {
+  const GX = 0, GY = -44, GZ = -1085;
   const group = new THREE.Group();
   const anchor = new THREE.Object3D();
   const s = 1.6;
@@ -203,13 +204,14 @@ export function buildHotelMiniature() {
     const r = trng.range(48, 70);
     const x = Math.sin(a) * r, z = Math.cos(a) * r * 0.6 + 6;
     const w = trng.range(3, 5), h = trng.range(3, 6);
-    town.add(box(w, h, w * 0.9, toon(trng.pick(walls)), x, -25 + h / 2, z));
-    const rf = cone(w * 0.78, 2.4, toon(trng.chance(0.5) ? 0x8a3a3a : 0x5a6a8a), x, -25 + h + 1.2, z, 4);
+    const y0 = ground(GX + x, GZ + z) - GY - 0.6;
+    town.add(box(w, h, w * 0.9, toon(trng.pick(walls)), x, y0 + h / 2, z));
+    const rf = cone(w * 0.78, 2.4, toon(trng.chance(0.5) ? 0x8a3a3a : 0x5a6a8a), x, y0 + h + 1.2, z, 4);
     rf.rotation.y = Math.PI / 4;
     town.add(rf);
   }
   group.add(town);
-  group.position.set(0, -44, -1085);
+  group.position.set(GX, GY, GZ);
   anchor.position.set(0, 14, 0);
   group.add(anchor);
   // the windows light up when the whistle carries down the valley

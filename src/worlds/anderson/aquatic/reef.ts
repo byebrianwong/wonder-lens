@@ -29,26 +29,25 @@ function staghornGeo(seed: number) {
   const parts: THREE.BufferGeometry[] = [];
   const grow = (a: THREE.Vector3, dir: THREE.Vector3, len: number, r: number, depth: number) => {
     const b = a.clone().addScaledVector(dir, len);
-    parts.push(tubeAB(a, b, r, r * 0.78, 6, true));
-    parts.push(new THREE.SphereGeometry(r * 0.8, 6, 4).translate(b.x, b.y, b.z));
-    if (depth <= 0) { parts.push(new THREE.SphereGeometry(r * 1.05, 7, 5).translate(b.x, b.y, b.z)); return; }
-    const n = rng.int(2, 3);
+    parts.push(tubeAB(a, b, r, r * 0.8, 5, true));
+    if (depth <= 0) { parts.push(new THREE.SphereGeometry(r * 1.12, 5, 3).translate(b.x, b.y, b.z)); return; }
+    const n = depth === 2 ? 3 : rng.int(2, 3);
     for (let i = 0; i < n; i++) {
       const az = (i / n) * TAU + rng.range(-0.5, 0.5);
       const spread = rng.range(0.35, 0.7);
       const d = dir.clone().multiplyScalar(Math.cos(spread)).add(V(Math.cos(az) * Math.sin(spread), 0, Math.sin(az) * Math.sin(spread))).normalize();
       d.y = Math.max(d.y, 0.35); d.normalize();
-      grow(b, d, len * rng.range(0.72, 0.86), r * 0.76, depth - 1);
+      grow(b, d, len * rng.range(0.8, 0.95), r * 0.74, depth - 1);
     }
   };
-  grow(V(0, -0.1, 0), V(0, 1, 0), 0.34, 0.11, 3);
+  grow(V(0, -0.1, 0), V(0, 1, 0), 0.42, 0.12, 2);
   const g = mergeParts(parts.map((p) => colorize(p, (q) => lerp(0.62, 1.0, clamp(q.y / 1.0, 0, 1)))));
   return g;
 }
 
 /** Brain coral: a low dome painted with a maze. Radius 1. */
 function brainGeo() {
-  const g = new THREE.SphereGeometry(1, 20, 10, 0, TAU, 0, Math.PI * 0.56);
+  const g = new THREE.SphereGeometry(1, 16, 8, 0, TAU, 0, Math.PI * 0.56);
   g.scale(1, 0.62, 1);
   g.translate(0, -0.06, 0);
   return colorize(g, (p) => lerp(0.75, 1, clamp(p.y / 0.6, 0, 1)));
@@ -65,8 +64,8 @@ function tubesGeo(seed: number) {
     const x = Math.cos(a) * d, z = Math.sin(a) * d;
     const lean = V(x * 0.25, 1, z * 0.25).normalize();
     const top = V(x, -0.1, z).addScaledVector(lean, h);
-    parts.push(tubeAB(V(x, -0.1, z), top, r * 0.85, r, 10, true, 3));
-    const rim = new THREE.TorusGeometry(r, r * 0.22, 5, 12);
+    parts.push(tubeAB(V(x, -0.1, z), top, r * 0.85, r, 9, true, 2));
+    const rim = new THREE.TorusGeometry(r, r * 0.22, 4, 10);
     rim.rotateX(Math.PI / 2);
     rim.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), lean));
     rim.translate(top.x, top.y, top.z);
@@ -87,19 +86,16 @@ function anemoneGeo(seed: number) {
   const rng = new Rng(seed);
   const parts: THREE.BufferGeometry[] = [];
   parts.push(colorize(new THREE.CylinderGeometry(0.3, 0.36, 0.42, 12, 1).translate(0, 0.11, 0), 0.75));
-  const n = 26;
+  const n = 15;
   for (let i = 0; i < n; i++) {
-    const ring = i < 16 ? 0.26 : 0.13, a = (i / (i < 16 ? 16 : 10)) * TAU + (i < 16 ? 0 : 0.3);
+    const ring = i < 10 ? 0.26 : 0.13, a = (i / (i < 10 ? 10 : 5)) * TAU + (i < 10 ? 0 : 0.3);
     const base = V(Math.cos(a) * ring, 0.32, Math.sin(a) * ring);
     const out = V(Math.cos(a) * (ring > 0.2 ? 0.6 : 0.25), 1, Math.sin(a) * (ring > 0.2 ? 0.6 : 0.25)).normalize();
     const len = rng.range(0.42, 0.62);
-    const t = tubeAB(base, base.clone().addScaledVector(out, len), 0.045, 0.018, 5, false, 4);
+    const t = tubeAB(base, base.clone().addScaledVector(out, len), 0.055, 0.012, 4, false, 3);
     // candy stripes along each tentacle
-    colorize(t, (p) => (Math.floor(p.distanceTo(base) / 0.11) % 2 ? 1.0 : 0.72));
+    colorize(t, (p) => (Math.floor(p.distanceTo(base) / 0.11) % 2 ? 1.0 : 0.7));
     parts.push(t);
-    const tip = new THREE.SphereGeometry(0.03, 5, 3);
-    const tp = base.clone().addScaledVector(out, len);
-    parts.push(colorize(tip.translate(tp.x, tp.y, tp.z), 1));
   }
   return mergeParts(parts);
 }
@@ -117,10 +113,10 @@ function tableGeo() {
 function pompomGeo(seed: number) {
   const rng = new Rng(seed);
   const parts: THREE.BufferGeometry[] = [];
-  for (let i = 0; i < 11; i++) {
+  for (let i = 0; i < 8; i++) {
     const a = rng.range(0, TAU), d = rng.range(0, 0.45), r = rng.range(0.14, 0.26);
     const y = 0.12 + (0.45 - d) * 0.7 + rng.range(0, 0.1);
-    parts.push(colorize(new THREE.SphereGeometry(r, 8, 6).translate(Math.cos(a) * d, y, Math.sin(a) * d), lerp(0.8, 1, y)));
+    parts.push(colorize(new THREE.SphereGeometry(r, 7, 5).translate(Math.cos(a) * d, y, Math.sin(a) * d), lerp(0.8, 1, y)));
   }
   return mergeParts(parts);
 }
@@ -129,11 +125,11 @@ function pompomGeo(seed: number) {
 function urchinGeo(seed: number) {
   const rng = new Rng(seed);
   const parts: THREE.BufferGeometry[] = [colorize(new THREE.SphereGeometry(0.22, 10, 7).translate(0, 0.12, 0), 0.7)];
-  for (let i = 0; i < 46; i++) {
+  for (let i = 0; i < 26; i++) {
     const y = rng.range(-0.2, 1), a = rng.range(0, TAU), r = Math.sqrt(1 - y * y);
     const d = V(Math.cos(a) * r, y, Math.sin(a) * r);
     const s = V(0, 0.12, 0).addScaledVector(d, 0.18);
-    parts.push(colorize(tubeAB(s, s.clone().addScaledVector(d, rng.range(0.3, 0.48)), 0.022, 0.004, 4, false), 1));
+    parts.push(colorize(tubeAB(s, s.clone().addScaledVector(d, rng.range(0.3, 0.48)), 0.024, 0.004, 3, true), 1));
   }
   return mergeParts(parts);
 }
@@ -256,7 +252,7 @@ export function buildReef(road: Road, lowDetail: boolean): Reef {
         // sand, tinted pink and mint in patches; lilac rock on the steep walls; darker deep down
         let r = 1, gg = 1, b = 1;
         if (n > 0.55) { r = 1.0; gg = 0.9; b = 0.95; } else if (n < 0.4) { r = 0.9; gg = 1.0; b = 0.96; }
-        r = lerp(r, 0.8, steep); gg = lerp(gg, 0.72, steep); b = lerp(b, 0.9, steep);
+        r = lerp(r, 0.86, steep); gg = lerp(gg, 0.66, steep); b = lerp(b, 0.82, steep);
         const dk = clamp(1 + (y + 22) / 50, 0.35, 1);
         col[i * 3] = r * dk; col[i * 3 + 1] = gg * dk; col[i * 3 + 2] = b * dk;
       }
@@ -281,6 +277,7 @@ export function buildReef(road: Road, lowDetail: boolean): Reef {
     urchin: reefMat({ color: 0x8a4aa8, vertexColors: true, rim: 0.5 }),
     star: reefMat({ map: felt, vertexColors: true }),
     rock: reefMat({ map: rockTexture(), rim: 0.15 }),
+    ledge: reefMat({ map: rockTexture(), color: 0xd8a4c0, rim: 0.15 }),
     kelp: reefMat({ map: kelpTexture(), vertexColors: true, side: THREE.DoubleSide, sway: 0.055, swayMode: 'kelp', rim: 0.45 }),
   };
   const geos = {
@@ -302,7 +299,7 @@ export function buildReef(road: Road, lowDetail: boolean): Reef {
     anem: [CANDY.pink, CANDY.mint, CANDY.aqua, CANDY.butter, CANDY.lilac, CANDY.gum],
     pom: [CANDY.lilac, CANDY.pink, CANDY.mint, CANDY.butter, CANDY.baby],
     star: [CANDY.tangerine, CANDY.coral, CANDY.gum, CANDY.butter],
-    rock: [0xe2d4ea, 0xd8d0e8, 0xead2dc, 0xd4dcea],
+    rock: [0xd6a8c4, 0xb8a4d8, 0xc8a0b4, 0xa8b0d0, 0xe0b8c0],
   };
   /** the sub's swept tube: keep tall things out of it */
   const clearOf = (x: number, z: number, top: number) => {
@@ -313,43 +310,68 @@ export function buildReef(road: Road, lowDetail: boolean): Reef {
     return top < p.y - 1.4 || (ax > 3.2 && top < p.y - 0.2);
   };
   const nrm = new THREE.Vector3();
-  const reefZone = (z: number) => z < -2084 && z > Z.dropOff + 2;
 
-  // ---- scattered coral down the canyon (denser and bigger near the path) ----
-  const N = lowDetail ? 1300 : 2300;
-  for (let i = 0; i < N; i++) {
-    const z = rng.range(Z.dropOff + 1, -2082);
-    const side = rng.sign();
-    const ax = 2 + Math.pow(rng.next(), 1.6) * 48;
-    const x = side * ax;
+  // ---- coral on a jittered grid: small things near the path, bigger ones up the canyon walls ----
+  const avoid = (x: number, z: number) => Math.hypot(x - LEDGE.x, z - LEDGE.z) < LEDGE.r + 1.2 || Math.hypot(x - 5.8, z - Z.esteban) < 3 || (Math.abs(z - Z.arch) < 3.5 && Math.abs(x) < 11);
+  const plant = (x: number, z: number, scale: number, small: boolean) => {
     const y = H(x, z);
     normalAt(x, z, nrm);
-    if (nrm.y < 0.45) continue;
-    const near = smoothstep(26, 6, ax);
+    if (nrm.y < 0.4 || avoid(x, z)) return;
     const r = rng.next();
-    const big = (1 + near * 0.6) * (rng.chance(0.06) ? 2.2 : 1);
     const yaw = rng.range(0, TAU);
     const q = growQuat(yaw, nrm, 0.5);
     let kind: Kind, s: number, hgt: number, colors: number[];
-    if (r < 0.26) { kind = (['stag0', 'stag1', 'stag2'] as const)[rng.int(0, 2)]; s = rng.range(1.2, 2.1) * big; hgt = s * 1.1; colors = pal.stag; }
-    else if (r < 0.38) { kind = 'brain'; s = rng.range(0.5, 1.3) * big; hgt = s * 0.6; colors = pal.brain; }
-    else if (r < 0.5) { kind = rng.chance(0.5) ? 'tubes0' : 'tubes1'; s = rng.range(0.9, 1.6) * big; hgt = s * 1.7; colors = pal.tubes; }
-    else if (r < 0.62) { kind = 'fan'; s = rng.range(0.7, 1.4) * big; hgt = s * 2.2; colors = pal.fan; }
-    else if (r < 0.74) { kind = rng.chance(0.5) ? 'anem0' : 'anem1'; s = rng.range(0.8, 1.5) * big; hgt = s; colors = pal.anem; }
-    else if (r < 0.8) { kind = 'table'; s = rng.range(0.7, 1.5) * big; hgt = s * 0.7; colors = [0xffffff]; }
-    else if (r < 0.88) { kind = rng.chance(0.5) ? 'pom0' : 'pom1'; s = rng.range(0.8, 1.6) * big; hgt = s * 0.6; colors = pal.pom; }
-    else if (r < 0.94) { kind = 'urchin'; s = rng.range(0.6, 1.1); hgt = s * 0.7; colors = [0xffffff]; }
-    else { kind = 'star'; s = rng.range(0.8, 1.4); hgt = 0.1; colors = pal.star; }
-    if (!clearOf(x, z, y + hgt)) continue;
+    if (small) {
+      if (r < 0.22) { kind = rng.chance(0.5) ? 'anem0' : 'anem1'; s = rng.range(0.8, 1.3); hgt = s; colors = pal.anem; }
+      else if (r < 0.36) { kind = 'urchin'; s = rng.range(0.6, 1.0); hgt = s * 0.7; colors = [0xffffff]; }
+      else if (r < 0.5) { kind = 'star'; s = rng.range(0.9, 1.5); hgt = 0.1; colors = pal.star; }
+      else if (r < 0.64) { kind = rng.chance(0.5) ? 'pom0' : 'pom1'; s = rng.range(0.7, 1.2); hgt = s * 0.6; colors = pal.pom; }
+      else if (r < 0.8) { kind = 'brain'; s = rng.range(0.4, 0.9); hgt = s * 0.6; colors = pal.brain; }
+      else { kind = (['stag0', 'stag1', 'stag2'] as const)[rng.int(0, 2)]; s = rng.range(0.9, 1.5); hgt = s * 1.1; colors = pal.stag; }
+    } else {
+      if (r < 0.3) { kind = (['stag0', 'stag1', 'stag2'] as const)[rng.int(0, 2)]; s = rng.range(1.4, 2.4) * scale; hgt = s * 1.1; colors = pal.stag; }
+      else if (r < 0.44) { kind = 'brain'; s = rng.range(0.8, 1.5) * scale; hgt = s * 0.6; colors = pal.brain; }
+      else if (r < 0.58) { kind = rng.chance(0.5) ? 'tubes0' : 'tubes1'; s = rng.range(1.1, 1.8) * scale; hgt = s * 1.7; colors = pal.tubes; }
+      else if (r < 0.72) { kind = 'fan'; s = rng.range(0.9, 1.6) * scale; hgt = s * 2.2; colors = pal.fan; }
+      else if (r < 0.82) { kind = rng.chance(0.5) ? 'anem0' : 'anem1'; s = rng.range(1.1, 1.8) * scale; hgt = s; colors = pal.anem; }
+      else if (r < 0.9) { kind = 'table'; s = rng.range(0.9, 1.6) * scale; hgt = s * 0.7; colors = [0xffffff]; }
+      else { kind = rng.chance(0.5) ? 'pom0' : 'pom1'; s = rng.range(1.0, 1.8) * scale; hgt = s * 0.6; colors = pal.pom; }
+    }
+    if (!clearOf(x, z, y + hgt)) return;
     // fans face the path, so their lace shows
-    const qq = kind === 'fan' ? growQuat(Math.atan2(-x, 0.0001) + rng.range(-0.5, 0.5) + Math.PI / 2, nrm, 0.3) : q;
+    const qq = kind === 'fan' ? growQuat(Math.PI / 2 + rng.range(-0.5, 0.5), nrm, 0.3) : q;
     put(kind, { p: V(x, y - 0.05, z), q: qq, s, c: C(rng.pick(colors), rng.range(0.92, 1.05)) });
+  };
+  const dens = lowDetail ? 0.6 : 1;
+  for (let z = -2084; z > Z.dropOff + 1; z -= 1.8) for (let ax = 2.2; ax < 9; ax += 1.8) for (const sd of [-1, 1]) {
+    if (rng.next() < 0.62 * dens) plant(sd * (ax + rng.range(-0.8, 0.8)), z + rng.range(-0.8, 0.8), 1, true);
+  }
+  for (let z = -2083; z > Z.dropOff + 1; z -= 2.3) for (let ax = 9; ax < 36; ax += 2.3) for (const sd of [-1, 1]) {
+    if (rng.next() < (ax > 26 ? 0.5 : 0.85) * dens) plant(sd * (ax + rng.range(-1, 1)), z + rng.range(-1, 1), 1 + (ax - 9) / 30, false);
+    if (rng.next() < 0.45 * dens) plant(sd * (ax + rng.range(-1.2, 1.2)), z + rng.range(-1.2, 1.2), 1, true);
+  }
+  // an avenue of giant coral down both sides of the path, the same on the left and the right
+  {
+    const giants: Array<[Kind, number, number]> = [['fan', 2.1, CANDY.lilac], ['stag1', 3.2, CANDY.gum], ['tubes0', 2.4, CANDY.tangerine], ['anem0', 2.6, CANDY.mint], ['stag0', 3.4, CANDY.apricot], ['fan', 2.3, CANDY.coral], ['tubes1', 2.6, CANDY.butter], ['table', 2.2, 0xffffff], ['stag2', 3.0, CANDY.peri], ['anem1', 2.8, CANDY.pink]];
+    let i = 0;
+    for (let z = -2097; z > Z.dropOff + 6; z -= 8.6) {
+      const [k, sc, col] = giants[i++ % giants.length];
+      for (const sd of [-1, 1]) {
+        const x = sd * 7.4;
+        if (avoid(x, z)) continue;
+        const y = H(x, z);
+        const q = k === 'fan' ? growQuat(Math.PI / 2) : growQuat(sd > 0 ? 0.6 : -0.6 + Math.PI);
+        put(k, { p: V(x, y - 0.1, z), q, s: sc, c: C(col) });
+        // a little apron of small coral round each giant's foot
+        for (let j = 0; j < 4; j++) plant(x + rng.range(-1.6, 1.6), z + rng.range(-1.6, 1.6), 1, true);
+      }
+    }
   }
 
   // ---- boulders down the canyon, and the pinnacles in symmetric pairs ----
-  for (let i = 0; i < (lowDetail ? 90 : 160); i++) {
-    const z = rng.range(Z.dropOff + 4, -2084), ax = rng.range(5, 50), x = rng.sign() * ax, y = H(x, z);
-    const s = rng.range(0.8, 2.4) * (1 + smoothstep(10, 40, ax));
+  for (let i = 0; i < (lowDetail ? 60 : 110); i++) {
+    const z = rng.range(Z.dropOff + 4, -2084), ax = rng.range(9, 42), x = rng.sign() * ax, y = H(x, z);
+    const s = rng.range(1.0, 2.6) * (1 + smoothstep(10, 40, ax));
     if (!clearOf(x, z, y + s)) continue;
     put((['rock0', 'rock1', 'rock2'] as const)[rng.int(0, 2)], { p: V(x, y - s * 0.2, z), q: growQuat(rng.range(0, TAU)), s: V(s * rng.range(1, 1.6), s * rng.range(0.6, 1), s * rng.range(1, 1.5)), c: C(rng.pick(pal.rock)) });
   }
@@ -358,8 +380,8 @@ export function buildReef(road: Road, lowDetail: boolean): Reef {
     const x = s * ax, y = H(x, z);
     const top = Math.min(y + h, -1.8);
     const hh = top - y;
-    put('rock1', { p: V(x, y + hh * 0.35, z), q: growQuat(s * 0.4 + z), s: V(2.6, hh * 0.62, 2.4), c: C(0xe6d0e4) });
-    put('rock2', { p: V(x + s * 0.4, y + hh * 0.75, z + 0.3), q: growQuat(z * 0.3), s: V(1.9, hh * 0.32, 1.8), c: C(0xd8d4ec) });
+    put('rock1', { p: V(x, y + hh * 0.35, z), q: growQuat(s * 0.4 + z), s: V(2.6, hh * 0.62, 2.4), c: C(0xd6a8c4) });
+    put('rock2', { p: V(x + s * 0.4, y + hh * 0.75, z + 0.3), q: growQuat(z * 0.3), s: V(1.9, hh * 0.32, 1.8), c: C(0xb8a4d8) });
     // a crown of coral on top, the same on both sides of the path
     const crown: Array<[Kind, number, number, number, number]> = [['stag1', 0, 0, 2.6, CANDY.gum], ['fan', -1.1, 0.4, 1.3, CANDY.lilac], ['anem0', 1.0, -0.6, 1.3, CANDY.mint], ['brain', 0.6, 0.9, 0.9, CANDY.butter], ['tubes0', -0.8, -0.8, 1.2, CANDY.tangerine]];
     for (const [k, dx, dz, sc, col] of crown) {
@@ -373,11 +395,10 @@ export function buildReef(road: Road, lowDetail: boolean): Reef {
   {
     const yb = H(LEDGE.x, LEDGE.z);
     const hh = ledgeTop - yb;
-    const m = new THREE.Mesh(geos.ledge, mats.rock);
-    m.position.set(LEDGE.x - 0.4, yb + hh * 0.6 - 0.42 * (hh * 0.85) + hh * 0.38, LEDGE.z);
-    m.scale.set(LEDGE.r * 1.2, hh * 0.95, LEDGE.r);
-    // the sculpted top is flattened at 0.42 of the radius: put it at the ledge's height
-    m.position.y = ledgeTop - 0.42 * m.scale.y;
+    const m = new THREE.Mesh(geos.ledge, mats.ledge);
+    // the sculpted top is flattened at 0.42 of the radius: put it at the ledge's height, and sink the foot
+    m.scale.set(LEDGE.r * 1.2, Math.max(1, hh) * 1.2, LEDGE.r);
+    m.position.set(LEDGE.x - 0.4, ledgeTop - 0.42 * m.scale.y, LEDGE.z);
     m.castShadow = true; m.receiveShadow = true;
     group.add(m);
     // coral round the rim, leaving the top clear for the crabs
@@ -393,8 +414,8 @@ export function buildReef(road: Road, lowDetail: boolean): Reef {
   {
     memorial.y = py(Z.esteban) - 1.7;
     const yb = H(memorial.x, memorial.z);
-    const m = new THREE.Mesh(geos.ledge, mats.rock);
-    m.scale.set(2.2, Math.max(1, memorial.y - yb) * 0.9, 1.9);
+    const m = new THREE.Mesh(geos.ledge, mats.ledge);
+    m.scale.set(2.2, Math.max(1, memorial.y - yb) * 1.2, 1.9);
     m.position.set(memorial.x + 0.4, memorial.y - 0.42 * m.scale.y, memorial.z);
     m.castShadow = true; m.receiveShadow = true;
     group.add(m);
@@ -430,7 +451,7 @@ export function buildReef(road: Road, lowDetail: boolean): Reef {
     // the tube's uvs run along and around it; scale them so the rock texture keeps its size
     const uv = geo.attributes.uv as THREE.BufferAttribute;
     for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 9, uv.getY(i) * 2);
-    const arch = new THREE.Mesh(geo, reefMat({ map: rockTexture(), color: 0xe8cfe2, rim: 0.2 }));
+    const arch = new THREE.Mesh(geo, reefMat({ map: rockTexture(), color: 0xd8a8c8, rim: 0.2 }));
     arch.castShadow = true; arch.receiveShadow = true;
     group.add(arch);
     // coral growing on the arch, mirrored left and right
@@ -489,11 +510,16 @@ export function buildReef(road: Road, lowDetail: boolean): Reef {
       default: return [geos.star, mats.star, false];
     }
   };
+  const dbg: string[] = [];
   for (const [k, list] of lists) {
     const [geo, mat, shadow] = geoOf(k);
-    group.add(instances(geo, mat, list, { chunk: k.startsWith('kelp') ? 30 : 36, castShadow: shadow && !lowDetail }));
+    dbg.push(`${k}:${list.length}x${(geo.index ? geo.index.count : geo.attributes.position.count) / 3}`);
+    const ig = instances(geo, mat, list, { chunk: 24, castShadow: shadow && !lowDetail && k.startsWith('rock') });
+    ig.name = k;
+    group.add(ig);
   }
 
+  console.warn('[aq] reef', dbg.join(' '));
   // ---------- the painted flats at the back of the set ----------
   {
     const flatMat = (seed: number, color: number) => new THREE.MeshBasicMaterial({ map: reefFlat(seed), color, alphaTest: 0.5, side: THREE.DoubleSide, fog: true });

@@ -61,6 +61,8 @@ export function buildTrashLand(road: Road, lowDetail: boolean): TrashLand {
     const back = ISLAND.back - (noise2(x * 0.045, 9.1) - 0.5) * 8;
     const side = ISLAND.halfW - noise2(z * 0.03, 5.5) * 16;
     if (z < edge || z > back || Math.abs(x) > side) return -99;
+    // channels under both lines through the loading station (its concrete floor is laid in station.ts)
+    if (z <= STATION.z0 + 1 && z >= STATION.z1 && (Math.abs(x) < 2 || Math.abs(x - 9) < 3)) return -99;
     const s = smoothstep(-1834, -1900, z);
     const ridge = 1 - Math.abs(2 * fbm(x * 0.011 + 7.3, z * 0.011 - 2.1, 4) - 1);
     const n = fbm(x * 0.03 + 1.7, z * 0.03 + 4.2, 3);
@@ -94,7 +96,7 @@ export function buildTrashLand(road: Road, lowDetail: boolean): TrashLand {
     // the loading station's yard is level, with a channel for the cars under the cable
     if (z > STATION.z1 - 4) {
       const k = smoothstep(STATION.z1 - 4, STATION.z1 + 2, z);
-      if (Math.abs(x) < STATION.half + 8) h = lerp(h, 2, k);
+      if (Math.abs(x - STATION.cx) < STATION.half + 8) h = lerp(h, 2, k);
     }
     // never closer than this under the cars (both lines)
     h = Math.min(h, pathY(z) - 2.2 + d * 1.15);
@@ -186,7 +188,7 @@ export function buildTrashLand(road: Road, lowDetail: boolean): TrashLand {
  */
 export function baleMaterial() {
   const mat = new THREE.MeshLambertMaterial({ map: baleAtlas() });
-  const pal = [0x8c8a84, 0x9a5c3e, 0x7c92a2, 0xc29c56, 0x68866a, 0xdcd4c2, 0xb48a80, 0x7a6450].map((c) => new THREE.Color(c));
+  const pal = [0x8e8c86, 0x9a5c3e, 0x7e94a4, 0xc4a05a, 0x6c8a6c, 0xdcd6c6, 0xaca89e, 0x8a7458].map((c) => new THREE.Color(c));
   const uniforms = { uBalePal: { value: pal }, uBale: { value: BALE } };
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, uniforms);
@@ -232,7 +234,7 @@ export function baleMaterial() {
           // one bale in eight strays from its band
           if (h1 > 0.88) idx = mod(idx + 1.0 + floor(h2 * 3.0), 8.0);
           vec3 tint = uBalePal[int(idx)];
-          tint *= 0.86 + 0.24 * h2;
+          tint = mix(tint, vec3(dot(tint, vec3(0.333))), 0.12) * (0.88 + 0.24 * h2);
           // a face of compressed trash from the atlas
           vec2 tile = vec2(floor(h2 * 4.0), floor(fract(h1 * 7.0) * 2.0));
           vec2 tf = f;

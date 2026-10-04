@@ -3,6 +3,8 @@ import { clamp, smoothstep } from '../../../engine/math';
 import { SETS } from '../layout';
 import { showRange, type BuiltSet, type SetContext, type SetEnv, type SetModule, type ZLightKey } from '../common';
 import { buildLand } from '../moonrise/land';
+import { buildSummersEnd } from '../moonrise/house';
+import { buildCamp } from '../moonrise/camp';
 import { COVE, PY, STORM } from '../moonrise/plan';
 
 /*
@@ -45,9 +47,15 @@ const ENV: SetEnv = (z) => {
 
 function build(ctx: SetContext): BuiltSet {
   const { road } = ctx;
+  const T0 = performance.now();
   const group = new THREE.Group();
   const land = buildLand(road, ctx.lowDetail);
   group.add(land.group);
+  const house = buildSummersEnd();
+  group.add(...house.halves, house.lighthouse, house.anchor);
+  const camp = buildCamp(land.ground);
+  group.add(camp.group);
+  const camPos = new THREE.Vector3();
 
   let sky: { topColor: { value: THREE.Color }; midColor: { value: THREE.Color }; horizonColor: { value: THREE.Color }; sunDir: { value: THREE.Vector3 }; sunColor: { value: THREE.Color } } | null = null;
   ctx.scene.traverse((o) => {
@@ -55,6 +63,11 @@ function build(ctx: SetContext): BuiltSet {
     if (!sky && m && (m as THREE.ShaderMaterial).uniforms?.horizonColor && m.uniforms.topColor) sky = m.uniforms as unknown as typeof sky;
   });
   let level = COVE.sea;
+  console.warn(`[moonrise] built in ${Math.round(performance.now() - T0)} ms`);
+  {
+    const count = (o: THREE.Object3D) => { let n = 0, c = 0; o.traverse((x) => { if ((x as THREE.Mesh).isMesh) { n++; if ((x as THREE.Mesh).castShadow) c++; } }); return `${n}/${c}`; };
+    console.warn('[moonrise] meshes', group.children.map((c, i) => `${i}:${count(c)}`).join(' '), 'land:', land.group.children.map((c) => count(c)).join(' '));
+  }
 
   return {
     id: 'moonrise', group, show: showRange(road, R, 30, 10), occluders: [], subjects: [],
@@ -68,6 +81,9 @@ function build(ctx: SetContext): BuiltSet {
       const fog = ctx.scene.fog as THREE.FogExp2;
       if (sky) land.sea.update(t, sky, fog, clamp(smoothstep(-1396, -1436, z), 0, 1));
       land.grass.update(t, ctx.camera);
+      ctx.camera.getWorldPosition(camPos);
+      if (z > -1300) house.update(dt, t, z, camPos);
+      if (z < -1200 && z > -1420) camp.update(dt, t, camPos);
       void dt; void PY;
     },
   };

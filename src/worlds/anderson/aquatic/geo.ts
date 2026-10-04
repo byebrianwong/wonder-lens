@@ -20,13 +20,13 @@ export function tubeAB(a: THREE.Vector3, b: THREE.Vector3, r0: number, r1: numbe
 }
 
 /** Give a geometry a vertex colour attribute from a function of its position (an RGB triple or a grey). */
-export function colorize(g: THREE.BufferGeometry, fn: (p: THREE.Vector3) => number | [number, number, number]) {
+export function colorize(g: THREE.BufferGeometry, fn: number | ((p: THREE.Vector3) => number | [number, number, number])) {
   const pos = g.attributes.position as THREE.BufferAttribute;
   const col = new Float32Array(pos.count * 3);
   const p = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
     p.fromBufferAttribute(pos, i);
-    const c = fn(p);
+    const c = typeof fn === 'number' ? fn : fn(p);
     if (typeof c === 'number') { col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = c; } else { col[i * 3] = c[0]; col[i * 3 + 1] = c[1]; col[i * 3 + 2] = c[2]; }
   }
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));

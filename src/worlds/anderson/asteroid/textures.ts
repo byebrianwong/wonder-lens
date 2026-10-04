@@ -111,18 +111,21 @@ export function cycNight(seed = 403) {
   return t;
 }
 
-/** A sky border: a strip of painted sky cloth that hangs from the grid, with a sewn hem. One tile = 40 x 18 units. */
+/**
+ * A sky border: a strip of painted sky cloth that hangs from the grid, deepening upwards like the top of the
+ * cyclorama, with a soft cloud here and there and a sewn hem. One tile = 60 x 13 units.
+ */
 export function skyBorder(seed = 405) {
-  const W = 512, H = 256;
+  const W = 1024, H = 192;
   const p = new Painter(W, H, seed);
   const g = p.g, rng = p.rng;
-  p.vgrad([[0, css(AC.skyDeep, 0.95)], [1, css(AC.sky, 1.02)]]);
-  p.dabs({ n: 50, colors: [css(AC.sky, 1.07), css(AC.skyDeep, 1.05)], r: [12, 40], alpha: [0.06, 0.12], squash: 0.4 });
-  for (let i = 0; i < 2; i++) { const x = rng.range(60, W - 60); cloud(g, x, H * rng.range(0.55, 0.8), rng.range(110, 170), 46, rng); }
+  p.vgrad([[0, css(AC.skyDeep, 0.88)], [1, css(AC.skyDeep, 1.0, AC.sky, 0.55)]]);
+  p.dabs({ n: 60, colors: [css(AC.sky, 1.0), css(AC.skyDeep, 0.95)], r: [16, 60], alpha: [0.05, 0.1], squash: 0.35 });
+  for (const x of [rng.range(80, 300), rng.range(620, 900)]) cloud(g, x, H * rng.range(0.7, 0.86), rng.range(150, 230), 52, rng);
   // the hem: a folded-over band and a line of stitching
-  g.fillStyle = css(AC.skyDeep, 0.85); g.fillRect(0, H - 16, W, 16);
-  g.fillStyle = 'rgba(255,255,255,0.35)';
-  for (let x = 0; x < W; x += 10) g.fillRect(x, H - 20, 6, 1.5);
+  g.fillStyle = css(AC.skyDeep, 0.78); g.fillRect(0, H - 12, W, 12);
+  g.fillStyle = 'rgba(255,255,255,0.3)';
+  for (let x = 0; x < W; x += 12) g.fillRect(x, H - 16, 7, 1.5);
   return p.texture({ repeat: [1, 1] });
 }
 

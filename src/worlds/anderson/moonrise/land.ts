@@ -189,7 +189,7 @@ export function buildLand(road: Road, low: boolean): Land {
     if (z < HOUSE.front + 16 && z > HOUSE.back - 8 && ad < 26) return false;
     if (Math.hypot(x - LIGHTHOUSE.x, z - LIGHTHOUSE.z) < 14) return false;
     // the camp's clearing and the parade ground
-    if (z < CAMP.z0 + 8 && z > CAMP.z1 - 6 && ad < 30) return false;
+    if (z < CAMP.z0 + 8 && z > CAMP.z1 - 10 && ad < 32) return false;
     if (Math.hypot(x - CAMP.treehouse.x, z - CAMP.treehouse.z) < 7) return false;
     if (Math.hypot(x - CAMP.tower.x, z - CAMP.tower.z) < 6) return false;
     // the beach, and the church's rise
@@ -210,7 +210,7 @@ export function buildLand(road: Road, low: boolean): Land {
     pines.push({ x, y: grid.sample(x, z) - 0.2, z, scale: trng.range(1.25, 2.0), rot: trng.range(0, Math.PI * 2) });
   }
   // a few right at the camp's edge, framing the clearing
-  for (const [x, z, s] of [[-27, -1312, 1.9], [-29, -1346, 2.1], [28, -1316, 1.8], [-24, -1328, 1.6], [30, -1340, 2.0], [-11, -1352, 1.5], [12, -1356, 1.6]] as const) {
+  for (const [x, z, s] of [[-27, -1312, 1.9], [-29, -1346, 2.1], [36, -1316, 1.8], [-24, -1328, 1.6], [37, -1338, 2.0], [-11, -1352, 1.5], [12, -1356, 1.6]] as const) {
     pines.push({ x, y: grid.sample(x, z) - 0.2, z, scale: s, rot: trng.range(0, 6) });
   }
   const forest = fluffyForest({ shape: 'conifer', trunk: 0x5a4434, leaves: [MK.pine, MK.pineDark, 0x4a6a40, 0x3a5236], density: low ? 0.7 : 1 }, pines, trng, { castShadow: true, variants: 3 });
