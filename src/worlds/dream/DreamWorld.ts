@@ -24,6 +24,9 @@ const SIGNS: Record<SetId, string> = {
   meadow: "HOWL'S MEADOW", bathhouse: 'THE BATHHOUSE', haku: 'THE BATHHOUSE', home: 'HOME',
 };
 
+/** The closing shot's timing, in seconds after it starts: trot ahead, turn round, (grin), turn back, reach the hilltop. */
+const OFF = { trot: 1.6, turn: 2.3, unturn: 3.8, back: 4.5, top: 9 };
+
 /** Stretches (in z) where the mount is off the ground: it banks into turns and floats a little. */
 const AIR: Array<[number, number]> = [[-196, -334], [-920, -1298], [-1452, -1562], [-2052, -2480]];
 const inAir = (z: number) => AIR.some(([a, b]) => z <= a && z > b);
@@ -139,7 +142,7 @@ function build(ctx: WorldContext): BuiltWorld {
     { u: K(-2330), skyTop: 0x060a26, skyMid: 0x182654, skyBottom: 0x3a4a7a, fog: 0x1c2a50, fogDensity: 0.0028, sunDir: [-0.2, 0.34, -0.92], sunColor: 0xb8caf0, sunIntensity: 1.05, hemiSky: 0x4a5c94, hemiGround: 0x141a30, hemiIntensity: 1.0, stars: 1, moon: 1, exposure: 1.16, bloom: 0.7, saturation: 1.06, tint: 0xeef2ff, sunGlow: 0, sunSize: 0, horizonHeight: 0.08 },
     // home at dawn: peach and gold, the sun rising ahead and to the right
     { u: K(-2412), skyTop: 0x6a9ad0, skyMid: 0xf6d0b4, skyBottom: 0xffe0b8, fog: 0xf0d8c4, fogDensity: 0.003, sunDir: [0.55, 0.1, -0.83], sunColor: 0xffc890, sunIntensity: 2.0, hemiSky: 0xd0e0e8, hemiGround: 0x6a7a4a, hemiIntensity: 1.0, exposure: 1.02, bloom: 0.52, saturation: 1.14, tint: 0xfff4e4, sunGlow: 1.1, sunSize: 0.05, horizonHeight: 0.08 },
-    { u: 1, skyTop: 0x6aa0d4, skyMid: 0xf6dcc0, skyBottom: 0xffe4c0, fog: 0xf0dcc8, fogDensity: 0.0024, sunDir: [0.55, 0.14, -0.82], sunColor: 0xffd098, sunIntensity: 2.0, hemiSky: 0xd0e0e8, hemiGround: 0x6a7a4a, hemiIntensity: 1.0, exposure: 1.02, bloom: 0.5, saturation: 1.14, tint: 0xfff4e4, sunGlow: 1.0, sunSize: 0.05, horizonHeight: 0.08, cloudShadow: 0.2 },
+    { u: 1, skyTop: 0x6aa0d4, skyMid: 0xf6dcc0, skyBottom: 0xffe4c0, fog: 0xf0dcc8, fogDensity: 0.0024, sunDir: [0.55, 0.14, -0.82], sunColor: 0xffd098, sunIntensity: 2.0, hemiSky: 0xd0e0e8, hemiGround: 0x6a7a4a, hemiIntensity: 1.0, exposure: 1.0, bloom: 0.44, saturation: 1.14, tint: 0xfff4e4, sunGlow: 0.55, sunSize: 0.04, horizonHeight: 0.08, cloudShadow: 0.2 },
   ];
   const lighting = makeLighting(keys);
 
@@ -147,7 +150,7 @@ function build(ctx: WorldContext): BuiltWorld {
   const ridePos = new THREE.Vector3(), lastPos = new THREE.Vector3();
   let havePos = false;
   const tan = new THREE.Vector3(), prevTan = new THREE.Vector3(0, 0, -1);
-  let bank = 0, grinDone = false, freeT = -1, freeYaw = Math.PI, freePitch = 0, climbLift = 0;
+  let bank = 0, grinDone = false, grinBye = false, freeT = -1, freeYaw = Math.PI, freePitch = 0, climbLift = 0;
   const mInv = new THREE.Matrix4(), mW = new THREE.Matrix4(), qW = new THREE.Quaternion(), pW = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
   const yAxis = new THREE.Vector3(0, 1, 0), xAxis = new THREE.Vector3(1, 0, 0);
   const camPos = new THREE.Vector3(), lookPick = new THREE.Vector3(), lookTarget = new THREE.Vector3();
@@ -323,30 +326,46 @@ function build(ctx: WorldContext): BuiltWorld {
       } else {
         // the closing shot: the Catbus runs on ahead and away over the hill; the camera rises behind it
         if (freeT < 0) {
-          freeT = 0; freeYaw = Math.PI; freePitch = 0;
+          freeT = 0; freeYaw = Math.PI; freePitch = 0; grinBye = false;
           const p0 = ridePos.clone();
           runOff.v0.copy(p0); runOff.v1.set(p0.x, p0.y, p0.z - 60); runOff.v2.set(p0.x + 26, p0.y + 10, p0.z - 120); runOff.v3.set(p0.x + 70, p0.y + 26, p0.z - 200);
           mount.root.userData.lastP = p0.clone();
         }
         freeT += dt;
-        // up the hill in RUN seconds (the home scene shapes the hill to this curve), then on up off the
-        // top into the morning sky, faster and faster, before the album opens
-        const RUN = 7;
-        const k = clamp(freeT / RUN, 0, 1);
-        const e = k * k * (3 - 2 * k) * 0.6 + k * 0.4;
-        const p = runOff.getPointAt(e);
+        // It trots on ahead, stops, turns round to grin goodbye, then bounds up the hill (the home scene
+        // shapes the hill to this curve) and on up off the top into the morning sky. The album opens about
+        // ten seconds after this starts.
+        const T = OFF;
+        const ahead = 0.13; // how far along the curve it stops to look back (the ride is still moving the camera forward)
+        let e: number;
+        if (freeT < T.trot) e = ahead * smoothstep(0, T.trot, freeT);
+        else if (freeT < T.back) e = ahead;
+        else e = ahead + (1 - ahead) * smoothstep(T.back, T.top, freeT) * 0.55 + (1 - ahead) * clamp((freeT - T.back) / (T.top - T.back), 0, 1) * 0.45;
+        const p = runOff.getPointAt(Math.min(e, 1));
         const dir = runOff.getTangentAt(Math.min(e, 0.999));
-        if (freeT > RUN) {
-          const s = (freeT - RUN) * (14 + (freeT - RUN) * 4);
+        if (freeT > T.top) {
+          const s = (freeT - T.top) * (16 + (freeT - T.top) * 5);
           dir.setY(0).normalize();
-          p.addScaledVector(dir, s).y += s * 0.5;
+          p.addScaledVector(dir, s).y += s * 0.55;
         }
-        cb.running = true;
+        let yaw = Math.atan2(dir.x, dir.z);
+        const turned = freeT < T.trot ? 0 : freeT < T.turn ? smoothstep(T.trot, T.turn, freeT) : freeT < T.unturn ? 1 : 1 - smoothstep(T.unturn, T.back, freeT);
+        if (turned > 0) {
+          // turn round towards the camera, the short way
+          ctx.camera.getWorldPosition(camPos);
+          const toCam = Math.atan2(camPos.x - p.x, camPos.z - p.z);
+          let dy = toCam - yaw;
+          while (dy > Math.PI) dy -= Math.PI * 2;
+          while (dy < -Math.PI) dy += Math.PI * 2;
+          yaw += dy * turned;
+        }
+        cb.running = freeT < T.trot || freeT > T.unturn;
         cb.stride = (mount.root.userData.lastP as THREE.Vector3).distanceTo(p);
         (mount.root.userData.lastP as THREE.Vector3).copy(p);
-        placeCatbusWorld(p, Math.atan2(dir.x, dir.z));
-        if (freeT > 1 && freeT < 1 + dt * 1.5) catbusSubject.setPose('home', 6);
-        cb.lookTarget = null;
+        placeCatbusWorld(p, yaw);
+        if (!grinBye && freeT > T.turn - 0.2) { grinBye = true; cb.grin(); catbusSubject.setPose('grin', 2.6); }
+        if (freeT > T.back && catbusSubject.pose === 'idle') catbusSubject.setPose('home', 8);
+        cb.lookTarget = turned > 0.5 ? camPos : null;
         const c = smoothstep(0, 7, freeT);
         anchor.set(0, seat.y + c * 9, seat.z - c * 7);
         // the camera turns to follow the Catbus as it runs off
