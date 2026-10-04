@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/html-vite';
 import { rideView, whenDrawn, type RideViewOptions } from '../stories/ride';
 import { STAGE_PARAMETERS } from '../stories/stage';
 import { AmelieWorld } from './amelie/AmelieWorld';
+import { DreamWorld } from './dream/DreamWorld';
 import { AndersonWorld } from './anderson/AndersonWorld';
 import { GhibliWorld } from './ghibli/GhibliWorld';
 import type { WorldDef } from '../game/types';
@@ -34,6 +35,18 @@ export const GhibliTunnel = view(GhibliWorld, 4);
 export const GhibliSpiritSea = view(GhibliWorld, 5);
 export const GhibliBathhouse = view(GhibliWorld, 6);
 export const GhibliSwampBottom = view(GhibliWorld, 7);
+
+export const DreamGarden = view(DreamWorld, 0);
+export const DreamTreeGrowing = view(DreamWorld, 1);
+export const DreamTreeTop = view(DreamWorld, 2);
+export const DreamPowerLines = view(DreamWorld, 3);
+export const DreamForestSpirit = view(DreamWorld, 4);
+export const DreamAboveTheClouds = view(DreamWorld, 5);
+export const DreamLaputa = view(DreamWorld, 6);
+export const DreamHowlsMeadow = view(DreamWorld, 7);
+export const DreamBathhouse = view(DreamWorld, 8);
+export const DreamHaku = view(DreamWorld, 9);
+export const DreamHome = view(DreamWorld, 10);
 
 export const AndersonNebelsbad = view(AndersonWorld, 0);
 export const AndersonGrandBudapest = view(AndersonWorld, 1);
