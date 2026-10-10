@@ -32,8 +32,9 @@ fixed: the aquatic scene was drawn before the splash covered the screen, so its 
 island's sea while the gondola fell. Still to do, which needs the real game in a browser:
 
 - Ride the whole thing and watch every join between scenes as the covers clear and close.
-- Try the whistle and a thrown box on every subject. The Belafonte's four (the ship, Steve, Team Zissou, Pelé)
-  have not been tried in play.
+- Try the whistle and a thrown box on every subject. The Belafonte's were tried in the real game on 2026-10-10
+  (the whistle: Steve raises his binoculars, Team Zissou point, Pelé plays; a box: Steve salutes, the crew point
+  at it); the other scenes' have not been checked since the first stage.
 - Check frame rate on a real laptop (see 3).
 
 ## 2. Chromatic
