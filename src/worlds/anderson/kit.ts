@@ -6,7 +6,7 @@ import { boxUV } from '../../engine/Paint';
 /**
  * Small shared pieces for the Zubrowka Express scenes: the pastel palette, painted-map materials, boxes whose
  * texture keeps its size on every face, sign boards, topiary, and props instanced in stretches along z.
- * Painted textures are in textures.ts (walls, roofs, paving, planks, awnings) and characterTextures.ts.
+ * Painted textures are in textures.ts (walls, roofs, paving, planks, awnings).
  */
 
 /** The pastel palette shared by every scene. */

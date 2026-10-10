@@ -15,8 +15,16 @@ import { LIGHT_KEYS } from '../worlds/ghibli/GhibliWorld';
 import { buildSeaTrain } from '../worlds/ghibli/environment';
 import * as C from '../worlds/ghibli/characters';
 import { LIGHT_KEYS as ANDERSON_KEYS } from '../worlds/anderson/AndersonWorld';
-import { buildZubrowkaExpress } from '../worlds/anderson/environment';
-import * as A from '../worlds/anderson/characters';
+import { buildTrain } from '../worlds/anderson/train';
+import * as AH from '../worlds/anderson/hotel/cast';
+import * as AM from '../worlds/anderson/mendls/cast';
+import * as AS from '../worlds/anderson/ski/cast';
+import * as AF from '../worlds/anderson/fox/cast';
+import * as AMo from '../worlds/anderson/moonrise/cast';
+import * as AA from '../worlds/anderson/asteroid/cast';
+import * as AI from '../worlds/anderson/isle/cast';
+import * as AQ from '../worlds/anderson/aquatic/cast';
+import { makeTeamRow } from '../worlds/anderson/aquatic/crew';
 import { GALLERY_KEYS as AMELIE_KEYS } from '../worlds/amelie/AmelieWorld';
 import * as M from '../worlds/amelie/characters';
 import { buildMoped } from '../worlds/amelie/moped';
@@ -57,24 +65,29 @@ const GHIBLI: Record<string, Entry> = {
   train: { make: () => { const t = buildSeaTrain(); return { group: t.group }; }, y: 1.8, dist: 16 },
 };
 
+/** The Zubrowka Express's people, from each scene's cast.ts; `act` plays the curtain-call bow. Lighting u: one key per scene, i/8. */
+const bows = (c: { group: THREE.Object3D; update(dt: number, t: number): void; bow(): void }) => ({ group: c.group, update: (dt: number, t: number) => c.update(dt, t), act: () => c.bow() });
 const ANDERSON: Record<string, Entry> = {
-  gustave: { make: () => { const c = A.makeGustaveZero(); return { ...c, act: () => c.bow() }; }, y: 1.2, dist: 5 },
-  agatha: { make: () => { const c = A.makeAgatha(); return { ...c, act: () => c.catchBox() }; }, y: 1.0, dist: 3.5 },
-  fox: { make: () => { const c = A.makeMrFox(); return { ...c, act: () => c.whistleClick() }; }, y: 1.0, dist: 4.5 },
-  kylie: { make: () => { const c = A.makeKylie(); return { ...c, act: () => c.zoneOut() }; }, y: 0.8, dist: 3 },
-  samsuzy: { make: () => { const c = A.makeSamSuzy(); return { ...c, act: () => c.moonrise() }; }, y: 0.8, dist: 3.5 },
-  scouts: { make: () => { const c = A.makeScouts(7, rng()); return { ...c, act: () => c.salute() }; }, y: 0.8, dist: 10 },
-  alien: { make: () => { const c = A.makeAlien(); c.group.visible = true; return { group: c.group }; }, y: 1.8, dist: 7 },
-  ufo: { make: () => { const c = A.makeUfo(); return { ...c, act: () => c.setBeam(true, 12) }; }, y: 0, dist: 16 },
-  belafonte: { make: () => A.makeBelafonte(), y: 3, dist: 50 },
-  zissou: { make: () => { const c = A.makeTeamZissou(5, rng()); return { ...c, act: () => c.point() }; }, y: 1.0, dist: 8 },
-  pele: { make: () => { const c = A.makePele(); return { ...c, act: () => c.play() }; }, y: 0.8, dist: 3.5 },
-  shark: { make: () => { const c = A.makeJaguarShark(); c.surface(); return c; }, y: 0, dist: 22 },
-  sub: { make: () => { const c = A.makeDeepSearch(); return { ...c, act: () => c.surface() }; }, y: 0.5, dist: 12 },
-  roadrunner: { make: () => { const c = A.makeRoadrunner(); return { ...c, act: () => c.dance() }; }, y: 0.5, dist: 2.5 },
-  crabs: { make: () => A.makeSugarCrabs(6, rng(), 0.6), y: 0.2, dist: 5 },
-  van: { make: () => { const c = A.makeMendlsVan(); return { ...c, act: () => c.flash() }; }, y: 1.2, dist: 9 },
-  train: { make: () => { const t = buildZubrowkaExpress(); return { group: t.group }; }, y: 2, dist: 16 },
+  gustave: { make: () => bows(AH.makeGustave()), y: 1.2, dist: 4 },
+  zero: { make: () => bows(AH.makeZero()), y: 1.0, dist: 3.5 },
+  madamed: { make: () => bows(AH.makeMadameD()), y: 1.1, dist: 4 },
+  agatha: { make: () => bows(AM.makeAgatha()), y: 1.0, dist: 3.5, u: 1 / 8 },
+  mendl: { make: () => bows(AM.makeMendl()), y: 1.0, dist: 3.5, u: 1 / 8 },
+  jopling: { make: () => bows(AS.makeJopling()), y: 1.2, dist: 4.5, u: 2 / 8 },
+  fox: { make: () => bows(AF.makeMrFox()), y: 1.0, dist: 4, u: 3 / 8 },
+  kylie: { make: () => bows(AF.makeKylie()), y: 0.8, dist: 3, u: 3 / 8 },
+  wolf: { make: () => bows(AF.makeWolf()), y: 1.0, dist: 5, u: 3 / 8 },
+  sam: { make: () => bows(AMo.makeSam()), y: 0.8, dist: 3, u: 4 / 8 },
+  suzy: { make: () => bows(AMo.makeSuzy()), y: 0.8, dist: 3, u: 4 / 8 },
+  scout: { make: () => bows(AMo.makeScout()), y: 0.8, dist: 3, u: 4 / 8 },
+  alien: { make: () => bows(AA.makeAlien()), y: 1.8, dist: 7, u: 5 / 8 },
+  augie: { make: () => bows(AA.makeAugie()), y: 1.1, dist: 4, u: 5 / 8 },
+  chief: { make: () => bows(AI.makeChief()), y: 0.6, dist: 4, u: 6 / 8 },
+  atari: { make: () => bows(AI.makeAtari()), y: 0.7, dist: 3, u: 6 / 8 },
+  zissou: { make: () => bows(AQ.makeZissou()), y: 1.2, dist: 4, u: 7 / 8 },
+  pele: { make: () => bows(AQ.makePele()), y: 0.8, dist: 3.5, u: 7 / 8 },
+  team: { make: () => { const c = makeTeamRow(1.05); return { group: c.group, update: (dt: number, t: number) => c.update(dt, t, camera.position), act: () => c.point(camera.position) }; }, y: 1.0, dist: 8, u: 7 / 8 },
+  train: { make: () => { const t = buildTrain(); return { group: t.group, update: (dt: number, t2: number) => t.update(dt, t2, 0), act: () => t.ring() }; }, y: 2, dist: 12 },
 };
 
 /** Amélie's people: each looks at the gallery camera, and `act` sets off its reaction. */
@@ -106,7 +119,7 @@ const WORLD = new URLSearchParams(location.search).get('w') === 'anderson' ? 'an
 const ENTRIES = WORLD === 'anderson' ? ANDERSON : WORLD === 'amelie' ? AMELIE : GHIBLI;
 /** Lighting presets for the buttons: [label, ride progress]. */
 const PRESETS: ReadonlyArray<readonly [string, number]> = WORLD === 'anderson'
-  ? [['alps', 0.1], ['wood', 0.35], ['desert', 0.6], ['sea', 0.84], ['sundown', 0.99]]
+  ? [['hotel', 0], ['mendls', 1 / 8], ['ski', 2 / 8], ['fox', 3 / 8], ['moonrise', 4 / 8], ['asteroid', 5 / 8], ['isle', 6 / 8], ['aquatic', 7 / 8], ['finale', 1]]
   : WORLD === 'amelie' ? [['morning', 0], ['café', 0.2], ['sunset', 0.4], ['blue hour', 0.55], ['night', 0.7], ['sunrise', 1]]
   : [['day', 0], ['afternoon', 0.28], ['dusk', 0.4], ['rain', 0.5], ['night', 0.7]];
 

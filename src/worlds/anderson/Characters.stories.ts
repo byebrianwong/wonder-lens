@@ -1,11 +1,22 @@
 import * as THREE from 'three';
 import type { Meta } from '@storybook/html-vite';
-import { Rng } from '../../engine/math';
 import { asset, DEFAULT_ARGS, STAGE_ARG_TYPES, STAGE_PARAMETERS, type StageArgs } from '../../stories/stage';
-import {
-  makeAgatha, makeAlien, makeBelafonte, makeBirdFlock, makeCableCar, makeCarChase, makeDeepSearch, makeFunicular, makeGulls, makeGustaveZero, makeJaguarShark,
-  makeJellyfish, makeKylie, makeMendlsBox, makeMendlsVan, makeMrFox, makePele, makeRoadrunner, makeSamSuzy, makeScouts, makeSugarCrabs, makeTeamZissou, makeUfo,
-} from './characters';
+import { makeConductor, makeGustave, makeLiftOperator, makeMadameD, makePorter, makeZero } from './hotel/cast';
+import { makeAgatha, makeMendl } from './mendls/cast';
+import { makeJopling } from './ski/cast';
+import { makeKylie, makeMrFox, makeWolf } from './fox/cast';
+import { makeSam, makeScout, makeSuzy } from './moonrise/cast';
+import { makeAlien, makeAugie } from './asteroid/cast';
+import { makeAtari, makeChief } from './isle/cast';
+import { makePele, makeZissou } from './aquatic/cast';
+import { makeTeamRow } from './aquatic/crew';
+import { JaguarShark as Shark } from './aquatic/shark';
+import { Octopus } from './aquatic/octopus';
+
+/*
+ * The Zubrowka Express's characters, one scene at a time. Each comes from its scene's cast.ts (the builders
+ * the curtain call uses too). The "bow" stories show each one's curtain-call gesture partway through.
+ */
 
 export default {
   title: 'Anderson/Characters',
@@ -14,40 +25,59 @@ export default {
   parameters: STAGE_PARAMETERS,
 } satisfies Meta<StageArgs>;
 
-// Settings match how AndersonWorld.ts builds each character.
-export const GustaveAndZero = asset(makeGustaveZero);
-export const GustaveBow = asset(() => { const c = makeGustaveZero(); c.bow(); return c; }, { time: 0.8 });
+const bowing = <T extends { bow(): void }>(make: () => T) => () => { const c = make(); c.bow(); return c; };
+
+// ---- The Grand Budapest Hotel ----
+export const Gustave = asset(makeGustave);
+export const GustaveBow = asset(bowing(makeGustave), { time: 0.8 });
+export const Zero = asset(makeZero);
+export const MadameD = asset(makeMadameD);
+export const LiftOperator = asset(makeLiftOperator);
+export const Conductor = asset(makeConductor);
+export const Porter = asset(makePorter);
+// ---- Mendl's ----
 export const Agatha = asset(makeAgatha);
-export const AgathaCatchBox = asset(() => { const c = makeAgatha(); c.catchBox(); return c; }, { time: 0.6 });
+export const AgathaBow = asset(bowing(makeAgatha), { time: 0.8 });
+export const Mendl = asset(makeMendl);
+// ---- the ski chase ----
+export const Jopling = asset(makeJopling);
+// ---- Fantastic Mr. Fox ----
 export const MrFox = asset(makeMrFox);
-export const MrFoxWhistleClick = asset(() => { const c = makeMrFox(); c.whistleClick(); return c; }, { time: 0.6 });
+export const MrFoxBow = asset(bowing(makeMrFox), { time: 0.8 });
 export const Kylie = asset(makeKylie);
-export const KylieZoningOut = asset(() => { const c = makeKylie(); c.zoneOut(); return c; }, { time: 0.5 });
-export const SamAndSuzy = asset(makeSamSuzy);
-export const SamAndSuzyBinoculars = asset(() => { const c = makeSamSuzy(); c.binoculars(); return c; }, { time: 0.8 });
-export const KhakiScouts = asset(() => makeScouts(7, new Rng(31)));
-export const KhakiScoutsSalute = asset(() => { const c = makeScouts(7, new Rng(31)); c.salute(); return c; }, { time: 0.8 });
-// The alien only appears once the UFO lowers it; here it is shown standing, without its animation.
-export const Alien = asset(() => { const c = makeAlien(); c.group.visible = true; return { group: c.group }; }, { light: 'dusk' });
-export const Ufo = asset(makeUfo, { ground: false, light: 'dusk' });
-export const UfoBeam = asset(() => { const c = makeUfo(); c.setBeam(true, 12); return c; }, { ground: false, light: 'dusk' });
-export const Belafonte = asset(makeBelafonte, { ground: false });
-// the port side, cut open like the film's set
-export const BelafonteCutaway = asset(makeBelafonte, { ground: false, yaw: -90, pitch: 6, distance: 0.8 });
-export const TeamZissou = asset(() => makeTeamZissou(5, new Rng(37)));
-export const Pele = asset(makePele);
-export const PelePlaying = asset(() => { const c = makePele(); c.play(); return c; }, { time: 0.6 });
-export const JaguarShark = asset(() => { const c = makeJaguarShark(); c.surface(); return c; }, { ground: false, time: 6 });
-export const DeepSearch = asset(() => { const c = makeDeepSearch(); c.surface(); return c; }, { ground: false, time: 3 });
-export const Funicular = asset(() => makeFunicular(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 18, -30)), { yaw: 70 });
-export const MendlsVan = asset(makeMendlsVan);
-export const MendlsBox = asset(() => makeMendlsBox(1), { time: 0 });
-export const CableCar = asset(() => makeCableCar(new THREE.Vector3(0, 8, 0), new THREE.Vector3(0, 28, -40)), { ground: false, yaw: 70 });
-export const Roadrunner = asset(makeRoadrunner);
-export const RoadrunnerDance = asset(() => { const c = makeRoadrunner(); c.dance(); return c; }, { time: 0.4 });
-// the chase partway down a straight road
-export const CarChase = asset(() => { const c = makeCarChase(); c.run(0, 0, -200); return c; }, { time: 1, yaw: 60 });
-export const SugarCrabs = asset(() => makeSugarCrabs(6, new Rng(83), 0.6), { time: 1 });
-export const ElectricJellyfish = asset(() => { const c = makeJellyfish(5, new Rng(89), { x: 0, z: 0, w: 4, d: 4 }); c.level = 1; return c; }, { ground: false, light: 'dusk', time: 1 });
-export const Gulls = asset(() => makeGulls(8, new Rng(43)), { ground: false, distance: 0.45 });
-export const BirdFlock = asset(() => makeBirdFlock(9), { ground: false });
+export const Wolf = asset(makeWolf);
+// ---- Moonrise Kingdom ----
+export const Sam = asset(makeSam);
+export const Suzy = asset(makeSuzy);
+export const KhakiScout = asset(makeScout);
+// ---- Asteroid City ----
+export const Alien = asset(makeAlien, { light: 'dusk' });
+export const Augie = asset(makeAugie);
+// ---- Isle of Dogs ----
+export const Chief = asset(() => makeChief());
+export const ChiefBow = asset(bowing(() => makeChief()), { time: 0.8 });
+export const Atari = asset(makeAtari);
+// ---- The Life Aquatic ----
+export const SteveZissou = asset(makeZissou, { light: 'dusk' });
+export const SteveZissouBow = asset(bowing(makeZissou), { light: 'dusk', time: 1.8 });
+export const TeamZissou = asset(() => {
+  const r = makeTeamRow(1.05);
+  return { group: r.group, update: (dt: number, t: number) => r.update(dt, t, null) };
+}, { light: 'dusk' });
+export const TeamZissouPointing = asset(() => {
+  const r = makeTeamRow(1.05);
+  r.point(new THREE.Vector3(0.6, 2.4, 6));
+  return { group: r.group, update: (dt: number, t: number) => r.update(dt, t, null) };
+}, { light: 'dusk', time: 1.2 });
+export const Pele = asset(makePele, { light: 'dusk' });
+export const PelePlaying = asset(bowing(makePele), { light: 'dusk', time: 1.4 });
+const cam = new THREE.Vector3(0, 2, 12);
+export const JaguarShark = asset(() => {
+  const s = new Shark();
+  s.presence = 1;
+  return { group: s.group, update: (dt: number) => s.update(dt, cam, 1) };
+}, { ground: false, light: 'night', yaw: 70 });
+export const PaisleyOctopus = asset(() => {
+  const o = new Octopus(6);
+  return { group: o.group, update: (dt: number) => o.update(dt, cam) };
+}, { ground: false, light: 'dusk' });
