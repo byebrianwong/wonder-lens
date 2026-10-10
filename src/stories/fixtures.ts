@@ -13,7 +13,7 @@ export { default as rideBackdrop } from './fixtures/ride-backdrop.jpg';
 /*
  * Fixed data for the HUD and album stories. The photos are saved renders from the asset
  * stories, so these screens do not change when a 3D model does.
- * Names, sources and hints are copied from GhibliWorld.ts.
+ * Names, sources and hints were copied from the first Ghibli world (The Sea Train, since removed).
  */
 
 type FakeSubject = Pick<Subject, 'id' | 'name' | 'from' | 'hint' | 'base' | 'rarity'>;

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Rng } from '../../engine/math';
-import { roofTileTexture } from './korikoAtlas';
+import { roofTileTexture } from './propTextures';
 
 /**
  * A 1950s Japanese country house: dark timber and white plaster walls, sliding glass doors onto a raised
@@ -190,69 +190,5 @@ export function buildFarmhouse() {
   const fin = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), frame); fin.position.set(ax, 0.5 + ah + 2.9, az); g.add(fin);
 
   g.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-  return g;
-}
-
-/**
- * A small cottage in the woods: half-timbered plaster walls on a stone base, a steep mossy roof,
- * warm lit windows, a chimney and a porch lamp. Local frame: the door faces +z.
- */
-export function buildCottage() {
-  const g = new THREE.Group();
-  const plaster = new THREE.MeshLambertMaterial({ map: paintWall('plaster') });
-  const tiles = roofTileTexture(29);
-  const roofMat = new THREE.MeshLambertMaterial({ map: tiles, color: 0x5f7060, side: THREE.DoubleSide });
-  const stone = new THREE.MeshLambertMaterial({ color: 0x77726a });
-  const timber = new THREE.MeshLambertMaterial({ color: 0x3a2a1e });
-  const glowMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffc978).multiplyScalar(1.6) });
-  const W = 8, D = 7, H = 3.6;
-  const base = new THREE.Mesh(new THREE.BoxGeometry(W + 0.4, 1.4, D + 0.4), stone);
-  base.position.y = 0.1;
-  g.add(base);
-  const front = wall(W, H, plaster, 2); front.position.set(0, 0.8 + H / 2, D / 2); g.add(front);
-  const back = wall(W, H, plaster, 2); back.position.set(0, 0.8 + H / 2, -D / 2); back.rotation.y = Math.PI; g.add(back);
-  for (const sx of [-1, 1]) { const s = wall(D, H, plaster, 2); s.position.set(sx * W / 2, 0.8 + H / 2, 0); s.rotation.y = sx * Math.PI / 2; g.add(s); }
-  // gable ends
-  const rise = 4.2;
-  for (const sz of [1, -1]) {
-    const tri = new THREE.BufferGeometry();
-    tri.setAttribute('position', new THREE.Float32BufferAttribute([-W / 2 * sz, 0.8 + H, (D / 2) * sz, W / 2 * sz, 0.8 + H, (D / 2) * sz, 0, 0.8 + H + rise, (D / 2) * sz], 3));
-    tri.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, W / 2, 0, W / 4, 1], 2));
-    tri.computeVertexNormals();
-    g.add(new THREE.Mesh(tri, plaster));
-  }
-  // steep roof with deep eaves
-  const ov = 0.7, sl = Math.hypot(W / 2 + ov, rise + ov);
-  for (const sx of [-1, 1]) {
-    const r = new THREE.Mesh(new THREE.PlaneGeometry(D + 1.6, sl), roofMat);
-    const uv = r.geometry.attributes.uv as THREE.BufferAttribute;
-    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * (D + 1.6) * 0.45, uv.getY(i) * sl * 0.45);
-    r.position.set(sx * (W / 4 + ov / 2 - 0.05), 0.8 + H + rise / 2 - ov / 2 + 0.05, 0);
-    r.rotation.order = 'YXZ';
-    r.rotation.y = sx * Math.PI / 2;
-    r.rotation.x = -(Math.PI / 2 - Math.atan2(rise + ov, W / 2 + ov));
-    g.add(r);
-  }
-  const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.3, D + 1.8), timber);
-  ridge.position.y = 0.8 + H + rise + 0.05;
-  g.add(ridge);
-  // windows and door
-  for (const [x, y, z, ry, w, h] of [[-2, 2.6, D / 2 + 0.04, 0, 1.3, 1.4], [2, 2.6, D / 2 + 0.04, 0, 1.3, 1.4], [W / 2 + 0.04, 2.6, 0, Math.PI / 2, 1.3, 1.4], [0, 0.8 + H + 1.4, D / 2 + 0.04, 0, 0.9, 0.9]] as const) {
-    const fr = new THREE.Mesh(new THREE.PlaneGeometry(w + 0.3, h + 0.3), timber); fr.position.set(x, y, z); fr.rotation.y = ry; g.add(fr);
-    const gl = new THREE.Mesh(new THREE.PlaneGeometry(w, h), glowMat);
-    gl.position.set(x + (ry ? 0.01 : 0), y, z + (ry ? 0 : 0.01)); gl.rotation.y = ry; g.add(gl);
-    const bars = new THREE.Mesh(new THREE.PlaneGeometry(0.07, h), timber); bars.position.copy(gl.position).add(new THREE.Vector3(ry ? 0.01 : 0, 0, ry ? 0 : 0.01)); bars.rotation.y = ry; g.add(bars);
-    const bar2 = new THREE.Mesh(new THREE.PlaneGeometry(w, 0.07), timber); bar2.position.copy(bars.position); bar2.rotation.y = ry; g.add(bar2);
-  }
-  const door = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 2.1), new THREE.MeshLambertMaterial({ color: 0x5a3a24 }));
-  door.position.set(0, 0.8 + 1.05, D / 2 + 0.05); g.add(door);
-  // porch roof on two posts and a lamp
-  const porch = new THREE.Mesh(new THREE.BoxGeometry(3, 0.15, 1.6), roofMat); porch.position.set(0, 3.5, D / 2 + 0.8); porch.rotation.x = 0.25; g.add(porch);
-  for (const px of [-1.3, 1.3]) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.8, 0.14), timber); p.position.set(px, 2.1, D / 2 + 1.45); g.add(p); }
-  const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.35, 0.25), glowMat); lamp.position.set(0.9, 2.9, D / 2 + 0.2); g.add(lamp);
-  // chimney with a stone stack
-  const ch = new THREE.Mesh(new THREE.BoxGeometry(0.9, 3.4, 0.9), stone); ch.position.set(-2.3, 0.8 + H + 2.6, -1.2); g.add(ch);
-  g.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-  glowMat.userData.glow = true;
   return g;
 }

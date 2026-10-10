@@ -134,53 +134,6 @@ export function textTexture(text: string, opts: { font?: string; color?: string;
   });
 }
 
-// ---------- path helpers ----------
-/** Spatial lookup of a curve so terrain can be flattened near the track. */
-export class PathField {
-  private pts: THREE.Vector3[] = [];
-  private us: number[] = [];
-  private grid = new Map<string, number[]>();
-  private cell: number;
-  constructor(curve: THREE.Curve<THREE.Vector3>, step = 2, cell = 24) {
-    this.cell = cell;
-    const len = curve.getLength();
-    const n = Math.ceil(len / step);
-    for (let i = 0; i <= n; i++) {
-      const u = i / n;
-      const p = curve.getPointAt(u);
-      this.pts.push(p); this.us.push(u);
-      const k = this.key(p.x, p.z);
-      let list = this.grid.get(k);
-      if (!list) { list = []; this.grid.set(k, list); }
-      list.push(i);
-    }
-  }
-  private key(x: number, z: number) { return `${Math.floor(x / this.cell)},${Math.floor(z / this.cell)}`; }
-  /** nearest sample: distance in xz, its height and u. */
-  nearest(x: number, z: number, out = { dist: Infinity, y: 0, u: 0, x: 0, z: 0 }) {
-    out.dist = Infinity;
-    const cx = Math.floor(x / this.cell), cz = Math.floor(z / this.cell);
-    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
-      const list = this.grid.get(`${cx + dx},${cz + dz}`);
-      if (!list) continue;
-      for (const i of list) {
-        const p = this.pts[i];
-        const d = Math.hypot(p.x - x, p.z - z);
-        if (d < out.dist) { out.dist = d; out.y = p.y; out.u = this.us[i]; out.x = p.x; out.z = p.z; }
-      }
-    }
-    if (out.dist === Infinity) {
-      // far from every cell: coarse scan
-      for (let i = 0; i < this.pts.length; i += 8) {
-        const p = this.pts[i];
-        const d = Math.hypot(p.x - x, p.z - z);
-        if (d < out.dist) { out.dist = d; out.y = p.y; out.u = this.us[i]; out.x = p.x; out.z = p.z; }
-      }
-    }
-    return out;
-  }
-}
-
 // ---------- terrain ----------
 export interface TerrainOpts {
   xMin: number; xMax: number; zMin: number; zMax: number;
@@ -440,45 +393,6 @@ export function instanced(geo: THREE.BufferGeometry, mat: THREE.Material, placem
   im.instanceMatrix.needsUpdate = true;
   if (im.instanceColor) im.instanceColor.needsUpdate = true;
   return im;
-}
-
-/** Wind-swaying grass blades (instanced quads with a vertex shader). */
-export function grassField(placements: Placement[], opts: { base: THREE.ColorRepresentation; tip: THREE.ColorRepresentation; height?: number; width?: number }) {
-  const h = opts.height ?? 0.9, w = opts.width ?? 0.14;
-  const geo = new THREE.PlaneGeometry(w, h, 1, 2);
-  geo.translate(0, h / 2, 0);
-  const uniforms = { time: { value: 0 }, base: { value: new THREE.Color(opts.base) }, tip: { value: new THREE.Color(opts.tip) }, fogColor: { value: new THREE.Color() }, fogDensity: { value: 0.002 }, light: { value: new THREE.Color(1, 1, 1) } };
-  const mat = new THREE.ShaderMaterial({
-    uniforms, side: THREE.DoubleSide,
-    vertexShader: /* glsl */ `
-      uniform float time; varying float vH; varying float vFogDepth;
-      void main(){
-        vH = position.y / ${h.toFixed(3)};
-        vec3 p = position;
-        p.x *= 1.0 - vH * 0.85;
-        vec4 wp = instanceMatrix * vec4(p, 1.0);
-        float sway = sin(time * 1.6 + wp.x * 0.35 + wp.z * 0.21) * 0.28 + sin(time * 2.7 + wp.z * 0.5) * 0.12;
-        wp.x += sway * vH * vH;
-        wp.z += sway * 0.4 * vH * vH;
-        vec4 mv = viewMatrix * modelMatrix * wp;
-        vFogDepth = -mv.z;
-        gl_Position = projectionMatrix * mv;
-      }
-    `,
-    fragmentShader: /* glsl */ `
-      uniform vec3 base; uniform vec3 tip; uniform vec3 fogColor; uniform float fogDensity; uniform vec3 light;
-      varying float vH; varying float vFogDepth;
-      void main(){
-        vec3 col = mix(base, tip, vH) * light;
-        float fog = 1.0 - exp(-fogDensity * fogDensity * vFogDepth * vFogDepth);
-        col = mix(col, fogColor, clamp(fog, 0.0, 1.0));
-        gl_FragColor = vec4(col, 1.0);
-      }
-    `,
-  });
-  const im = instanced(geo, mat, placements);
-  im.frustumCulled = false;
-  return { mesh: im, uniforms };
 }
 
 // ---------- clouds ----------

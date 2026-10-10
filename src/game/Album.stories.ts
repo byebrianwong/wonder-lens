@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/html-vite';
 import { expect, userEvent } from 'storybook/test';
-import { GhibliWorld } from '../worlds/ghibli/GhibliWorld';
+import { DreamWorld } from '../worlds/dream/DreamWorld';
 import { explorerRoll, guide, legendRoll } from '../stories/fixtures';
 import { screen, VIEWPORTS } from '../stories/screen';
 import { Album, summarize } from './Album';
@@ -21,7 +21,7 @@ function album(roll: () => PhotoResult[], o: { relax?: boolean; fullHeight?: boo
   return {
     render: () => {
       const s = screen({ fullHeight: o.fullHeight ?? true });
-      const a = new Album(s.box, summarize(roll(), guide), guide, GhibliWorld.title, GhibliWorld.accent, () => {}, () => {}, o.relax ?? false);
+      const a = new Album(s.box, summarize(roll(), guide), guide, DreamWorld.title, DreamWorld.accent, () => {}, () => {}, o.relax ?? false);
       s.add(a.root);
       a.root.classList.add('show');
       return s.box;

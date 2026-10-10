@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Painter } from '../../../engine/Paint';
 import { Rng, TAU } from '../../../engine/math';
 import { css } from '../../ghibli/characterTextures';
-import type { UvRect } from '../../ghibli/korikoAtlas';
+import type { UvRect } from '../../ghibli/propTextures';
 
 /*
  * Painted textures for the bathhouse scene: the town's wall atlas (with a matching glow atlas for the lit

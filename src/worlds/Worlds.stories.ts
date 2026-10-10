@@ -4,7 +4,6 @@ import { STAGE_PARAMETERS } from '../stories/stage';
 import { AmelieWorld } from './amelie/AmelieWorld';
 import { DreamWorld } from './dream/DreamWorld';
 import { AndersonWorld } from './anderson/AndersonWorld';
-import { GhibliWorld } from './ghibli/GhibliWorld';
 import type { WorldDef } from '../game/types';
 
 /*
@@ -26,15 +25,6 @@ const view = (def: WorldDef, beat: number): Story => ({
   render: (args) => rideView(def, args),
   play: ({ canvasElement }) => whenDrawn(canvasElement),
 });
-
-export const GhibliKoriko = view(GhibliWorld, 0);
-export const GhibliFields = view(GhibliWorld, 1);
-export const GhibliCamphorTree = view(GhibliWorld, 2);
-export const GhibliRainyBusStop = view(GhibliWorld, 3);
-export const GhibliTunnel = view(GhibliWorld, 4);
-export const GhibliSpiritSea = view(GhibliWorld, 5);
-export const GhibliBathhouse = view(GhibliWorld, 6);
-export const GhibliSwampBottom = view(GhibliWorld, 7);
 
 export const DreamGarden = view(DreamWorld, 0);
 export const DreamTreeGrowing = view(DreamWorld, 1);
