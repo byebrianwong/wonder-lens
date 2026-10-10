@@ -35,8 +35,6 @@ island's sea while the gondola fell. Still to do, which needs the real game in a
 - Try the whistle and a thrown box on every subject. The Belafonte's four (the ship, Steve, Team Zissou, Pelé)
   have not been tried in play.
 - Check frame rate on a real laptop (see 3).
-- Steve's white beard is hard to see at the ride's distance, and the crew's uniforms look grey under the sundown
-  light. Both come from `aquatic/crew.ts`.
 
 ## 2. Chromatic
 
