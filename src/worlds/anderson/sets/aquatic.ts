@@ -343,7 +343,9 @@ function build(ctx: SetContext): BuiltSet {
   const ventAcc = vents.map(() => 0);
 
   const set: BuiltSet = {
-    id: 'aquatic', group, show: showRange(road, R, 40, 10), occluders: [], subjects,
+    // the set appears only once the splash covers the screen (layout.ts); before that its sea and coral showed
+    // through the island's sea while the gondola fell
+    id: 'aquatic', group, show: showRange(road, R, 5, 10), occluders: [], subjects,
     floor: (x, z) => (bel.over(x, z) ? D : reef.floor(x, z)),
     get water() { return riderZ < Z.surface ? 0 : -Infinity; },
     mounts: [sub.mount],

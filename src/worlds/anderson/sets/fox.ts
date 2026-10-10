@@ -231,7 +231,7 @@ function build(ctx: SetContext): BuiltSet {
 
   const cam = new THREE.Vector3();
   return {
-    id: 'fox', group, show: showRange(road, R, 12, 6), occluders: home.occluders, subjects, floor, water: Y.cider,
+    id: 'fox', group, show: showRange(road, R, 10, 6), occluders: home.occluders, subjects, floor, water: Y.cider,
     update(dt, t, ride) {
       const z = ride.position.z;
       ctx.camera.getWorldPosition(cam);
