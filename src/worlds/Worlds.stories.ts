@@ -53,7 +53,8 @@ export const AndersonHilltopAtNight = view(AndersonWorld, 11);
 export const AndersonSummersEnd = view(AndersonWorld, 12);
 export const AndersonTidalInlet = view(AndersonWorld, 13);
 export const AndersonStJacksChurch = view(AndersonWorld, 14);
-export const AndersonAsteroidCity = view(AndersonWorld, 15);
+// parked just after the lightning flash clears: the default point is so close under the arch that the camera looks up into the canopy
+export const AndersonAsteroidCity: Story = { ...view(AndersonWorld, 15), args: { beat: 15, after: 0.004 } };
 export const AndersonStargazerConvention = view(AndersonWorld, 16);
 export const AndersonStargazing = view(AndersonWorld, 17);
 export const AndersonTrashIsland = view(AndersonWorld, 18);
