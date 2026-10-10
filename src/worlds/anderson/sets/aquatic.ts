@@ -256,21 +256,26 @@ function build(ctx: SetContext): BuiltSet {
   // ---------- the Belafonte, cut open down the side that faces the ride ----------
   const bel = buildBelafonte();
   group.add(bel.group);
-  const crewOn = (z: number) => z < Z.surface + 12;
+  bel.group.name = 'belafonte';
+  // the sea is opaque from below, so the ship is only drawn once the camera starts to break the surface
+  const crewOn = (z: number) => surfaced(z) > 0;
   const D = bel.deckY;
   // the ship's own space has x across from the open side, so a figure facing -x faces the ride
   const FACE_RIDE = -Math.PI / 2;
   const team = makeTeamRow(1.05);
   team.group.position.set(2.0, D, 2.2);
   team.group.rotation.y = FACE_RIDE;
+  team.group.name = 'team';
   bel.deckGroup.add(team.group);
   const steve = makeSteve();
   steve.group.position.set(2.2, D, -19.5);
   steve.group.rotation.y = FACE_RIDE + 0.35;
+  steve.group.name = 'steve';
   bel.deckGroup.add(steve.group);
   const pele = makePeleFigure();
   pele.group.position.set(2.3, D, 13.6);
   pele.group.rotation.y = FACE_RIDE - 0.3;
+  pele.group.name = 'pele';
   bel.deckGroup.add(pele.group);
   // people in the rooms: Eleanor in the laboratory, Jane in the library, an intern at the stove in the galley
   const roomFolk = [
@@ -356,6 +361,8 @@ function build(ctx: SetContext): BuiltSet {
       ctx.camera.getWorldPosition(camPos);
       const fog = ctx.scene.fog as THREE.FogExp2 | null;
       if (fog) culler.update(ctx.camera, fog);
+      // once the camera is out of the water the reef cannot be seen, but it would still be drawn (and cast shadows)
+      reef.group.visible = surfaced(z) < 1;
       if (DEBUG && ++dbgN === 30) {
         let tris = 0, calls = 0;
         const fr = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(ctx.camera.projectionMatrix, ctx.camera.matrixWorldInverse));
@@ -405,7 +412,7 @@ function build(ctx: SetContext): BuiltSet {
       plankton.uniforms.uAmount.value = deep;
       plankton.update(t, camPos, new THREE.Vector3(0.1, 0.06, -0.05), fog);
       if (OFF.length > 1 || OFF[0]) {
-        reef.group.visible = !OFF.includes('reef');
+        reef.group.visible &&= !OFF.includes('reef');
         reefShafts.mesh.visible &&= !OFF.includes('shafts'); kelpShafts.mesh.visible &&= !OFF.includes('shafts');
         bubbles.points.visible = !OFF.includes('bubbles'); snow.points.visible &&= !OFF.includes('specks'); plankton.points.visible &&= !OFF.includes('specks');
         sea.mesh.visible = !OFF.includes('sea'); sub.mount.group.visible = !OFF.includes('sub');
@@ -459,10 +466,12 @@ function build(ctx: SetContext): BuiltSet {
         bel.update(dt, t);
         ctx.shot.yaw += -1.25 * zWindow(z, -2336, -2350, -2398, -2412);
         shipLight.set(SHIP.face - 6, 4.5, Math.min(SHIP.stern - 4, Math.max(SHIP.bow + 6, z - 4)));
-        steve.update(dt, t, camPos);
-        team.update(dt, t, camPos);
-        pele.update(dt, t, camPos);
-        for (const f of roomFolk) { relax(f, dt, 6); f.tick(dt, t, camPos, 0.6); }
+        // the figures are most of the ship's draw calls: draw and animate only those near the camera along the ship
+        const near = (g: THREE.Object3D) => (g.visible = Math.abs(SHIP.z + g.position.z - camPos.z) < 34);
+        if (near(steve.group)) steve.update(dt, t, camPos);
+        if (near(team.group)) team.update(dt, t, camPos);
+        if (near(pele.group)) pele.update(dt, t, camPos);
+        for (const f of roomFolk) if (near(f.group)) { relax(f, dt, 6); f.tick(dt, t, camPos, 0.6); }
       }
     },
   };

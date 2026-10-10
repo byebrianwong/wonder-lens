@@ -77,6 +77,8 @@ const step = () => {
 const steps = Math.max(1, Math.round(settle / STEP));
 for (let i = 0; i < steps; i++) step();
 renderer.setScene(world.scene, rig.camera);
+// for profiling from a test driver: what is drawn, and from where
+(window as unknown as { __shot: unknown }).__shot = { world, camera: rig.camera };
 setTimeout(() => {
   // count what the scene itself costs (the composer's passes would hide it)
   const gl = renderer.renderer;
