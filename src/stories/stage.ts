@@ -21,7 +21,7 @@ import { applyLighting, emptyLightingState, makeLighting, type LightKey } from '
 
 export const STAGE_SIZE = { width: 960, height: 640 };
 
-/** Lighting presets, taken from the Ghibli world's keys for morning, sunset and night. Cloud shadows are off. */
+/** Lighting presets, taken from the first Ghibli world's keys for morning, sunset and night. Cloud shadows are off. */
 export const LIGHTS = {
   day: { u: 0, skyTop: 0x3b7fd8, skyMid: 0xa6d3f5, skyBottom: 0xeaf2f4, fog: 0xd6e6f0, fogDensity: 0.0021, sunDir: [0.45, 0.75, 0.35], sunColor: 0xfff4de, sunIntensity: 2.3, hemiSky: 0xbfe0ff, hemiGround: 0x6f8f5a, hemiIntensity: 0.8, exposure: 1.0, bloom: 0.3, saturation: 1.1 },
   dusk: { u: 0, skyTop: 0x5b6fb5, skyMid: 0xe8a878, skyBottom: 0xffcf95, fog: 0xe8bb95, fogDensity: 0.0028, sunDir: [0.9, 0.16, 0.3], sunColor: 0xffa060, sunIntensity: 1.7, hemiSky: 0xd0a0a0, hemiGround: 0x5a5a40, hemiIntensity: 0.7, exposure: 1.0, bloom: 0.4, saturation: 1.12 },

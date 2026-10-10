@@ -30,7 +30,7 @@ import { BURST, FALL_Z } from './places';
  * becomes the boy, who falls beside the rider reaching out a hand.
  */
 
-/** the dragon's size: 1.4 times the first Ghibli world's */
+/** the dragon's size: 1.4 times makeHaku's own */
 const S = 1.4;
 /**
  * The head's distance ahead of the rider along the path, and its height above the path. On a climb the point

@@ -1,11 +1,10 @@
 import * as THREE from 'three';
 import type { Meta } from '@storybook/html-vite';
 import { cyl, glow, mesh, sphere, toon } from '../../engine/Builders';
-import { Rng } from '../../engine/math';
 import { asset, DEFAULT_ARGS, STAGE_ARG_TYPES, STAGE_PARAMETERS, type StageArgs } from '../../stories/stage';
 import { buildBathhouse } from './bathhouse';
-import { buildCottage, buildFarmhouse } from './farmhouse';
-import { buildSailboats, buildSeaTrain } from './environment';
+import { buildFarmhouse } from './farmhouse';
+import { buildSeaTrain } from './seaTrain';
 
 export default {
   title: 'Ghibli/Buildings and vehicles',
@@ -14,7 +13,7 @@ export default {
   parameters: STAGE_PARAMETERS,
 } satisfies Meta<StageArgs>;
 
-/** The paper lantern buildSpiritSea hangs on the bathhouse (copied from environment.ts). */
+/** A paper lantern to hang on the bathhouse. */
 function lantern(x: number, y: number, z: number, s = 1) {
   const l = new THREE.Group();
   const paper = new THREE.MeshLambertMaterial({ color: 0xff6b4a, emissive: 0xff5a30, emissiveIntensity: 0.9 });
@@ -29,8 +28,3 @@ export const SeaTrain = asset(buildSeaTrain);
 export const Bathhouse = asset(() => buildBathhouse(lantern), { light: 'night' });
 export const BathhouseByDay = asset(() => buildBathhouse(lantern));
 export const Farmhouse = asset(buildFarmhouse);
-export const Cottage = asset(buildCottage);
-export const Sailboats = asset(() => {
-  const b = buildSailboats(new Rng(3), 3, -14, 14, -10, 10);
-  return { group: b.group, update: (_dt: number, t: number) => b.update(t) };
-}, { ground: false, time: 1 });

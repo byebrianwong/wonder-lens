@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeStatic, toon } from '../../../engine/Builders';
 import { Rng, clamp, smoothstep } from '../../../engine/math';
 import { Subject } from '../../../game/Subject';
-import { buildSeaTrain } from '../../ghibli/environment';
+import { buildSeaTrain } from '../../ghibli/seaTrain';
 import { makeShadowPassengers } from '../../ghibli/characters';
 import { FILMS } from '../common';
 import { Streaks } from './glints';

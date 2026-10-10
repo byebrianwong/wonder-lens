@@ -1,11 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/html-vite';
-import { GhibliWorld } from '../worlds/ghibli/GhibliWorld';
+import { DreamWorld } from '../worlds/dream/DreamWorld';
 import { legendRoll, photo, sceneryPhoto, subjects } from '../stories/fixtures';
 import { screen, showAll, VIEWPORTS } from '../stories/screen';
 import { Hud } from './Hud';
 
 /*
- * The in-ride overlay over a still of the Ghibli world, in the states it shows during a ride.
+ * The in-ride overlay over a still of a Ghibli world, in the states it shows during a ride.
  * Each story builds a Hud and calls the same methods Game.ts calls.
  */
 export default {
@@ -14,7 +14,7 @@ export default {
 } satisfies Meta;
 
 type Story = StoryObj;
-const W = GhibliWorld;
+const W = DreamWorld;
 
 function hud(setup: (h: Hud) => void, o: { touch?: boolean } = {}): Story {
   return {
@@ -33,8 +33,8 @@ function hud(setup: (h: Hud) => void, o: { touch?: boolean } = {}): Story {
   };
 }
 
-export const StartOfRide = hud((h) => { h.setProgress(0.01); h.caption('The Sea Train departing…'); });
-export const SubjectInView = hud((h) => { h.tagSubject(subjects.totoro); h.caption('Rain at the Inari-mae bus stop'); h.setProgress(0.46); });
+export const StartOfRide = hud((h) => { h.setProgress(0.01); h.caption("Totoro's garden, at midnight"); });
+export const SubjectInView = hud((h) => { h.tagSubject(subjects.totoro); h.caption('The tree that grew in one night'); h.setProgress(0.46); });
 export const Zoomed = hud((h) => { h.setZoom(0.7); h.tagSubject(subjects.catbus); });
 export const Cooldowns = hud((h) => h.setCooldowns(0.55, 0.85));
 export const LowFilm = hud((h) => { h.setFilm(3, 24); h.setProgress(0.8); });
@@ -61,7 +61,7 @@ export const SpecialMoment = hud((h) => {
 /** The acorn and ocarina tools glow when the subject in the viewfinder would react to them. */
 export const ToolHints = hud((h) => { h.tagSubject(subjects.noface); h.setToolHints(true, true); h.setProgress(0.66); });
 export const LockHint = hud((h) => h.showLockHint(true));
-export const RelaxRide = hud((h) => { h.setMinimal(true); h.setFilm(Infinity, 24); h.caption('The sea of spirits'); });
+export const RelaxRide = hud((h) => { h.setMinimal(true); h.setFilm(Infinity, 24); h.caption("On Haku's back"); });
 export const Touch: Story = {
   ...hud((h) => h.tagSubject(subjects.kiki), { touch: true }),
   parameters: { chromatic: { modes: { phone: VIEWPORTS.phone } } },

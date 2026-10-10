@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { Rng } from '../../engine/math';
-import { Acc } from './koriko';
+import { Acc } from './acc';
 import { hipGableRoof } from './farmhouse';
-import { roofTileTexture } from './korikoAtlas';
+import { roofTileTexture } from './propTextures';
 
 /**
  * The bathhouse across the night sea: tiers of lacquered red timber with glowing paper screens, green tiled

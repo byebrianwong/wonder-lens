@@ -1,10 +1,9 @@
 import * as THREE from 'three';
-import { glow, sphere, cyl, cone, capsule, box, canvasTexture, mesh, mergeStatic } from '../../engine/Builders';
+import { sphere, cyl, capsule, box, canvasTexture, mesh } from '../../engine/Builders';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { clamp, damp, Rng, TAU } from '../../engine/math';
-import { charToon, repeatUV, boxUV } from '../../engine/Paint';
-import { fluffyTree } from '../../engine/Foliage';
-import { woodGrain, lampGlass, ironTexture, stoneWall, rockStrata, metalPlates, gullWing, airshipHull, shadowFade } from './characterTextures';
+import { charToon } from '../../engine/Paint';
+import { airshipHull, shadowFade } from './characterTextures';
 
 export type { Character } from './character';
 import type { Character } from './character';
@@ -117,136 +116,6 @@ export function makeSootSprites(count: number, rng: Rng, area = 3.5) {
 
 export { makeHaku, type Haku } from './haku';
 
-// ---------------- Hopping lamp post ----------------
-export function makeHoppingLamp() {
-  const g = new THREE.Group();
-  const iron = charToon({ map: ironTexture(), rim: 0.4 });
-  const pole = cyl(0.07, 0.1, 2.2, iron, 0, 1.1, 0);
-  const head = new THREE.Group();
-  head.add(box(0.5, 0.6, 0.5, iron, 0, 0, 0));
-  head.add(box(0.52, 0.5, 0.52, new THREE.MeshBasicMaterial({ map: lampGlass(), color: new THREE.Color(1.9, 1.9, 1.9) }), 0, 0, 0));
-  head.add(cone(0.42, 0.3, iron, 0, 0.45, 0, 4));
-  head.add(sphere(0.07, iron, 0, 0.66, 0));
-  head.position.y = 2.5;
-  g.add(pole, head);
-  let phase = 0;
-  const ch: Character = {
-    group: g,
-    update(dt, t) {
-      void dt;
-      phase = t * 2.6;
-      const hop = Math.max(0, Math.sin(phase));
-      g.position.y = hop * 0.7;
-      g.rotation.z = Math.cos(phase) * 0.18;
-      g.rotation.x = Math.sin(phase * 0.5) * 0.08;
-    },
-  };
-  return ch;
-}
-
-// ---------------- Laputa ----------------
-export function makeLaputa() {
-  const g = new THREE.Group();
-  const rockTex = rockStrata(0x5a5f6b);
-  rockTex.repeat.set(4, 2);
-  const rock = charToon({ map: rockTex, emissive: 0xffffff, emissiveMap: rockTex, emissiveIntensity: 0.18, rim: 0.4 });
-  // stone walls; a faint self-light through the texture keeps them readable against the night sky
-  const wallMat = (arches: boolean, seed: number) => { const t = stoneWall(0xc4bcac, { arches, moss: true, seed }); return charToon({ map: t, emissive: 0x8a96c0, emissiveMap: t, emissiveIntensity: 0.4, rim: 0.4 }); };
-  const tier = (rTop: number, rBot: number, h: number, y: number, arches: boolean, seed: number) => {
-    const geo = repeatUV(new THREE.CylinderGeometry(rTop, rBot, h, 28), Math.round((Math.PI * 2 * rBot) / 8), h / 8);
-    g.add(mesh(geo, wallMat(arches, seed), 0, y, 0));
-  };
-  const base = cone(28, 34, rock, 0, -17, 0, 18); base.rotation.x = Math.PI; g.add(base);
-  tier(26, 28, 6, 3, false, 172);
-  tier(18, 22, 8, 10, true, 173);
-  tier(10, 14, 10, 19, true, 174);
-  // roots hanging from the bottom of the island
-  const rootMat = charToon({ color: 0x4a4038, emissive: 0x16141a, rim: 0.3 });
-  const rr = new Rng(1986);
-  for (let i = 0; i < 16; i++) {
-    const a = rr.range(0, TAU), d = rr.range(4, 22), len = rr.range(10, 26) * (1 - d / 40);
-    const root = cone(rr.range(0.5, 1.2), len, rootMat, Math.cos(a) * d, -34 * (1 - d / 28) + 8 - len / 2, Math.sin(a) * d, 5);
-    root.rotation.x = Math.PI + rr.range(-0.15, 0.15); root.rotation.z = rr.range(-0.15, 0.15);
-    g.add(root);
-  }
-  // the great tree
-  g.add(cyl(2.2, 3, 14, charToon({ map: woodGrain(0x6a5040, 175), emissive: 0x1a1410, rim: 0.3 }), 0, 31, 0, 12));
-  const crown = fluffyTree([
-    { c: new THREE.Vector3(0, 44, 0), r: new THREE.Vector3(16, 11, 16) },
-    { c: new THREE.Vector3(10, 40, 5), r: new THREE.Vector3(9, 7, 9) },
-    { c: new THREE.Vector3(-10, 41, -4), r: new THREE.Vector3(10, 7, 10) },
-    { c: new THREE.Vector3(3, 51, -3), r: new THREE.Vector3(9, 6, 9) },
-    { c: new THREE.Vector3(-4, 39, 11), r: new THREE.Vector3(8, 6, 8) },
-  ], 0x4f8f4a, new Rng(1987), { density: 0.12, cardScale: 1.1 });
-  (crown.material as THREE.MeshToonMaterial).emissive.set(0x10281a);
-  g.add(crown);
-  const towerTop = charToon({ color: 0x5f7fa0, emissive: 0x1a2a40, rim: 0.4 });
-  const towerWall = wallMat(false, 176);
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * TAU;
-    const tgeo = repeatUV(new THREE.CylinderGeometry(1.4, 1.6, 6, 10), 1, 0.75);
-    g.add(mesh(tgeo, towerWall, Math.cos(a) * 21, 9, Math.sin(a) * 21));
-    g.add(cone(2, 3, towerTop, Math.cos(a) * 21, 13.5, Math.sin(a) * 21, 8));
-  }
-  // faint glow ring beneath
-  { const ring = mesh(new THREE.TorusGeometry(24, 1.2, 8, 32), glow(0x9fd7ff, 1.1), 0, -8, 0); ring.rotation.x = Math.PI / 2; g.add(ring); }
-  // the island only moves as a whole, so its parts can be baked into one mesh per material
-  mergeStatic(g);
-  const ch: Character = {
-    group: g,
-    update(dt, t) { void dt; g.position.y += Math.sin(t * 0.3) * 0.01; g.rotation.y += 0.004 * dt; },
-  };
-  return ch;
-}
-
-// ---------------- Howl's moving castle (distant silhouette) ----------------
-export function makeHowlsCastle() {
-  const g = new THREE.Group();
-  const ironTex = metalPlates(0x55545c, 0x8a5a3a, 192), rustTex = metalPlates(0x6e5a4c, 0x9a6a40, 193);
-  const iron = charToon({ map: ironTex, rim: 0.3 });
-  const rust = charToon({ map: rustTex, rim: 0.3 });
-  const B = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number) => mesh(boxUV(new THREE.BoxGeometry(w, h, d), 7), mat, x, y, z);
-  const C = (rt: number, rb: number, h: number, mat: THREE.Material, x: number, y: number, z: number, seg = 10) => mesh(repeatUV(new THREE.CylinderGeometry(rt, rb, h, seg), Math.max(1, Math.round((TAU * rb) / 7)), h / 7), mat, x, y, z);
-  const body = new THREE.Group();
-  body.add(B(14, 10, 12, iron, 0, 14, 0));
-  body.add(C(4, 5, 9, rust, -5, 22, 2));
-  body.add(cone(5, 5, iron, -5, 29, 2, 10));
-  body.add(C(2.5, 3, 7, iron, 6, 21, -3));
-  body.add(B(6, 5, 6, rust, 5, 11, 7));
-  body.add(B(9, 4, 5, iron, -3, 8, 8));
-  body.add(C(1.2, 1.2, 8, iron, 2, 24, 4, 8));
-  body.add(C(1.0, 1.0, 6, iron, -8, 21, -4, 8));
-  // glowing windows
-  const winMat = glow(0xffc070, 1.5);
-  body.add(box(1.4, 1.6, 0.4, winMat, -3, 15, 6.1), box(1.4, 1.6, 0.4, winMat, 1, 13, 6.1), box(1.0, 1.4, 0.4, winMat, 5, 11.5, 10.1), box(1.0, 1.2, 0.4, winMat, -5, 24, 6.2));
-  // mouth plate
-  body.add(B(8, 3, 1, rust, 0, 7, 6.3));
-  g.add(body);
-  mergeStatic(body);
-  const legs: THREE.Group[] = [];
-  for (let i = 0; i < 4; i++) {
-    const l = new THREE.Group();
-    const upper = C(0.7, 0.9, 8, iron, 0, -4, 0, 8); l.add(upper);
-    const lower = C(0.6, 0.7, 7, iron, 0, -10, 1.2, 8); l.add(lower);
-    l.add(B(3, 1, 4.5, iron, 0, -13.5, 1.5));
-    l.position.set(i % 2 ? 4.5 : -4.5, 9.5, i < 2 ? 3 : -3);
-    g.add(l); legs.push(l);
-    mergeStatic(l);
-  }
-  let walk = 0;
-  const ch: Character = {
-    group: g,
-    update(dt, t) {
-      walk = t * 1.6;
-      legs.forEach((l, i) => { l.rotation.x = Math.sin(walk + (i % 2 ? Math.PI : 0) + (i < 2 ? 0 : 0.5)) * 0.35; });
-      body.position.y = Math.abs(Math.sin(walk)) * 0.6;
-      body.rotation.z = Math.sin(walk) * 0.03;
-      g.position.z += 1.2 * dt; // walks slowly across the ridge
-    },
-  };
-  return ch;
-}
-
 // ---------------- Shadow passengers ----------------
 export function makeShadowPassengers(count: number, rng: Rng, width = 10) {
   const g = new THREE.Group();
@@ -263,40 +132,6 @@ export function makeShadowPassengers(count: number, rng: Rng, width = 10) {
     g.add(p);
   }
   return g;
-}
-
-// ---------------- Seagulls ----------------
-export function makeSeagulls(count: number, rng: Rng) {
-  const g = new THREE.Group();
-  const white = charToon({ color: 0xf6f6f2, rim: 0.3 });
-  const wingMat = charToon({ map: gullWing(), side: THREE.DoubleSide, alphaTest: 0.5, rim: 0.2 });
-  // body and head as one geometry, so each gull stays at three draw calls
-  const bodyGeo = mergeGeometries([new THREE.SphereGeometry(1, 14, 10).scale(0.12, 0.1, 0.3), new THREE.SphereGeometry(0.08, 10, 8).translate(0, 0.05, 0.28)])!;
-  // a horizontal wing with its root at x = 0 and its leading edge towards +z
-  const wingGeo = new THREE.PlaneGeometry(1.1, 0.4).rotateX(Math.PI / 2).translate(0.55, 0, 0);
-  const birds: { g: THREE.Group; l: THREE.Object3D; r: THREE.Object3D; phase: number; radius: number; speed: number; h: number }[] = [];
-  for (let i = 0; i < count; i++) {
-    const b = new THREE.Group();
-    const r = new THREE.Mesh(wingGeo, wingMat);
-    const l = new THREE.Mesh(wingGeo, wingMat); l.scale.x = -1;
-    b.add(l, r, new THREE.Mesh(bodyGeo, white));
-    g.add(b);
-    birds.push({ g: b, l, r, phase: rng.range(0, 10), radius: rng.range(8, 26), speed: rng.range(0.25, 0.5) * rng.sign(), h: rng.range(0, 8) });
-  }
-  const ch: Character = {
-    group: g,
-    update(dt, t) {
-      void dt;
-      for (const b of birds) {
-        const a = t * b.speed + b.phase;
-        b.g.position.set(Math.cos(a) * b.radius, b.h + Math.sin(t * 0.7 + b.phase) * 1.5, Math.sin(a) * b.radius);
-        b.g.rotation.y = -a + (b.speed > 0 ? 0 : Math.PI);
-        const flap = Math.sin(t * 6 + b.phase) * 0.6;
-        b.l.rotation.z = flap; b.r.rotation.z = -flap;
-      }
-    },
-  };
-  return ch;
 }
 
 // ---------------- Dirigible ----------------

@@ -12,9 +12,9 @@ export default {
 type Story = StoryObj;
 // by id, so adding a world to the list does not change which world each story shows
 const world = (id: string) => WORLDS.find((w) => w.id === id)!;
-const ghibli = world('ghibli'), anderson = world('anderson'), amelie = world('amelie');
+const dream = world('dream'), anderson = world('anderson'), amelie = world('amelie');
 
-const menu = (selected = ghibli, relax = false, mouseLock = true): Story => ({
+const menu = (selected = dream, relax = false, mouseLock = true): Story => ({
   render: () => {
     const s = screen({ fullHeight: true });
     s.add(menuElement({ worlds: WORLDS, selected, relax, mouseLock })).classList.add('show');
@@ -25,7 +25,7 @@ const menu = (selected = ghibli, relax = false, mouseLock = true): Story => ({
 export const Menu = menu();
 export const MenuAndersonRelax = menu(anderson, true, false);
 
-const loading = (def = ghibli, relax = false): Story => ({
+const loading = (def = dream, relax = false): Story => ({
   render: () => {
     const s = screen();
     s.add(loadingElement(def, relax));
@@ -33,14 +33,14 @@ const loading = (def = ghibli, relax = false): Story => ({
   },
 });
 
-export const LoadingGhibli = loading(ghibli);
+export const LoadingDream = loading(dream);
 export const LoadingAnderson = loading(anderson);
 export const LoadingAmelieRelax = loading(amelie, true);
 
 export const Pause: Story = {
   render: () => {
     const s = screen({ backdrop: true });
-    s.add(pauseElement({ title: ghibli.title, hudHidden: false, mouseMode: 'lock', muted: false })).classList.add('show');
+    s.add(pauseElement({ title: dream.title, hudHidden: false, mouseMode: 'lock', muted: false })).classList.add('show');
     return s.box;
   },
 };
