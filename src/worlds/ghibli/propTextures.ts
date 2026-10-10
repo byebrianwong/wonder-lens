@@ -1,10 +1,12 @@
+import * as THREE from 'three';
+import { Rng } from '../../engine/math';
 import { Painter } from '../../engine/Paint';
 import { css } from './characterTextures';
 
 /**
- * Painted textures for the sea train and the smaller props along the line (church, sailboats, shrine,
- * lanterns, jizo statues, poles). Tiling textures are meant for geometry whose UVs are in world units
- * (see boxUV and repeatUV in engine/Paint.ts); each says how many units one tile covers.
+ * Painted textures for the sea train, the bathhouse and other Ghibli buildings and props. Tiling textures
+ * are meant for geometry whose UVs are in world units (see boxUV and repeatUV in engine/Paint.ts); each
+ * says how many units one tile covers.
  */
 
 /** Painted steel body panel, one tile = one 1.6 x 1.6 unit panel: seams with rivets, a little grime. */
@@ -126,29 +128,6 @@ export function cabinPanels() {
   return p.texture({ repeat: [1, 1] });
 }
 
-/** Plaster wall bay with one tall arched window (church walls); one tile covers a 4 x 4 unit bay. */
-export function plasterBay(wall: number, glass: string) {
-  const S = 256;
-  const p = new Painter(S, S, 311).fill(css(wall));
-  p.dabs({ n: 50, colors: [css(wall, 1.04), css(wall, 0.93)], r: [8, 30], alpha: [0.1, 0.2], squash: 0.7 });
-  const g = p.g;
-  const cx = S / 2, top = S * 0.3, bottom = S * 0.82, hw = S * 0.12;
-  const arch = (pad: number) => { g.beginPath(); g.moveTo(cx - hw - pad, bottom + pad); g.lineTo(cx - hw - pad, top); g.arc(cx, top, hw + pad, Math.PI, 0); g.lineTo(cx + hw + pad, bottom + pad); g.closePath(); };
-  g.fillStyle = css(wall, 0.82); arch(7); g.fill();
-  g.fillStyle = glass; arch(0); g.fill();
-  // leading in the glass
-  g.strokeStyle = 'rgba(30,30,40,0.6)'; g.lineWidth = 2;
-  g.beginPath(); g.moveTo(cx, top - hw); g.lineTo(cx, bottom); g.stroke();
-  for (let y = top; y < bottom; y += 18) { g.beginPath(); g.moveTo(cx - hw, y); g.lineTo(cx + hw, y); g.stroke(); }
-  g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(cx - hw, top, hw * 0.5, bottom - top);
-  // sill, and damp staining at the foot of the wall
-  g.fillStyle = css(wall, 1.08); g.fillRect(cx - hw - 12, bottom + 6, hw * 2 + 24, 7);
-  const gr = g.createLinearGradient(0, S * 0.85, 0, S);
-  gr.addColorStop(0, 'rgba(90,80,60,0)'); gr.addColorStop(1, 'rgba(90,80,60,0.3)');
-  g.fillStyle = gr; g.fillRect(0, 0, S, S);
-  return p.texture({ repeat: [1, 1] });
-}
-
 /** Overlapping slate or copper scales for a spire (cone: tip at the top). */
 export function slate(color: number) {
   const p = new Painter(256, 256, 312).fill(css(color, 0.8));
@@ -160,28 +139,6 @@ export function slate(color: number) {
   }
   p.lines({ n: 16, colors: ['rgba(255,255,255,1)'], alpha: [0.04, 0.1], width: [3, 8], vertical: true });
   return p.texture({ repeat: [1, 1] });
-}
-
-/** Clinker-built hull planks with a painted stripe and a darker band at the waterline (box, tiles every 2 units). */
-export function hullPlanks(color: number, stripe: string) {
-  const p = new Painter(256, 128, 313).fill(css(color));
-  const g = p.g;
-  for (let i = 0; i < 6; i++) { const y = i * 21.3; g.fillStyle = css(color, p.rng.range(0.92, 1.08)); g.fillRect(0, y, 256, 20); g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(0, y + 18, 256, 3); }
-  g.fillStyle = stripe; g.fillRect(0, 12, 256, 8);
-  g.fillStyle = 'rgba(30,40,40,0.55)'; g.fillRect(0, 104, 256, 24);
-  p.lines({ n: 10, colors: ['rgba(20,20,20,1)'], alpha: [0.06, 0.14], width: [2, 5], vertical: true });
-  return p.texture({ repeat: [1, 1] });
-}
-
-/** Sail canvas: off-white panels with stitched seams and a soft shadow along the luff. */
-export function sailCloth() {
-  const p = new Painter(128, 256, 314).fill('#fbf5e6');
-  const g = p.g;
-  for (let i = 1; i < 7; i++) { const y = i * 36; g.fillStyle = 'rgba(150,130,100,0.35)'; g.fillRect(0, y, 128, 2); g.fillStyle = 'rgba(255,255,255,0.6)'; g.fillRect(0, y + 2, 128, 1); }
-  const gr = g.createLinearGradient(0, 0, 128, 0);
-  gr.addColorStop(0, 'rgba(120,110,90,0.25)'); gr.addColorStop(0.3, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(120,110,90,0.12)');
-  g.fillStyle = gr; g.fillRect(0, 0, 128, 256);
-  return p.texture({ wrap: false });
 }
 
 /** Deeply furrowed bark with moss in the cracks; one tile wraps a 6 unit circumference and 6 units of height. */
@@ -222,15 +179,40 @@ export function granite(color: number, seed = 317) {
   return p.texture({ repeat: [1, 1] });
 }
 
-/** A jizo's stone head (sphere facing +z): granite with a calm carved face, eyes closed. */
-export function jizoHead(color: number) {
-  const p = new Painter(256, 128, 318).fill(css(color));
-  p.dabs({ n: 200, colors: [css(color, 1.2), css(color, 0.75)], r: [0.6, 1.6], alpha: [0.4, 0.8] });
-  p.dabs({ n: 12, colors: ['#8a9a5a', '#a8a878'], r: [3, 7], alpha: [0.25, 0.45], y: [0, 0.35] });
-  const g = p.g;
-  g.strokeStyle = css(color, 0.55); g.lineWidth = 2; g.lineCap = 'round';
-  for (const s of [-1, 1]) { g.beginPath(); g.moveTo(64 + s * 16 - 6, 62); g.quadraticCurveTo(64 + s * 16, 66, 64 + s * 16 + 6, 62); g.stroke(); }
-  g.beginPath(); g.moveTo(64, 66); g.lineTo(64, 74); g.stroke();
-  g.beginPath(); g.moveTo(60, 82); g.quadraticCurveTo(64, 85, 68, 82); g.stroke();
-  return p.texture();
+/** A rectangle in texture space. */
+export interface UvRect { u0: number; v0: number; u1: number; v1: number }
+
+/** Grey clay roof tiles in overlapping rows (tileable). Tinted per roof. */
+export function roofTileTexture(seed = 3) {
+  const rng = new Rng(seed);
+  const S = 256;
+  const c = document.createElement('canvas'); c.width = c.height = S;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#b8b2aa'; g.fillRect(0, 0, S, S);
+  const rows = 8, cols = 8, th = S / rows, tw = S / cols;
+  for (let r = 0; r < rows; r++) {
+    const off = r % 2 ? tw / 2 : 0;
+    for (let k = -1; k <= cols; k++) {
+      const x = k * tw + off, y = r * th;
+      const v = Math.round(rng.range(200, 240));
+      const gr = g.createLinearGradient(x, 0, x + tw, 0);
+      gr.addColorStop(0, `rgb(${v - 40},${v - 42},${v - 44})`); gr.addColorStop(0.45, `rgb(${v},${v - 3},${v - 6})`); gr.addColorStop(1, `rgb(${v - 55},${v - 58},${v - 60})`);
+      g.fillStyle = gr;
+      g.beginPath();
+      g.moveTo(x + 1, y);
+      g.lineTo(x + tw - 1, y);
+      g.lineTo(x + tw - 1, y + th - 4);
+      g.quadraticCurveTo(x + tw / 2, y + th + 3, x + 1, y + th - 4);
+      g.closePath(); g.fill();
+      // shadow cast by the row above
+      g.fillStyle = 'rgba(0,0,0,0.22)'; g.fillRect(x, y, tw, 3);
+    }
+  }
+  // moss and weathering
+  for (let i = 0; i < 60; i++) { g.fillStyle = `rgba(${rng.chance(0.5) ? '90,110,60' : '60,50,40'},${rng.range(0.04, 0.1)})`; g.beginPath(); g.ellipse(rng.range(0, S), rng.range(0, S), rng.range(4, 18), rng.range(3, 10), 0, 0, Math.PI * 2); g.fill(); }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 8;
+  return t;
 }

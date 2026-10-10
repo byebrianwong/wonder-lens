@@ -9,10 +9,9 @@ import * as THREE from 'three';
 import { Renderer } from '../engine/Renderer';
 import { Sky } from '../engine/Sky';
 import { Rng } from '../engine/math';
-import { makeLighting } from '../game/lighting';
+import { makeLighting, type LightKey } from '../game/lighting';
 import type { LightingState } from '../game/types';
-import { LIGHT_KEYS } from '../worlds/ghibli/GhibliWorld';
-import { buildSeaTrain } from '../worlds/ghibli/environment';
+import { buildSeaTrain } from '../worlds/ghibli/seaTrain';
 import * as C from '../worlds/ghibli/characters';
 import { LIGHT_KEYS as ANDERSON_KEYS } from '../worlds/anderson/AndersonWorld';
 import { buildZubrowkaExpress } from '../worlds/anderson/environment';
@@ -25,6 +24,20 @@ import { makeCarousel } from '../worlds/amelie/sets/butte';
 interface Entry { make: () => { group: THREE.Object3D; update?: (dt: number, t: number) => void; act?: () => void; follow?: () => THREE.Vector3 }; y: number; dist: number; u?: number }
 
 const rng = () => new Rng(7);
+
+/** Day, afternoon, dusk, rain and night light for the Ghibli characters (kept from the first Ghibli world, which was removed). */
+const GHIBLI_KEYS: LightKey[] = [
+  { u: 0.0, skyTop: 0x3b7fd8, skyMid: 0xa6d3f5, skyBottom: 0xeaf2f4, fog: 0xd6e6f0, fogDensity: 0.0021, sunDir: [0.45, 0.75, -0.35], sunColor: 0xfff4de, sunIntensity: 2.3, hemiSky: 0xbfe0ff, hemiGround: 0x6f8f5a, hemiIntensity: 0.8, exposure: 1.0, bloom: 0.3, saturation: 1.1, cloudShadow: 0.38 },
+  { u: 0.28, skyTop: 0x4a86d6, skyMid: 0xbcd6f0, skyBottom: 0xf7e0bc, fog: 0xe0e2e0, fogDensity: 0.0022, sunDir: [0.75, 0.45, -0.2], sunColor: 0xffe2b8, sunIntensity: 2.1, hemiSky: 0xbfd8f0, hemiGround: 0x7a8f55, hemiIntensity: 0.75, exposure: 1.0, bloom: 0.32, saturation: 1.1, cloudShadow: 0.34 },
+  { u: 0.4, skyTop: 0x5b6fb5, skyMid: 0xe8a878, skyBottom: 0xffcf95, fog: 0xe8bb95, fogDensity: 0.0028, sunDir: [0.9, 0.16, -0.1], sunColor: 0xffa060, sunIntensity: 1.7, hemiSky: 0xd0a0a0, hemiGround: 0x5a5a40, hemiIntensity: 0.7, exposure: 1.0, bloom: 0.4, saturation: 1.12, cloudShadow: 0.14 },
+  { u: 0.48, skyTop: 0x3c4160, skyMid: 0x707590, skyBottom: 0x968fa8, fog: 0x7c7f92, fogDensity: 0.0052, sunDir: [0.8, 0.2, 0.2], sunColor: 0xb8bccc, sunIntensity: 0.6, hemiSky: 0x9095b5, hemiGround: 0x3a3f42, hemiIntensity: 0.65, exposure: 0.98, bloom: 0.45, saturation: 0.98, sunGlow: 0.12, sunSize: 0.0 },
+  { u: 0.575, skyTop: 0x1c2038, skyMid: 0x3a3e5e, skyBottom: 0x5e5a76, fog: 0x4b4e66, fogDensity: 0.0068, sunDir: [0.6, 0.3, 0.3], sunColor: 0x9aa0c0, sunIntensity: 0.35, hemiSky: 0x5a6090, hemiGround: 0x25282c, hemiIntensity: 0.55, exposure: 0.95, bloom: 0.5, saturation: 0.95, stars: 0.2, sunGlow: 0.0, sunSize: 0.0 },
+  { u: 0.598, skyTop: 0x06060a, skyMid: 0x08080d, skyBottom: 0x0a0a10, fog: 0x07070b, fogDensity: 0.03, sunDir: [0.6, 0.3, 0.3], sunColor: 0x404050, sunIntensity: 0.1, hemiSky: 0x202030, hemiGround: 0x101014, hemiIntensity: 0.5, exposure: 0.9, bloom: 0.6, saturation: 0.9, sunGlow: 0.0, sunSize: 0.0 },
+  { u: 0.622, skyTop: 0x0a1030, skyMid: 0x1a2a55, skyBottom: 0x34477a, fog: 0x1c2748, fogDensity: 0.0042, sunDir: [-0.4, 0.6, -0.6], sunColor: 0xb4c6ee, sunIntensity: 1.1, hemiSky: 0x4a5c92, hemiGround: 0x161c30, hemiIntensity: 0.95, stars: 1, moon: 1, exposure: 1.12, bloom: 0.6, saturation: 1.05, sunGlow: 0.0, sunSize: 0.0 },
+  { u: 0.86, skyTop: 0x070c26, skyMid: 0x152148, skyBottom: 0x2e4070, fog: 0x172140, fogDensity: 0.0038, sunDir: [-0.5, 0.55, -0.6], sunColor: 0xb4c6ee, sunIntensity: 1.0, hemiSky: 0x465a90, hemiGround: 0x141a2c, hemiIntensity: 0.95, stars: 1, moon: 1, exposure: 1.12, bloom: 0.62, saturation: 1.05, sunGlow: 0.0, sunSize: 0.0 },
+  { u: 1.0, skyTop: 0x070c26, skyMid: 0x152148, skyBottom: 0x2e4070, fog: 0x172140, fogDensity: 0.0038, sunDir: [-0.5, 0.55, -0.6], sunColor: 0xb4c6ee, sunIntensity: 1.0, hemiSky: 0x465a90, hemiGround: 0x141a2c, hemiIntensity: 0.95, stars: 1, moon: 1, exposure: 1.12, bloom: 0.62, saturation: 1.05, sunGlow: 0.0, sunSize: 0.0 },
+];
+
 const GHIBLI: Record<string, Entry> = {
   totoro: { make: () => { const c = C.makeTotoro({ umbrella: true }); return { group: c.group, update: c.update, act: () => c.roar() }; }, y: 2.8, dist: 12 },
   totorojump: { make: () => { const c = C.makeTotoro({ umbrella: true }); return { group: c.group, update: c.update, act: () => c.jump() }; }, y: 2.8, dist: 14 },
@@ -46,11 +59,7 @@ const GHIBLI: Record<string, Entry> = {
   kodama: { make: () => { const c = C.makeKodama(14, rng(), 7); return { ...c, act: () => c.rattle() }; }, y: 0.8, dist: 8 },
   ponyo: { make: () => { const c = C.makePonyoSchool(14, rng()); return { ...c, act: () => c.leap() }; }, y: 0.6, dist: 12 },
   radish: { make: () => { const c = C.makeRadishSpirit(); return { ...c, act: () => c.bow() }; }, y: 2.6, dist: 9 },
-  lamp: { make: () => C.makeHoppingLamp(), y: 1.6, dist: 6 },
-  laputa: { make: () => C.makeLaputa(), y: 10, dist: 140 },
-  howl: { make: () => { const c = C.makeHowlsCastle(); return { group: c.group, update: (dt: number, t: number) => { c.update(dt, t); c.group.position.z = 0; } }; }, y: 16, dist: 70 },
   passengers: { make: () => ({ group: C.makeShadowPassengers(4, rng(), 6) }), y: 1, dist: 7 },
-  gulls: { make: () => C.makeSeagulls(9, rng()), y: 3, dist: 30 },
   blimp: { make: () => C.makeDirigible(), y: 0, dist: 45 },
   sisters: { make: () => { const c = C.makeSatsukiMei(); return { ...c, act: () => c.wave() }; }, y: 1.5, dist: 4.5 },
   chihiro: { make: () => { const c = C.makeChihiroSeated(); return { ...c, act: () => c.look() }; }, y: 1.2, dist: 3.2 },
@@ -133,7 +142,7 @@ ground.receiveShadow = true;
 scene.add(ground);
 renderer.setScene(scene, camera);
 
-const lighting = makeLighting((WORLD === 'anderson' ? ANDERSON_KEYS : WORLD === 'amelie' ? AMELIE_KEYS : LIGHT_KEYS).map((k) => ({ ...k })));
+const lighting = makeLighting((WORLD === 'anderson' ? ANDERSON_KEYS : WORLD === 'amelie' ? AMELIE_KEYS : GHIBLI_KEYS).map((k) => ({ ...k })));
 const L: LightingState = {
   skyTop: new THREE.Color(), skyMid: new THREE.Color(), skyBottom: new THREE.Color(), fog: new THREE.Color(), fogDensity: 0.002,
   sunDir: new THREE.Vector3(0, 1, 0), sunColor: new THREE.Color(), sunIntensity: 1, hemiSky: new THREE.Color(), hemiGround: new THREE.Color(),

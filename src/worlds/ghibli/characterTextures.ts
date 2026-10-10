@@ -657,25 +657,6 @@ export function stoneWall(color: number, o: { arches?: boolean; moss?: boolean; 
   return t;
 }
 
-/** Dark layered rock for the underside of a floating island, with pale strata lines. */
-export function rockStrata(color: number) {
-  const p = new Painter(256, 256, 181).fill(css(color));
-  const g = p.g;
-  for (let i = 0; i < 18; i++) {
-    const y = (i / 18) * 256 + p.rng.range(-4, 4);
-    g.fillStyle = css(color, p.rng.range(0.8, 1.25)); g.globalAlpha = 0.6;
-    g.beginPath(); g.moveTo(0, y);
-    for (let k = 1; k <= 16; k++) g.lineTo((k / 16) * 256, y + Math.sin(k * 0.9 + i) * 4);
-    g.lineTo(256, y + 12); g.lineTo(0, y + 12); g.fill();
-    g.globalAlpha = 1;
-  }
-  p.lines({ n: 26, colors: [css(color, 0.55)], alpha: [0.3, 0.6], width: [1, 3], vertical: true, wobble: 6 });
-  p.dabs({ n: 40, colors: ['#4a6a3a', '#3a5a30'], r: [4, 12], alpha: [0.25, 0.5], y: [0, 0.2] });
-  const t = p.texture();
-  t.wrapT = THREE.RepeatWrapping;
-  return t;
-}
-
 /** Riveted iron plates with rust streaks (Howl's castle). Tiles both ways. */
 export function metalPlates(color: number, rust: number, seed = 191) {
   const W = 256, H = 256;

@@ -5,8 +5,7 @@ import { charToon, Painter, repeatUV } from '../../../engine/Paint';
 import { outline } from '../../../engine/Rig';
 import { Rng, TAU } from '../../../engine/math';
 import { hipGableRoof } from '../../ghibli/farmhouse';
-import { roofTileTexture } from '../../ghibli/korikoAtlas';
-import { barkTexture, granite, vermilion } from '../../ghibli/propTextures';
+import { barkTexture, granite, roofTileTexture, vermilion } from '../../ghibli/propTextures';
 import { woodGrain } from '../../ghibli/characterTextures';
 import type { HouseSpot } from './land';
 
