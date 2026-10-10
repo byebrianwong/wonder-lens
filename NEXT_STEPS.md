@@ -21,7 +21,8 @@ the work is done.
   ride without playing it (see "Tools" below).
 
 Second stage (2026-10-10): the Belafonte and Team Zissou were added to the Life Aquatic scene
-(`aquatic/belafonte.ts`, `aquatic/cast.ts`), the curtain call uses the scenes' real characters, the closing crane
+(`aquatic/belafonte.ts`, `aquatic/cast.ts`), with the albino scout dolphins leaping alongside
+(`aquatic/dolphins.ts`), the curtain call uses the scenes' real characters, the closing crane
 shot no longer passes through the observation car's canopy, the stories, ride views and dev gallery use the new
 world, the old world's files are deleted, and WORLD_GUIDE.md describes the new world.
 

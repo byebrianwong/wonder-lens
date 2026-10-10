@@ -16,6 +16,7 @@ import { SEA, tickSea } from '../aquatic/shaders';
 import { buildDeepSearch } from '../aquatic/sub';
 import { Bubbles, LightShafts, SeaSurface, Specks } from '../aquatic/water';
 import { buildBelafonte } from '../aquatic/belafonte';
+import { ScoutDolphins } from '../aquatic/dolphins';
 import { ELEANOR, JANE, makeCrew, makePeleFigure, makeSteve, makeTeamRow } from '../aquatic/crew';
 import { relax } from '../people';
 
@@ -342,6 +343,18 @@ function build(ctx: SetContext): BuiltSet {
   });
   subjects.push(peleS);
 
+  // ---------- the albino scout dolphins, leaping between the sub and the ship ----------
+  const dolphins = new ScoutDolphins();
+  group.add(dolphins.group);
+  const dolphinS = new Subject({
+    id: 'scout-dolphins', name: 'Albino scout dolphins', from: FILMS.aquatic, group: dolphins.anchor, radius: 2.4, base: 850, rarity: 'rare', crowd: true,
+    hint: 'Three white dolphins with little cameras on their heads, leaping on your right between the sub and the Belafonte. Blow the whistle and they leap together.',
+    poses: { together: { label: 'Leaping together', mult: 1.8 } },
+    onCall: () => { dolphins.together(); dolphinS.setPose('together', 4); return true; }, maxDistance: 50,
+    update: (_dt, ride) => { dolphinS.active = onShip(zOf(ride)); },
+  });
+  subjects.push(dolphinS);
+
   if (DEBUG) console.warn(`[aq] built in ${Math.round(performance.now() - t0)} ms`);
   let riderZ = R.z0;
   let emitAcc = 0, dbgN = 0;
@@ -468,6 +481,8 @@ function build(ctx: SetContext): BuiltSet {
         shipLight.set(SHIP.face - 6, 4.5, Math.min(SHIP.stern - 4, Math.max(SHIP.bow + 6, z - 4)));
         // the figures are most of the ship's draw calls: draw and animate only those near the camera along the ship
         const near = (g: THREE.Object3D) => (g.visible = Math.abs(SHIP.z + g.position.z - camPos.z) < 34);
+        dolphins.group.visible = z < Z.surface - 2;
+        if (dolphins.group.visible) dolphins.update(dt, t, z);
         if (near(steve.group)) steve.update(dt, t, camPos);
         if (near(team.group)) team.update(dt, t, camPos);
         if (near(pele.group)) pele.update(dt, t, camPos);
