@@ -88,7 +88,12 @@ export class SeaSurface {
           float a3 = dot(p, d3) * 2.6 + uTime * 0.85, a4 = dot(p, d4) * 3.7 - uTime * 1.6;
           float h = sin(a1) * 0.4 + sin(a2) * 0.3 + sin(a3) * 0.2 + sin(a4) * 0.1;
           vec2 g = d1 * cos(a1) * 0.46 + d2 * cos(a2) * 0.51 + d3 * cos(a3) * 0.52 + d4 * cos(a4) * 0.37;
-          float amp = 0.32 * (1.0 - smoothstep(15.0, 160.0, dist));
+          // two short ripples on top, so the water near the camera breaks into small facets instead of broad
+          // blotches (the camera rides only a metre or two above it)
+          const vec2 d5 = vec2(0.42, 0.91), d6 = vec2(-0.77, 0.64);
+          float a5 = dot(p, d5) * 6.3 + uTime * 2.2, a6 = dot(p, d6) * 8.9 - uTime * 2.6;
+          g += (d5 * cos(a5) * 0.35 + d6 * cos(a6) * 0.3) * (1.0 - smoothstep(6.0, 40.0, dist));
+          float amp = 0.18 * (1.0 - smoothstep(15.0, 160.0, dist));
           vec3 n = normalize(vec3(-g.x * amp, 1.0, -g.y * amp));
           float r0 = h * 0.5 + 0.5;
           float r1 = 0.5 + 0.5 * sin(a2 * 1.7 + a3 * 0.6) * sin(a1 * 1.3 - a4 * 0.4);
@@ -113,7 +118,7 @@ export class SeaSurface {
             float fres = 0.04 + 0.96 * pow(clamp(1.0 - dot(V, n), 0.0, 1.0), 5.0);
             vec3 body = mix(uDeep, uShallow, clamp(0.35 + 0.4 * (r0 - 0.5), 0.0, 1.0));
             vec3 sky = mix(uSkyHorizon, uSkyTop, smoothstep(0.0, 0.5, R.y));
-            col = mix(body, sky, clamp(fres * 0.95 + 0.18, 0.0, 1.0));
+            col = mix(body, sky, clamp(fres * 0.8 + 0.1, 0.0, 1.0));
             float sd = clamp(dot(R, uSunDir), 0.0, 1.0);
             float glit = pow(sd, 260.0) * 3.0 + pow(sd, 40.0) * 0.5 * smoothstep(0.55, 0.85, r1);
             col += uSunColor * glit * (1.0 - smoothstep(350.0, 900.0, dist) * 0.5);

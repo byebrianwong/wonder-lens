@@ -115,7 +115,8 @@ export class Octopus {
     }
     // the ink: a few dozen soft dark puffs
     const N = 60;
-    this.inkPos = new Float32Array(N * 3).fill(-9999);
+    // parked at the octopus while hidden: far-off points would make its bounding box enormous
+    this.inkPos = new Float32Array(N * 3);
     this.inkVel = new Float32Array(N * 3);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(this.inkPos, 3));

@@ -150,13 +150,15 @@ function build(ctx: SetContext): BuiltSet {
       for (const c of cast) { c.group.visible = onStage; if (onStage) c.update(dt, t); }
       confetti.level = smoothstep(-2584, -2600, z);
       confetti.update(dt, t);
-      // the closing crane: once the train is nearly stopped, the camera rises and pulls back
+      // the closing crane: once the train is nearly stopped, the camera rises and pulls back. It first moves
+      // forward out from under the observation car's canopy (the seat is 2.1 behind its front edge), and only
+      // pulls back once it is above the roof, so the canopy never fills the picture.
       if (craneT < 0 && z < -2588) craneT = 0;
       if (craneT >= 0) {
         craneT += dt;
-        const k = smoothstep(0, 5, craneT);
-        ctx.shot.offset.set(0, k * 7.5, -k * 4.5);
-        ctx.shot.pitch = -k * 0.3;
+        const out = smoothstep(0, 1.6, craneT), up = smoothstep(0.8, 5.5, craneT), back = smoothstep(2.6, 6.5, craneT);
+        ctx.shot.offset.set(0, up * 8, out * 2.5 - back * 7);
+        ctx.shot.pitch = -up * 0.3;
       }
     },
     onCall() { theatre.conduct(); },

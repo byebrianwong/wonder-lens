@@ -2,6 +2,14 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Rng, clamp, fbm, lerp, smoothstep } from './math';
 
+// toNonIndexed() on a geometry that is already non-indexed returns it unchanged but prints a warning, and the
+// worlds call it on whatever geometry they are merging (spheres from PolyhedronGeometry are already non-indexed).
+// Building the Zubrowka Express printed hundreds of these. Skip the warning; the result is the same.
+const toNonIndexed = THREE.BufferGeometry.prototype.toNonIndexed;
+THREE.BufferGeometry.prototype.toNonIndexed = function (this: THREE.BufferGeometry) {
+  return this.index === null ? this : toNonIndexed.call(this);
+};
+
 // ---------- materials ----------
 const gradientCache = new Map<number, THREE.DataTexture>();
 /** N-step gradient map for MeshToonMaterial (soft cel shading). */

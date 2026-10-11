@@ -4,7 +4,7 @@ import { FogCuller } from '../../../engine/Culling';
 import { Subject } from '../../../game/Subject';
 import { SETS } from '../layout';
 import { FILMS, forwardOf, showRange, zWindow, type BuiltSet, type SetContext, type SetModule, type ZLightKey } from '../common';
-import { LEDGE, Z, deepness, surfaced } from '../aquatic/plan';
+import { LEDGE, SHIP, Z, deepness, surfaced } from '../aquatic/plan';
 import { PonyfishSchool } from '../aquatic/ponyfish';
 import { SugarCrabs } from '../aquatic/crabs';
 import { Jellyfish } from '../aquatic/jellyfish';
@@ -15,6 +15,10 @@ import { buildReef } from '../aquatic/reef';
 import { SEA, tickSea } from '../aquatic/shaders';
 import { buildDeepSearch } from '../aquatic/sub';
 import { Bubbles, LightShafts, SeaSurface, Specks } from '../aquatic/water';
+import { buildBelafonte } from '../aquatic/belafonte';
+import { ScoutDolphins } from '../aquatic/dolphins';
+import { ELEANOR, JANE, makeCrew, makePeleFigure, makeSteve, makeTeamRow } from '../aquatic/crew';
+import { relax } from '../people';
 
 /*
  * Part Eight: The Deep (The Life Aquatic with Steve Zissou).
@@ -250,14 +254,117 @@ function build(ctx: SetContext): BuiltSet {
   });
   subjects.push(sharkS);
 
+  // ---------- the Belafonte, cut open down the side that faces the ride ----------
+  const bel = buildBelafonte();
+  group.add(bel.group);
+  bel.group.name = 'belafonte';
+  // the sea is opaque from below, so the ship is only drawn once the camera starts to break the surface
+  const crewOn = (z: number) => surfaced(z) > 0;
+  const D = bel.deckY;
+  // the ship's own space has x across from the open side, so a figure facing -x faces the ride
+  const FACE_RIDE = -Math.PI / 2;
+  const team = makeTeamRow(1.05);
+  team.group.position.set(2.0, D, 2.2);
+  team.group.rotation.y = FACE_RIDE;
+  team.group.name = 'team';
+  bel.deckGroup.add(team.group);
+  const steve = makeSteve();
+  steve.group.position.set(2.2, D, -19.5);
+  steve.group.rotation.y = FACE_RIDE + 0.35;
+  steve.group.name = 'steve';
+  bel.deckGroup.add(steve.group);
+  const pele = makePeleFigure();
+  pele.group.position.set(2.3, D, 13.6);
+  pele.group.rotation.y = FACE_RIDE - 0.3;
+  pele.group.name = 'pele';
+  bel.deckGroup.add(pele.group);
+  // people in the rooms: Eleanor in the laboratory, Jane in the library, an intern at the stove in the galley
+  const roomFolk = [
+    { c: makeCrew(ELEANOR), room: 3, dz: 1.2, yaw: FACE_RIDE + 0.5 },
+    { c: makeCrew(JANE), room: 4, dz: -1.4, yaw: FACE_RIDE - 0.4 },
+    { c: makeCrew({ skin: 0xf2d0b4, hair: 0xc89050, seed: 4231, scale: 0.92 }), room: 1, dz: -1.6, yaw: FACE_RIDE + 1.1 },
+  ].map(({ c, room, dz, yaw }) => {
+    const r = bel.room(room);
+    c.group.position.set(2.4, r.pos.y + 0.06, r.pos.z + dz);
+    c.group.rotation.y = yaw;
+    bel.deckGroup.add(c.group);
+    return c.f;
+  });
+  const shipLight = new THREE.Vector3();
+  lights.add({ from: road.u(Z.surface + 4), to: road.u(Z.end), pos: shipLight, color: 0xffc890, intensity: 14, distance: 22 });
+
+  const onShip = (z: number) => z < Z.surface - 4 && z > Z.end + 2;
+  const belAnchor = new THREE.Object3D();
+  belAnchor.position.set(SHIP.face + 1, 3.6, SHIP.z);
+  group.add(belAnchor);
+  const belS = new Subject({
+    id: 'belafonte', name: 'The Belafonte', from: FILMS.aquatic, group: belAnchor, radius: 14, base: 800,
+    hint: "Steve Zissou's research ship, at sundown on the right once you come up. Its side is cut open like a doll's house: two floors of rooms, every one a different colour.",
+    facing: () => new THREE.Vector3(-1, 0, 0), maxDistance: 90,
+    update: (_dt, ride) => { belS.active = onShip(zOf(ride)); },
+  });
+  subjects.push(belS);
+  const steveAnchor = new THREE.Object3D();
+  steveAnchor.position.set(0, 1.5, 0);
+  steve.group.add(steveAnchor);
+  const steveS = new Subject({
+    id: 'steve-zissou', name: 'Steve Zissou', from: FILMS.aquatic, group: steveAnchor, radius: 1.1, base: 1300, rarity: 'legendary',
+    hint: 'On deck at the bow of the Belafonte, in his red beanie. Blow the whistle and he looks your way through his binoculars; throw a box onto the deck and he salutes.',
+    poses: { bino: { label: 'Through the binoculars', mult: 1.8 }, salute: { label: 'A salute', mult: 1.6 } },
+    facing: forwardOf(steve.group),
+    onCall: () => { steve.raiseBinoculars(); steveS.setPose('bino', 4); return true; },
+    onItem: () => { steve.salute(); steveS.setPose('salute', 2.4); return true; }, reactRange: 30, maxDistance: 60,
+    update: (_dt, ride) => { steveS.active = onShip(zOf(ride)); },
+  });
+  subjects.push(steveS);
+  const teamAnchor = new THREE.Object3D();
+  teamAnchor.position.set(0, 1.4, 0);
+  team.group.add(teamAnchor);
+  const teamS = new Subject({
+    id: 'team-zissou', name: 'Team Zissou', from: FILMS.aquatic, group: teamAnchor, radius: 3, base: 900, rarity: 'rare', crowd: true,
+    hint: 'Five of the crew in a row on deck in their powder-blue uniforms, between the bridge and the funnel. Blow the whistle and they all point at you; throw a box and they point at that.',
+    poses: { point: { label: 'All pointing', mult: 1.8 } },
+    facing: () => new THREE.Vector3(-1, 0, 0),
+    onCall: () => { team.point(camPos); teamS.setPose('point', 3.4); return true; },
+    onItem: (pos) => { team.point(pos); teamS.setPose('point', 3.4); return true; }, reactRange: 30, maxDistance: 60,
+    update: (_dt, ride) => { teamS.active = onShip(zOf(ride)); },
+  });
+  subjects.push(teamS);
+  const peleAnchor = new THREE.Object3D();
+  peleAnchor.position.set(0, 1.1, 0);
+  pele.group.add(peleAnchor);
+  const peleS = new Subject({
+    id: 'pele', name: 'Pelé dos Santos', from: FILMS.aquatic, group: peleAnchor, radius: 1.0, base: 950, rarity: 'rare',
+    hint: "The Belafonte's safety expert, on a crate on the after deck with his guitar. Blow the whistle and he plays you a song.",
+    poses: { song: { label: 'Playing a song', mult: 1.9 } },
+    facing: forwardOf(pele.group),
+    onCall: () => { pele.play(); peleS.setPose('song', 5.5); return true; }, reactRange: 30, maxDistance: 60,
+    update: (_dt, ride) => { peleS.active = onShip(zOf(ride)); },
+  });
+  subjects.push(peleS);
+
+  // ---------- the albino scout dolphins, leaping between the sub and the ship ----------
+  const dolphins = new ScoutDolphins();
+  group.add(dolphins.group);
+  const dolphinS = new Subject({
+    id: 'scout-dolphins', name: 'Albino scout dolphins', from: FILMS.aquatic, group: dolphins.anchor, radius: 2.4, base: 850, rarity: 'rare', crowd: true,
+    hint: 'Three white dolphins with little cameras on their heads, leaping on your right between the sub and the Belafonte. Blow the whistle and they leap together.',
+    poses: { together: { label: 'Leaping together', mult: 1.8 } },
+    onCall: () => { dolphins.together(); dolphinS.setPose('together', 4); return true; }, maxDistance: 50,
+    update: (_dt, ride) => { dolphinS.active = onShip(zOf(ride)); },
+  });
+  subjects.push(dolphinS);
+
   if (DEBUG) console.warn(`[aq] built in ${Math.round(performance.now() - t0)} ms`);
   let riderZ = R.z0;
   let emitAcc = 0, dbgN = 0;
   const ventAcc = vents.map(() => 0);
 
   const set: BuiltSet = {
-    id: 'aquatic', group, show: showRange(road, R, 40, 10), occluders: [], subjects,
-    floor: (x, z) => reef.floor(x, z),
+    // the set appears only once the splash covers the screen (layout.ts); before that its sea and coral showed
+    // through the island's sea while the gondola fell
+    id: 'aquatic', group, show: showRange(road, R, 5, 10), occluders: [], subjects,
+    floor: (x, z) => (bel.over(x, z) ? D : reef.floor(x, z)),
     get water() { return riderZ < Z.surface ? 0 : -Infinity; },
     mounts: [sub.mount],
     update(dt, t, ride) {
@@ -267,6 +374,8 @@ function build(ctx: SetContext): BuiltSet {
       ctx.camera.getWorldPosition(camPos);
       const fog = ctx.scene.fog as THREE.FogExp2 | null;
       if (fog) culler.update(ctx.camera, fog);
+      // once the camera is out of the water the reef cannot be seen, but it would still be drawn (and cast shadows)
+      reef.group.visible = surfaced(z) < 1;
       if (DEBUG && ++dbgN === 30) {
         let tris = 0, calls = 0;
         const fr = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(ctx.camera.projectionMatrix, ctx.camera.matrixWorldInverse));
@@ -316,7 +425,7 @@ function build(ctx: SetContext): BuiltSet {
       plankton.uniforms.uAmount.value = deep;
       plankton.update(t, camPos, new THREE.Vector3(0.1, 0.06, -0.05), fog);
       if (OFF.length > 1 || OFF[0]) {
-        reef.group.visible = !OFF.includes('reef');
+        reef.group.visible &&= !OFF.includes('reef');
         reefShafts.mesh.visible &&= !OFF.includes('shafts'); kelpShafts.mesh.visible &&= !OFF.includes('shafts');
         bubbles.points.visible = !OFF.includes('bubbles'); snow.points.visible &&= !OFF.includes('specks'); plankton.points.visible &&= !OFF.includes('specks');
         sea.mesh.visible = !OFF.includes('sea'); sub.mount.group.visible = !OFF.includes('sub');
@@ -362,6 +471,22 @@ function build(ctx: SetContext): BuiltSet {
         shark.update(dt, camPos, 1);
         // a slow pan to the right while it glides alongside
         ctx.shot.yaw += -0.22 * zWindow(z, -2238, -2256, -2272, -2290);
+      }
+      // ---- the Belafonte: the camera turns to the ship and tracks along it, room by room ----
+      const show = crewOn(z);
+      bel.group.visible = show;
+      if (show) {
+        bel.update(dt, t);
+        ctx.shot.yaw += -1.25 * zWindow(z, -2336, -2350, -2398, -2412);
+        shipLight.set(SHIP.face - 6, 4.5, Math.min(SHIP.stern - 4, Math.max(SHIP.bow + 6, z - 4)));
+        // the figures are most of the ship's draw calls: draw and animate only those near the camera along the ship
+        const near = (g: THREE.Object3D) => (g.visible = Math.abs(SHIP.z + g.position.z - camPos.z) < 34);
+        dolphins.group.visible = z < Z.surface - 2;
+        if (dolphins.group.visible) dolphins.update(dt, t, z);
+        if (near(steve.group)) steve.update(dt, t, camPos);
+        if (near(team.group)) team.update(dt, t, camPos);
+        if (near(pele.group)) pele.update(dt, t, camPos);
+        for (const f of roomFolk) if (near(f.group)) { relax(f, dt, 6); f.tick(dt, t, camPos, 0.6); }
       }
     },
   };

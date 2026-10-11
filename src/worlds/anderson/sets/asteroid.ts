@@ -90,7 +90,8 @@ function build(ctx: SetContext): BuiltSet {
   // =====================================================================================================
   // THE PROSCENIUM (landmark)
   // =====================================================================================================
-  const archAnchor = new THREE.Object3D(); archAnchor.position.set(0, 20, ARCH.z + 1); group.add(archAnchor);
+  // the middle of the arch (it is ARCH.top high): aimed higher, a camera turning to it from close by looks up into the train's canopy
+  const archAnchor = new THREE.Object3D(); archAnchor.position.set(0, 14, ARCH.z + 1); group.add(archAnchor);
   const archS = new Subject({
     id: 'ac-proscenium', name: 'The proscenium', from: FILMS.asteroid, group: archAnchor, radius: 26, base: 650,
     hint: 'The gold arch of the theatre, with the masks of comedy and tragedy over it and the red curtain drawn back. Take it as the flash clears, with the desert lit up beyond.',
