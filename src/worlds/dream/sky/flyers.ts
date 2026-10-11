@@ -4,7 +4,7 @@ import { Subject } from '../../../game/Subject';
 import { Heading, Spring, envelope } from '../../../engine/Rig';
 import { charToon } from '../../../engine/Paint';
 import { clamp, lerp, smoothstep } from '../../../engine/math';
-import { makeKiki } from '../../ghibli/people';
+import { makeKiki } from '../../ghibli/kiki';
 import { makeDirigible } from '../../ghibli/characters';
 import { FILMS, forwardOf } from '../common';
 

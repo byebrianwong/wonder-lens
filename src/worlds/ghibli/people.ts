@@ -3,17 +3,18 @@ import { glow } from '../../engine/Builders';
 import { charToon, type CharToonOpts } from '../../engine/Paint';
 import { sculpt, limbGeometry, taperedTube, Spring, LookAt, envelope, outline } from '../../engine/Rig';
 import { clamp, lerp, Rng, smoothstep } from '../../engine/math';
-import { faceTexture, hairTexture, fabric, woodGrain, strawTexture, bowCloth, sphereFur, type FaceOpts } from './characterTextures';
+import { faceTexture, hairTexture, fabric, sphereFur, type FaceOpts } from './characterTextures';
 import { makeUmbrella } from './totoro';
 import { blinkAmount, type Character } from './character';
 
 /**
- * The children of the Ghibli world (Kiki, Satsuki and Mei, Chihiro), built on one jointed figure:
+ * The children of the Ghibli world (Satsuki and Mei, Chihiro, and Kiki in kiki.ts), built on one jointed figure:
  * a head with a sculpted hairdo, a torso, and arms and legs that bend at the shoulder, elbow, hip and knee.
  * Every joint is a group placed at the joint, so a rotation swings the limb from the right place.
  */
 
-export type HairStyle = 'bob' | 'short' | 'pigtails' | 'ponytail';
+/** 'kiki' is a chin-length bob with a fringe parted in the middle, so the forehead shows in a V */
+export type HairStyle = 'bob' | 'kiki' | 'short' | 'pigtails' | 'ponytail';
 
 export interface KidOpts {
   skin?: number;
@@ -21,8 +22,10 @@ export interface KidOpts {
   style: HairStyle;
   top: number;
   stripes?: { color: number; count: number; width: number };
-  sleeves: 'long' | 'short';
-  bottom: { kind: 'dress' | 'skirt' | 'shorts'; color: number; length?: number };
+  /** 'three-quarter' sleeves are a little full and stop halfway down the forearm */
+  sleeves: 'long' | 'short' | 'three-quarter';
+  /** 'none' leaves the waist bare, for a character who makes her own skirt */
+  bottom: { kind: 'dress' | 'skirt' | 'shorts' | 'none'; color: number; length?: number };
   /** sock colour, or 'bare' */
   socks: number | 'bare';
   shoes: number;
@@ -55,6 +58,10 @@ function hairShape(style: HairStyle, R: number) {
     switch (style) {
       case 'bob': // chin-length all round, a fringe swept to both sides from a middle parting
         return lerp(0.35 + 0.09 * smoothstep(0, 0.09, a), 0.72, front) + 0.04 * smoothstep(0.6, 1, a);
+      case 'kiki': { // a V parting at the middle of the forehead, the fringe down to the brows, chin-length from the cheeks back
+        const part = lerp(0.27, 0.43, smoothstep(0, 0.14, a));
+        return lerp(part, 0.71, smoothstep(0.13, 0.3, a)) + 0.03 * smoothstep(0.6, 1, a);
+      }
       case 'short': // boyish crop above the ears
         return lerp(0.405, 0.6, front) + 0.06 * smoothstep(0.55, 1, a);
       case 'pigtails':
@@ -71,7 +78,7 @@ function hairShape(style: HairStyle, R: number) {
     hl += (a < 0.15 ? 0.045 : 0.03) * Math.abs(Math.sin(around * (a < 0.15 ? 26 : 13)));
     const tuck = smoothstep(hl - 0.03, hl + 0.06, polar);
     // fuller towards the ends of a bob, flatter over the crown
-    const flare = style === 'bob' ? 0.1 * smoothstep(0.42 * Math.PI, hl, polar) * smoothstep(0.08, 0.3, a) : 0.03 * smoothstep(0.4 * Math.PI, hl, polar);
+    const flare = style === 'bob' || style === 'kiki' ? 0.1 * smoothstep(0.42 * Math.PI, hl, polar) * smoothstep(0.08, 0.3, a) : 0.03 * smoothstep(0.4 * Math.PI, hl, polar);
     let r = R * (1.085 + flare + 0.018 * Math.sin(around * 18 + polar * 2.5) * smoothstep(0.1, 0.6, polar));
     r = lerp(r, R * 0.82, tuck);
     out.copy(d).multiplyScalar(r);
@@ -152,15 +159,19 @@ export function makeKid(o: KidOpts): Kid {
   const shoulder: THREE.Group[] = [], elbow: THREE.Group[] = [], hand: THREE.Object3D[] = [];
   const upperGeo = limbGeometry(0.06, 0.05, 0.34, 10, 5), foreGeo = limbGeometry(0.05, 0.042, 0.3, 10, 5);
   const sleeveGeo = limbGeometry(0.085, 0.08, 0.15, 12, 3);
+  const threeQ = o.sleeves === 'three-quarter';
+  // a fuller upper sleeve and a cuff that ends halfway down the forearm, a little flared
+  const puffGeo = limbGeometry(0.078, 0.068, 0.34, 12, 5), cuffGeo = limbGeometry(0.066, 0.072, 0.16, 12, 3);
   for (const s of [-1, 1]) {
     const sh = new THREE.Group(); sh.position.set(s * 0.215, 0.6, 0); spine.add(sh);
-    const upper = new THREE.Mesh(upperGeo, o.sleeves === 'long' ? topMat : skin);
+    const upper = new THREE.Mesh(threeQ ? puffGeo : upperGeo, o.sleeves === 'short' ? skin : topMat);
     sh.add(upper);
     if (o.sleeves === 'short') { const sl = new THREE.Mesh(sleeveGeo, topMat); sl.position.y = 0.02; sh.add(sl); outline(sl, ink, lineW, lineMax); }
     else outline(upper, ink, lineW, lineMax);
     const el = new THREE.Group(); el.position.y = -0.34; sh.add(el);
     const fore = new THREE.Mesh(foreGeo, o.sleeves === 'long' ? topMat : skin);
     el.add(fore);
+    if (threeQ) { const cuff = new THREE.Mesh(cuffGeo, topMat); cuff.position.y = 0.02; el.add(cuff); outline(cuff, ink, lineW, lineMax); }
     const h = new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 10), skin);
     h.scale.set(0.8, 1.15, 0.6); h.position.y = -0.33;
     el.add(h);
@@ -189,7 +200,9 @@ export function makeKid(o: KidOpts): Kid {
 
   // ----- skirt, dress or shorts -----
   let skirt: THREE.Mesh | null = null;
-  if (o.bottom.kind === 'shorts') {
+  if (o.bottom.kind === 'none') {
+    // nothing at the waist
+  } else if (o.bottom.kind === 'shorts') {
     const pants = new THREE.Mesh(new THREE.LatheGeometry([new THREE.Vector2(0.17, 0.06), new THREE.Vector2(0.19, -0.04), new THREE.Vector2(0.19, -0.14), new THREE.Vector2(0.001, -0.15)], 18).scale(1, 1, 0.78), botMat);
     pelvis.add(pants);
     for (const h of hip) { const leg = new THREE.Mesh(limbGeometry(0.105, 0.1, 0.2, 12, 3), botMat); leg.position.y = 0.02; h.add(leg); outline(leg, ink, lineW, lineMax); }
@@ -237,143 +250,6 @@ export function makeKid(o: KidOpts): Kid {
     },
   };
   return kid;
-}
-
-// ---------------- Kiki with Jiji on the broom ----------------
-export interface Kiki extends Character {
-  wave(): void;
-  startle(): void;
-  /** where she looks (the camera, usually) */
-  lookTarget: THREE.Vector3 | null;
-  /** her head, for the facing bonus */
-  head: THREE.Object3D;
-}
-
-/** Jiji: a slim black cat with big ears, white eyes and a long tail that curls up. Faces +z. */
-function makeJiji() {
-  const g = new THREE.Group();
-  const black = charToon({ color: 0x17151a, rim: 0.6, shade: 0x8088b0 });
-  const eyeW = charToon({ color: 0xf6f4ec, rim: 0.1 }), eyeP = charToon({ color: 0x101014, rim: 0 });
-  const ink = 0x0a0a0e;
-  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 12), black);
-  body.scale.set(0.13, 0.16, 0.2); body.position.set(0, 0.17, -0.02); body.rotation.x = -0.5;
-  g.add(body);
-  const headG = new THREE.Group(); headG.position.set(0, 0.38, 0.08); g.add(headG);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 18, 14), black);
-  head.scale.set(1.05, 0.92, 0.95);
-  headG.add(head);
-  outline(head, ink, 1.2, 0.01); outline(body, ink, 1.2, 0.01);
-  for (const s of [-1, 1]) {
-    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.16, 10), black);
-    ear.position.set(s * 0.075, 0.13, -0.01); ear.rotation.z = -s * 0.25;
-    headG.add(ear);
-    const w = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), eyeW);
-    w.scale.set(0.042, 0.055, 0.02); w.position.set(s * 0.05, 0.015, 0.115); w.rotation.y = s * 0.3;
-    headG.add(w);
-    const p = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), eyeP);
-    p.scale.set(0.018, 0.034, 0.01); p.position.set(s * 0.052, 0.012, 0.13); p.rotation.y = s * 0.3;
-    headG.add(p);
-  }
-  for (const s of [-1, 1]) { const leg = new THREE.Mesh(limbGeometry(0.025, 0.022, 0.16, 6, 2), black); leg.position.set(s * 0.05, 0.12, 0.08); g.add(leg); }
-  // tail: a chain of segments so it can sway and curl
-  const tail: THREE.Group[] = [];
-  let parent: THREE.Object3D = g;
-  for (let i = 0; i < 6; i++) {
-    const seg = new THREE.Group();
-    const m = new THREE.Mesh(limbGeometry(0.022 - i * 0.002, 0.02 - i * 0.002, 0.07, 6, 2), black);
-    m.rotation.x = Math.PI; seg.add(m);
-    if (i === 0) { seg.position.set(0, 0.08, -0.18); seg.rotation.x = -1.6; } else seg.position.y = 0.07;
-    parent.add(seg); parent = seg; tail.push(seg);
-  }
-  return { group: g, head: headG, tail };
-}
-
-export function makeKiki(): Kiki {
-  const g = new THREE.Group();
-  const kid = makeKid({
-    hair: 0x241c1e, style: 'bob', top: 0x2b2946, sleeves: 'long', bottom: { kind: 'dress', color: 0x2b2946, length: 0.5 },
-    socks: 'bare', shoes: 0xc8323a, face: { mouth: 'smile', blush: 0.5 }, seed: 5,
-  });
-  // the big red bow on top of her head
-  const bowMat = charToon({ map: bowCloth(0xd23b3f), rim: 0.35 });
-  const bow = new THREE.Group();
-  for (const s of [-1, 1]) {
-    const loop = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), bowMat);
-    loop.scale.set(0.2, 0.13, 0.07); loop.position.set(s * 0.18, 0.03, 0); loop.rotation.z = s * 0.35;
-    bow.add(loop);
-    outline(loop, 0x3a1014, 1.3, 0.012);
-  }
-  const knot = new THREE.Mesh(new THREE.SphereGeometry(0.065, 12, 10), bowMat); bow.add(knot);
-  bow.position.set(0, 0.32, -0.02); bow.rotation.x = -0.25;
-  kid.head.add(bow);
-  // she sits astride the broom, leaning forward, hands on the handle
-  kid.group.position.set(0, -0.98, 0.15);
-  kid.spine.rotation.x = 0.22;
-  kid.hip.forEach((h, i) => { const s = i === 0 ? -1 : 1; h.rotation.set(-1.35, 0, s * 0.42); });
-  kid.knee.forEach((k) => { k.rotation.x = 1.35; });
-  kid.shoulder.forEach((sh, i) => { const s = i === 0 ? -1 : 1; sh.rotation.set(-0.6, 0, -s * 0.12); });
-  kid.elbow.forEach((e) => { e.rotation.x = -0.3; });
-  if (kid.skirt) { kid.skirt.scale.set(1.15, 0.8, 1.25); kid.skirt.rotation.x = -0.15; }
-  g.add(kid.group);
-  // the broom: a pale wooden handle, straw bristles bound at the back
-  const broom = new THREE.Group();
-  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 2.7, 10), charToon({ map: woodGrain(0x7a5a3a), rim: 0.3 }));
-  handle.rotation.x = Math.PI / 2;
-  broom.add(handle);
-  const bristleMat = charToon({ map: strawTexture(), rim: 0.35, side: THREE.DoubleSide });
-  // bound tight where it meets the handle, fanning out towards the back
-  const bristles = new THREE.Mesh(new THREE.LatheGeometry([new THREE.Vector2(0.001, -1.0), new THREE.Vector2(0.24, -0.96), new THREE.Vector2(0.21, -0.6), new THREE.Vector2(0.11, -0.15), new THREE.Vector2(0.06, 0)], 18), bristleMat);
-  bristles.rotation.x = Math.PI / 2; bristles.position.z = -1.2;
-  broom.add(bristles);
-  outline(bristles, 0x3a2a10, 1.2, 0.012);
-  const binding = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.03, 6, 14), charToon({ color: 0x7a2a24, rim: 0.2 }));
-  binding.position.z = -1.32; broom.add(binding);
-  // the red radio hanging from the front of the handle
-  const radio = new THREE.Group();
-  const caseMat = charToon({ color: 0xb63a3a, rim: 0.3 });
-  radio.add(new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.18, 0.12), caseMat));
-  const grille = new THREE.Mesh(new THREE.CircleGeometry(0.055, 14), charToon({ color: 0xe8dcc0, rim: 0 }));
-  grille.position.set(-0.05, 0, 0.061); radio.add(grille);
-  const strap = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.012, 5, 12, Math.PI), charToon({ color: 0x3a2a20, rim: 0 }));
-  strap.position.y = 0.09; radio.add(strap);
-  radio.position.set(0.0, -0.22, 0.95);
-  broom.add(radio);
-  g.add(broom);
-  const jiji = makeJiji();
-  jiji.group.position.set(0, 0.04, -0.85);
-  g.add(jiji.group);
-
-  const sp = { wave: new Spring(0, 2.5, 0.6), rock: new Spring(0, 1.8, 0.35), jump: new Spring(0, 3, 0.5) };
-  let waveT = -1, startleT = -1;
-  const ch: Kiki = {
-    group: g, head: kid.head, lookTarget: null,
-    wave() { waveT = 0; },
-    startle() { startleT = 0; sp.rock.v += 2.2; },
-    update(dt, t) {
-      kid.tick(dt, t, ch.lookTarget, 1);
-      // the dress and bow flutter in the wind of flying
-      if (kid.skirt) { kid.skirt.scale.x = 1.15 + Math.sin(t * 9) * 0.04; kid.skirt.rotation.x = -0.15 + Math.sin(t * 7.3) * 0.04; }
-      bow.rotation.z = Math.sin(t * 5) * 0.1;
-      kid.knee.forEach((k, i) => { k.rotation.x = 1.35 + Math.sin(t * 2.2 + i * 1.7) * 0.12; });
-      // wave: the right arm lifts from the shoulder and the hand waves from the elbow
-      let w = 0;
-      if (waveT >= 0) { waveT += dt; w = envelope(waveT, 0, 0.35, 1.9, 2.4); if (waveT > 2.4) waveT = -1; }
-      const wv = sp.wave.update(w, dt);
-      kid.shoulder[1].rotation.set(lerp(-0.6, -0.4, wv), 0, lerp(-0.12, 2.5, wv));
-      kid.elbow[1].rotation.set(lerp(-0.3, -0.2, wv), 0, wv * (Math.sin(t * 11) * 0.45 + 0.2));
-      // startled: Jiji springs up off the bristles and Kiki wobbles on the broom
-      let jump = 0;
-      if (startleT >= 0) { startleT += dt; jump = envelope(startleT, 0, 0.18, 0.3, 0.8); if (startleT > 1.2) startleT = -1; }
-      const j = sp.jump.update(jump, dt);
-      jiji.group.position.y = 0.02 + j * 0.45;
-      jiji.group.scale.y = 1 + j * 0.15;
-      kid.group.rotation.z = sp.rock.update(0, dt) * 0.25;
-      broom.rotation.z = kid.group.rotation.z * 0.6;
-      jiji.head.rotation.y = Math.sin(t * 0.7) * 0.4;
-      jiji.tail.forEach((s, i) => { s.rotation.z = Math.sin(t * 2.4 - i * 0.6) * 0.25; if (i > 0) s.rotation.x = -0.25 + Math.sin(t * 1.7 - i * 0.5) * 0.08; });
-    },
-  };
-  return ch;
 }
 
 // ---------------- Satsuki with Mei asleep on her back ----------------
