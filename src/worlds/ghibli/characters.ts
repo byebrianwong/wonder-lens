@@ -13,7 +13,8 @@ const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
 export { makeCatbus, type Catbus } from './catbus';
 
-export { makeKiki, makeSatsukiMei, makeChihiroSeated, type Kiki, type Sisters, type Chihiro } from './people';
+export { makeSatsukiMei, makeChihiroSeated, type Sisters, type Chihiro } from './people';
+export { makeKiki, type Kiki } from './kiki';
 
 export { makeNoFace, makeRadishSpirit, makeKodama, makePonyoSchool, type NoFace, type RadishSpirit, type Kodama, type PonyoSchool } from './spirits';
 
