@@ -77,6 +77,10 @@ function build(ctx: WorldContext): BuiltWorld {
   scene.add(vehicle);
   const train = buildTrain();
   vehicle.add(train.group);
+  // The train is hidden while the rider is on another vehicle. Its lamp moves to the vehicle so it stays in the
+  // scene and is turned down instead: a light that leaves the scene changes the light count, and every material
+  // drawn then compiles again, which froze the game for about a second at each change of vehicle.
+  vehicle.add(train.light);
   const cameraAnchor = new THREE.Object3D();
   cameraAnchor.rotation.y = Math.PI;
   vehicle.add(cameraAnchor);
@@ -179,6 +183,7 @@ function build(ctx: WorldContext): BuiltWorld {
         mount = m;
         if (mount) mount.group.visible = true;
         train.group.visible = !mount;
+        if (mount) train.light.intensity = 0;
       }
 
       // ---- banking into turns (before the scenes update, so they see the final vehicle) ----
@@ -201,6 +206,8 @@ function build(ctx: WorldContext): BuiltWorld {
       for (const s of list) {
         const on = u >= s.show[0] && u <= s.show[1];
         s.group.visible = on;
+        // a scene coming into view switches its subjects back on; a subject's own update may switch it off again
+        if (on && !shown.has(s)) for (const sub of s.subjects) sub.active = true;
         if (on) shown.add(s); else shown.delete(s);
         if (on) s.update(dt, t, ride);
         else for (const sub of s.subjects) sub.active = false;
@@ -250,7 +257,8 @@ function build(ctx: WorldContext): BuiltWorld {
       // ---- the lens ----
       const [aspect, frame] = frameAt(z);
       lens.fit(ctx.camera, t);
-      lens.set({ ...lensFx, flash: fxState.flash, flashColor: fxState.flashColor, frame, frameAspect: aspect });
+      // a title card shows through a scene's flash (the lightning that strikes St. Jack's lasts into the card)
+      lens.set({ ...lensFx, flash: fxState.flash * (1 - lensFx.card), flashColor: fxState.flashColor, frame, frameAspect: aspect });
     },
     onItemLand(pos) { current.onItemLand?.(pos); },
     onCall(_pos, ride) {

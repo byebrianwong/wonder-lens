@@ -28,23 +28,40 @@ world, the old world's files are deleted, and WORLD_GUIDE.md describes the new w
 
 ## 1. Play it and review each scene
 
-A frame at every caption (`scripts/shoot.mjs` with `beat=0..24`) was checked on 2026-10-10. It found one bug, now
-fixed: the aquatic scene was drawn before the splash covered the screen, so its sea and coral showed through the
-island's sea while the gondola fell. Still to do, which needs the real game in a browser:
+Done on 2026-10-10, in the real game from start to end, at real speed, on the M5 (headless Chromium on the GPU
+at 1440x900 and 2x, driven by Playwright). Four bugs were found and fixed:
 
-- Ride the whole thing and watch every join between scenes as the covers clear and close.
-- Try the whistle and a thrown box on every subject. The Belafonte's were tried in the real game on 2026-10-10
-  (the whistle: Steve raises his binoculars, Team Zissou point, Pelé plays; a box: Steve salutes, the crew point
-  at it); the other scenes' have not been checked since the first stage.
-- Check frame rate on a real laptop (see 3).
+- **A freeze of up to 1.4 s at most scene changes.** The train's lamp was inside the train's group, so it left the
+  scene whenever the rider changed to another vehicle. The number of lights is part of every shader, so everything
+  drawn compiled again. The lamp now rides on the vehicle and is turned down instead. Textures are also uploaded
+  at load now (`Renderer.precompile`). Worst frame over the whole ride: 1417 ms before, 19 ms after.
+- **The pixel ratio fell to 0.7 and stayed there.** Each of those freezes lowered it one step, and at 60 Hz it is
+  never raised again. `Renderer.govern` now caps a single frame at 40 ms, so only sustained slow frames lower it.
+- **Nothing in the curtain call could be photographed or whistled at.** A hidden scene's subjects are switched
+  off, and the finale's four (the cast, the dollhouse, the conductor, the proscenium) had nothing to switch them
+  back on. A scene now switches its subjects on when it comes into view.
+- **The "Asteroid City" title card never showed.** The lightning that strikes St. Jack's flashes for 9 s, and the
+  flash was drawn over the card. A title card now shows through a scene's flash.
+- **A box thrown into Bean's cider never splashed.** The cellar's hit sphere (radius 9) hung in the air above the
+  cider, so a box aimed at the cellar, or passing near it, bounced off it and dropped without effect. The cellar
+  is now a crowd subject, so a box aimed at it comes down on the cider.
+
+The whistle reached every subject that has a reaction, and a thrown box worked on every one that has one. One
+design question is left: the flying saucer comes down by itself at z -1726, and it is only in whistle range from
+about z -1728, so the whistle almost never gets the credit the hint promises. Starting it later would push the
+alien's photograph further under the closing curtain.
 
 ## 2. Chromatic
 
-The stories changed a lot: `Anderson/Characters` and `Anderson/Buildings and props` were rewritten for the new
-world, and `Worlds/Ride views` now has 25 Anderson views (one per caption) instead of 10. The first Chromatic build
-of this branch will show them as new or changed; review them and accept them as the new baselines.
+The second stage's stories were accepted on build 38. Main's build 41 has three pending changes, all from the Kiki
+rebuild (#17): Kiki and Kiki Wave, and Sam, whose cap's speckles changed because he is built on the same kid
+figure (`ghibli/people.ts`). All three look intended.
 
 ## 3. Performance
+
+On the M5 (headless Chromium on the GPU, 1440x900 at 2x, 60 Hz), the whole ride now holds 60 frames a second at
+full resolution: over 21,787 frames the worst was 18.7 ms and 99% were under 18.5 ms. A slower laptop has not
+been tried; if it struggles, the table below says where.
 
 Draw calls and triangles from `scripts/shoot.mjs` at the rider's seat, looking ahead, building only the scenes
 near the point (the tool's default), after the second stage:
