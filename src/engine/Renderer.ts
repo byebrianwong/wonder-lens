@@ -170,7 +170,11 @@ export class Renderer {
    * Compile every material in the scene now (hidden objects too), so nothing compiles mid-ride the first time
    * it comes into view. Programs depend on the render target (the scene is drawn into the composer's
    * half-float target without tone mapping), so compile against that target. Waits for the GPU driver to
-   * finish when the browser can compile in parallel. Lights must already be in place.
+   * finish when the browser can compile in parallel. Lights must already be in place, and no light may later
+   * leave the scene or be hidden: the number of lights is part of every program, so that recompiles them all.
+   *
+   * It also uploads every material's textures. Compiling uploads none, so a scene's textures used to go to the
+   * GPU on the frame it first came into view.
    */
   async precompile(scene: THREE.Scene, camera: THREE.Camera) {
     const r = this.renderer;
@@ -183,6 +187,20 @@ export class Renderer {
     } finally {
       r.setRenderTarget(prev);
     }
+    // a render target's own textures (colour or depth) are left alone: they are allocated with their target
+    const upload = (v: unknown) => {
+      const t = v as (THREE.Texture & { isRenderTargetTexture?: boolean; isDepthTexture?: boolean }) | null;
+      if (t && t.isTexture && !t.isRenderTargetTexture && !t.isDepthTexture) r.initTexture(t);
+    };
+    scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material;
+      if (!m) return;
+      for (const mat of Array.isArray(m) ? m : [m]) {
+        for (const v of Object.values(mat)) upload(v);
+        const u = (mat as THREE.ShaderMaterial).uniforms;
+        if (u) for (const k in u) upload(u[k]?.value);
+      }
+    });
   }
 
   resize() {
@@ -203,7 +221,9 @@ export class Renderer {
 
   /** Lower the pixel ratio if frames are consistently slow; raise it back when there is headroom. */
   govern(dtMs: number) {
-    this.frameAvg = this.frameAvg * 0.95 + dtMs * 0.05;
+    // A single long frame (a scene's first frame, a garbage collection) is capped so it cannot lower the ratio
+    // alone; at 60 Hz frames never get under 13.5 ms, so a ratio lowered by mistake is never raised again.
+    this.frameAvg = this.frameAvg * 0.95 + Math.min(dtMs, 40) * 0.05;
     this.governorCooldown -= dtMs;
     if (this.governorCooldown > 0) return;
     if (this.frameAvg > 20 && this.pixelRatio > 0.7) {

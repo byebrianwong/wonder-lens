@@ -198,9 +198,13 @@ function build(ctx: SetContext): BuiltSet {
     update: (dt, r) => within(ratS, -1018, -1050)(dt, r),
   });
   let splashT = -1;
+  // A crowd, so a thrown box comes down on the cider instead of bouncing off a sphere in the air over it. A crowd's
+  // box lands at its group's height, so the group sits on the cider and the photo centre is lifted to the heart.
+  const heart = cel.spots.heart;
   const cellarS: Subject = new Subject({
-    id: 'fox-cellar', name: "Bean's cider cellar", from: FILMS.fox, group: anchor(cel.spots.heart), radius: 9, base: 700,
+    id: 'fox-cellar', name: "Bean's cider cellar", from: FILMS.fox, group: anchor(V(heart.x, Y.cider, heart.z)), radius: 9, base: 700,
     hint: "Racks of Bean's Alcoholic Cider under a brick vault, and a flood of it, glowing amber, that the train runs through. Throw a box into the cider for a splash.",
+    centerOffset: V(0, heart.y - Y.cider, 0), crowd: true,
     poses: { splash: { label: 'Splash!', mult: 1.4 } }, maxDistance: 100, reactRange: 26,
     onItem: (pos) => { if (pos.y > Y.cider + 1.5) return false; splashT = 0; cellarS.setPose('splash', 1.6); return true; },
     update: (dt, r) => within(cellarS, -1018, -1082)(dt, r),
