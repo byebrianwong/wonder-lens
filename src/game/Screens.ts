@@ -1,4 +1,6 @@
-import type { WorldDef } from './types';
+import type { Requester, WorldDef } from './types';
+import type { BookProgress } from './PhotoBook';
+import type { PhotoRequest } from './Requests';
 
 /*
  * Markup for the full-screen menus. Each function takes plain data and returns an element.
@@ -11,10 +13,39 @@ export interface MenuState {
   relax: boolean;
   /** the "Lock the mouse while riding" checkbox */
   mouseLock: boolean;
+  /** how full each world's photo book is, by world id; null when the world has never been built here */
+  books?: Record<string, BookProgress | null>;
+  /** the selected world's photo requests for the next ride */
+  requests?: PhotoRequest[];
 }
 
+/** A request with whether it has been done this ride. */
+export type RequestStatus = PhotoRequest & { done?: boolean };
+
+/**
+ * A world character's three photo requests: who asks, their greeting and the list, ticked when done.
+ * Used on the start screen and in the album.
+ */
+export function requestsHtml(requester: Requester | undefined, items: RequestStatus[], note = ''): string {
+  const list = items.length
+    ? `<ol class="request-list">${items.map((r) => `<li class="request ${r.done ? 'done' : ''}" data-kind="${r.kind}"><span class="tick"></span><span class="request-text"><b>${r.title}</b> <span>${r.detail}</span></span></li>`).join('')}</ol>`
+    : `<p class="requests-empty">${note}</p>`;
+  return `<section class="requests">
+      <div class="requests-who"><span class="requests-kicker">Photo requests from</span><span class="requests-name">${requester?.name ?? 'the guide'}</span></div>
+      ${requester ? `<p class="requests-greeting">“${requester.greeting}”</p>` : ''}
+      ${list}
+    </section>`;
+}
+
+const bookLabel = (p: BookProgress | null | undefined) => {
+  if (!p) return 'Photo book';
+  const secrets = p.secretsFound ? ` +${p.secretsFound}` : '';
+  return `Photo book <i>${p.found}/${p.total}${secrets}</i>`;
+};
+
 /** The title screen: world cards, ride mode, start button and controls. */
-export function menuElement({ worlds, selected, relax, mouseLock }: MenuState): HTMLElement {
+export function menuElement({ worlds, selected, relax, mouseLock, books, requests }: MenuState): HTMLElement {
+  const notRidden = !books?.[selected.id];
   const menu = document.createElement('div');
   menu.className = 'menu';
   menu.innerHTML = `
@@ -27,15 +58,21 @@ export function menuElement({ worlds, selected, relax, mouseLock }: MenuState): 
       </header>
       <div class="worlds">
         ${worlds.map((w) => `
-          <button class="world-card ${w.id === selected.id ? 'selected' : ''}" data-id="${w.id}" style="--accent:${w.accent};--accent2:${w.accent2}">
-            <div class="world-art art-${w.id}"></div>
-            <div class="world-text">
-              <div class="world-sub">${w.subtitle}</div>
-              <div class="world-title">${w.title}</div>
-              <div class="world-blurb">${w.blurb}</div>
-              <div class="world-meta"><span>${w.vehicleName}</span><span>throw: ${w.itemName}</span><span>call: ${w.callName}</span></div>
-            </div>
-          </button>`).join('')}
+          <div class="world-slot" style="--accent:${w.accent};--accent2:${w.accent2}">
+            <button class="world-card ${w.id === selected.id ? 'selected' : ''}" data-id="${w.id}">
+              <div class="world-art art-${w.id}"></div>
+              <div class="world-text">
+                <div class="world-sub">${w.subtitle}</div>
+                <div class="world-title">${w.title}</div>
+                <div class="world-blurb">${w.blurb}</div>
+                <div class="world-meta"><span>${w.vehicleName}</span><span>throw: ${w.itemName}</span><span>call: ${w.callName}</span></div>
+              </div>
+            </button>
+            <button class="book-btn" data-book="${w.id}">${bookLabel(books?.[w.id])}</button>
+          </div>`).join('')}
+      </div>
+      <div class="menu-requests" style="--accent:${selected.accent}">
+        ${requestsHtml(selected.requester, requests ?? [], notRidden ? `The requests start after your first ride on ${selected.title}.` : 'Your photo book has every shot there is to ask for. Ride for the joy of it.')}
       </div>
       <div class="mode-row">
         <div class="modes">

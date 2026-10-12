@@ -36,6 +36,10 @@ export class Hud {
   /** Keep toasts, photo cards and centre messages on screen instead of timing them out. Storybook sets this so snapshots are stable. */
   persist = false;
   private lastTag = '';
+  private requestsEl: HTMLElement;
+  private cueLayer: HTMLElement;
+  /** one sparkle element per cueing subject, by subject id */
+  private cueEls = new Map<string, HTMLElement>();
 
   onShoot: (() => void) | null = null;
   onThrow: (() => void) | null = null;
@@ -47,12 +51,15 @@ export class Hud {
     this.reticle = el('div', 'reticle', this.root, `
       <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
       <div class="dot"></div>`);
+    this.cueLayer = el('div', 'cues', this.root);
     this.subjectTag = el('div', 'subject-tag', this.root);
     const top = el('div', 'hud-top', this.root);
     const left = el('div', 'hud-top-left', top);
     this.titleEl = el('div', 'world-title', left, worldTitle);
     this.captionEl = el('div', 'caption', left);
-    this.filmEl = el('div', 'film', top);
+    const right = el('div', 'hud-top-right', top);
+    this.filmEl = el('div', 'film', right);
+    this.requestsEl = el('div', 'hud-requests', right);
     this.toasts = el('div', 'toasts', this.root);
     this.centerMsg = el('div', 'center-msg', this.root);
     this.lockHint = el('div', 'lock-hint', this.root, 'Click to take the controls');
@@ -186,6 +193,44 @@ export class Hud {
     }
   }
   showHints() { this.hintEl.classList.remove('fade'); this.hintTimer = 8; }
+
+  /** The ride's photo requests, small under the film counter. `who` is the character asking. */
+  setRequests(who: string, items: Array<{ title: string; detail: string; done?: boolean }>) {
+    this.requestsEl.innerHTML = items.length
+      ? `<div class="hud-requests-who">For ${who}</div>${items.map((r) => `<div class="hud-request ${r.done ? 'done' : ''}"><span class="tick"></span><span><b>${r.title}</b> · ${r.detail}</span></div>`).join('')}`
+      : '';
+  }
+  /** Tick off request `i` with a short pulse. */
+  tickRequest(i: number) {
+    const row = this.requestsEl.querySelectorAll('.hud-request')[i];
+    row?.classList.add('done', 'just');
+    if (!this.persist) setTimeout(() => row?.classList.remove('just'), 1600);
+  }
+  /**
+   * Sparkles over subjects about to do something special (see SubjectSpec.cue). Each cue is a subject id and
+   * a position in pixels; `edge` marks one just off screen, drawn at the border. Subjects not listed lose
+   * their sparkle.
+   */
+  setCues(cues: Array<{ id: string; x: number; y: number; edge: boolean }>) {
+    const live = new Set<string>();
+    for (const c of cues) {
+      live.add(c.id);
+      let e = this.cueEls.get(c.id);
+      if (!e) {
+        e = el('div', 'cue', this.cueLayer, '<span class="glint"><i></i><i></i></span>');
+        this.cueEls.set(c.id, e);
+        requestAnimationFrame(() => e!.classList.add('show'));
+      }
+      e.style.transform = `translate(${c.x.toFixed(1)}px, ${c.y.toFixed(1)}px)`;
+      e.classList.toggle('edge', c.edge);
+    }
+    for (const [id, e] of this.cueEls) {
+      if (live.has(id)) continue;
+      this.cueEls.delete(id);
+      e.classList.remove('show');
+      setTimeout(() => e.remove(), 400);
+    }
+  }
   destroy() { clearTimeout(this.centerTimer); this.root.remove(); }
   get titleElement() { return this.titleEl; }
   get reticleElement() { return this.reticle; }

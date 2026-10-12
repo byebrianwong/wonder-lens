@@ -3,17 +3,20 @@ import type { Renderer } from '../engine/Renderer';
 import type { Input } from '../engine/Input';
 import type { AudioEngine } from '../engine/Audio';
 import { Puffs } from '../engine/Particles';
-import { damp } from '../engine/math';
+import { clamp, damp } from '../engine/math';
 import type { BuiltWorld, LightingState, WorldDef } from './types';
 import { Ride } from './Ride';
 import { CameraRig } from './CameraRig';
 import { Items, THROW_RANGE, flightTime, type Surface, type ThrowTarget } from './Items';
 import type { Subject } from './Subject';
 import { Hud } from './Hud';
-import { scorePhoto, snapshotCanvas, type PhotoResult } from './Photo';
+import { applyFilmStills, matchFilmStills, scorePhoto, snapshotCanvas, type PhotoResult } from './Photo';
 import { Album, summarize } from './Album';
 import { applyLighting, emptyLightingState } from './lighting';
-import { pauseElement } from './Screens';
+import { pauseElement, type RequestStatus } from './Screens';
+import { bookProgress, catalogOf, clearBook, loadBook, recordPhoto, recordRequest, saveCatalog, type BookChange } from './PhotoBook';
+import { currentRequests, dropRequests, requestMet, requestText } from './Requests';
+import { BookView } from './BookView';
 
 export interface GameOptions {
   renderer: Renderer;
@@ -34,6 +37,8 @@ const THROW_COOLDOWN = 0.45;
 const CALL_COOLDOWN = 2.4;
 /** subjects within this distance of the camera hear the call */
 const CALL_RANGE = 90;
+/** seconds before a subject's moment cue may play its sound again */
+const CUE_SOUND_GAP = 10;
 
 /** One ride through one world: owns the loop, the camera, the photo state and the HUD. */
 export class Game {
@@ -74,6 +79,17 @@ export class Game {
   private motion = new Map<Subject, { last: THREE.Vector3; vel: THREE.Vector3 }>();
   private stepVel = new THREE.Vector3();
   private instM = new THREE.Matrix4();
+  /** this ride's photo requests, ticked off as they are done */
+  private requests: RequestStatus[] = [];
+  /** photo book entries this ride added ('new') or improved ('best'), keyed 's:<id>' or 'f:<id>' */
+  private fresh = new Map<string, 'new' | 'best'>();
+  /** secret subjects that were already in the photo book when the ride started */
+  private knownSecrets = new Set<string>();
+  /** photo book writes still in progress; the album waits for them */
+  private recording: Promise<unknown>[] = [];
+  /** ride time each subject's moment cue last played its sound */
+  private cueHeard = new Map<string, number>();
+  private cuesShown = false;
 
   constructor(o: GameOptions) {
     this.o = o;
@@ -89,7 +105,7 @@ export class Game {
     console.info(`[wonder lens] ${def.id} built in ${(performance.now() - t0).toFixed(0)} ms`);
     this.ride = new Ride(this.world.curve, this.world.speed, this.world.vehicle);
     if (this.world.speedAt) this.ride.profile = (u) => this.world.speedAt!(u);
-    (window as any).__dbg = { world: this.world, ride: this.ride, game: this, rig: this.rig };
+    (window as any).__dbg = { world: this.world, ride: this.ride, game: this, rig: this.rig, matchFilmStills };
     this.items = new Items(this.world, (pos, surface, spent) => this.onLand(pos, surface, spent), (s, pos) => this.onHit(s, pos));
     this.puffs = new Puffs();
     this.world.scene.add(this.puffs.group);
@@ -101,6 +117,7 @@ export class Game {
     this.hud.setMinimal(this.o.relax);
     this.film = this.o.relax ? Infinity : FILM_MAX;
     this.hud.setFilm(this.film, FILM_MAX);
+    await this.openBook();
     renderer.setScene(this.world.scene, this.rig.camera);
     renderer.resize();
     // compile every shader while the loading card is still up, including things that only appear later in the ride
@@ -118,6 +135,16 @@ export class Game {
     this.applyLighting(0);
     this.hud.caption(`${def.vehicleName} departing…`, 4);
     this.raf = requestAnimationFrame((t) => this.loop(t));
+  }
+
+  /** Save the world's catalog to the photo book, and pick this ride's photo requests from it. */
+  private async openBook() {
+    const id = this.o.def.id;
+    await saveCatalog(catalogOf(id, this.world));
+    const book = await loadBook(id);
+    for (const s of this.world.subjects) if (s.secret && book.entries[s.id]) this.knownSecrets.add(s.id);
+    this.requests = currentRequests(book).map((r) => ({ ...r }));
+    if (this.o.def.requester) this.hud.setRequests(this.o.def.requester.name, this.requests);
   }
 
   private bindInput() {
@@ -327,7 +354,20 @@ export class Game {
       try {
         const summary = summarize(this.photos, this.world.subjects);
         this.album = new Album(this.o.ui, summary, this.world.subjects, this.o.def.title, this.o.def.accent,
-          () => this.o.onAgain(), () => this.exit(), this.o.relax);
+          () => this.o.onAgain(), () => this.exit(), this.o.relax, {
+            fresh: this.fresh, knownSecrets: this.knownSecrets, onBook: () => this.showBook(),
+            requester: this.o.def.requester, requests: this.requests,
+          });
+        dropRequests(this.o.def.id);
+        // the photo book count is filled in once the last photo has been saved
+        Promise.all(this.recording).then(() => loadBook(this.o.def.id)).then((book) => {
+          const p = bookProgress(book);
+          const stats = this.album?.root.querySelector('.album-stats');
+          if (!stats || !p.total) return;
+          const cell = document.createElement('div');
+          cell.innerHTML = `<b>${p.found}<i>/${p.total}</i></b><span>photo book${this.fresh.size ? ` · ${this.fresh.size} new` : ''}</span>`;
+          stats.appendChild(cell);
+        });
       } catch (err) {
         console.error('[wonder lens] album failed', err);
         this.exit();
@@ -342,6 +382,18 @@ export class Game {
 
   exit() { this.destroy(); this.o.onExit(); }
 
+  /** The photo book over the album, with this ride's new entries marked. */
+  private async showBook() {
+    await Promise.all(this.recording);
+    const id = this.o.def.id;
+    const view: BookView = new BookView(this.o.ui, {
+      worldTitle: this.o.def.title, accent: this.o.def.accent, book: await loadBook(id), fresh: this.fresh,
+    }, {
+      onClose: () => view.destroy(),
+      onClear: async () => { await clearBook(id); this.fresh.clear(); return loadBook(id); },
+    });
+  }
+
   destroy() {
     this.running = false;
     cancelAnimationFrame(this.raf);
@@ -350,6 +402,8 @@ export class Game {
     this.o.audio.setPaused(false);
     this.hud?.destroy();
     this.album?.destroy();
+    this.o.ui.querySelector('.book')?.remove();
+    dropRequests(this.o.def.id);
     this.pauseEl?.remove();
     this.items?.clear();
     this.world?.dispose();
@@ -403,6 +457,7 @@ export class Game {
     this.hud.setProgress(st.u);
     this.hud.setCooldowns(this.throwCd / THROW_COOLDOWN, this.callCd / CALL_COOLDOWN);
     this.captions(st.u);
+    this.updateCues();
     this.hud.showLockHint(inp.mode === 'lock' && !inp.pointerLocked && !inp.isTouch && this.time > 1.5 && !this.ride.finished);
     this.lastTag += dt;
     if (this.lastTag > 0.12) {
@@ -463,6 +518,35 @@ export class Game {
     const k = 1 - Math.exp(-dt * 0.9 * strength);
     this.rig.yawT += (yawT - this.rig.yawT) * k;
     this.rig.pitchT += (pitchT - this.rig.pitchT) * k;
+  }
+
+  /**
+   * A sparkle over each subject whose timed moment is about to start (Subject.cueing), when it is on screen
+   * or just off its edge, and a soft sound the first time in 10 s. Hidden with the HUD in a relax ride.
+   */
+  private updateCues() {
+    const list: Array<{ id: string; x: number; y: number; edge: boolean }> = [];
+    if (!this.hud.minimal && !this.ride.finished) {
+      const cam = this.rig.camera;
+      cam.updateMatrixWorld();
+      for (const s of this.world.subjects) {
+        if (!s.cueing) continue;
+        const c = s.center(this.tmp);
+        if (c.distanceTo(cam.position) > s.maxDistance) continue;
+        this.ndc.copy(c).project(cam);
+        if (this.ndc.z > 1 || Math.abs(this.ndc.x) > 1.5 || Math.abs(this.ndc.y) > 1.5) continue;
+        const edge = Math.abs(this.ndc.x) > 0.95 || Math.abs(this.ndc.y) > 0.95;
+        const x = clamp(this.ndc.x, -0.95, 0.95), y = clamp(this.ndc.y, -0.95, 0.95);
+        // window size, not the HUD's: reading the window does not force a layout
+        list.push({ id: s.id, x: (x + 1) / 2 * window.innerWidth, y: (1 - y) / 2 * window.innerHeight, edge });
+        if (this.time - (this.cueHeard.get(s.id) ?? -Infinity) >= CUE_SOUND_GAP) {
+          this.cueHeard.set(s.id, this.time);
+          this.o.audio.cue();
+        }
+      }
+    }
+    if (list.length || this.cuesShown) this.hud.setCues(list);
+    this.cuesShown = list.length > 0;
   }
 
   private captions(u: number) {
@@ -532,10 +616,31 @@ export class Game {
     }
   }
 
+  /** Remember what the photo book gained this ride, for the album's ribbons. A first ever entry stays 'new'. */
+  private noteChange(c: BookChange) {
+    const mark = (key: string, v: 'new' | 'best') => { if (this.fresh.get(key) !== 'new') this.fresh.set(key, v); };
+    c.newSubjects.forEach((id) => mark('s:' + id, 'new'));
+    c.better.forEach((id) => mark('s:' + id, 'best'));
+    c.newStills.forEach((id) => mark('f:' + id, 'new'));
+    c.betterStills.forEach((id) => mark('f:' + id, 'best'));
+  }
+
+  /** Tick off the requests this photo does. */
+  private checkRequests(photo: PhotoResult) {
+    this.requests.forEach((r, i) => {
+      if (r.done || !requestMet(r, photo)) return;
+      r.done = true;
+      this.hud.tickRequest(i);
+      this.hud.toast(`<b>Request done:</b> ${requestText(r)}`, 'request');
+      this.recording.push(recordRequest(this.o.def.id, requestText(r)));
+    });
+  }
+
   private takePhoto() {
     const r = this.o.renderer;
     const dataUrl = snapshotCanvas(r.canvas);
     const result = scorePhoto(this.rig.camera, this.world.subjects, this.world.occluders, { symmetryBonus: this.o.def.id === 'anderson' }, this.ride.state.u, this.time, dataUrl);
+    applyFilmStills(result, matchFilmStills(result, this.world.filmStills ?? [], this.rig.camera));
     this.photos.push(result);
     if (this.film !== Infinity) this.film--;
     this.hud.setFilm(this.film, FILM_MAX);
@@ -544,12 +649,20 @@ export class Game {
     this.o.audio.shutter();
     this.hud.showPhoto(result);
     if (result.stars > 0) setTimeout(() => this.o.audio.chime(result.stars), 150);
-    for (const s of result.shots) {
-      if (!this.discovered.has(s.subject.id)) {
-        this.discovered.add(s.subject.id);
-        this.hud.toast(`<b>New in your field guide:</b> ${s.subject.name}`, 'discover');
+    const firstThisRide = result.shots.filter((s) => !this.discovered.has(s.subject.id));
+    for (const s of firstThisRide) this.discovered.add(s.subject.id);
+    for (const h of result.stills ?? []) this.hud.toast(`<b>Film still:</b> ${h.name}`, 'discover');
+    this.checkRequests(result);
+    const saving = recordPhoto(this.o.def.id, result).then((change) => {
+      this.noteChange(change);
+      // name each subject once a ride: as new to the photo book if it is, otherwise as new to this ride's album
+      for (const s of firstThisRide) {
+        const brandNew = change.newSubjects.includes(s.subject.id);
+        if (brandNew && s.subject.secret) this.hud.toast(`<b>A secret!</b> ${s.subject.name}`, 'discover');
+        else this.hud.toast(`<b>${brandNew ? 'New in your photo book' : 'New in your field guide'}:</b> ${s.subject.name}`, 'discover');
       }
-    }
+    }).catch((err) => console.warn('[wonder lens] photo book', err));
+    this.recording.push(saving);
     if (this.film === 0) this.hud.toast('That was your last shot. Sit back and enjoy the ride.', 'warn');
   }
 }

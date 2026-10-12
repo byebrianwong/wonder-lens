@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/html-vite';
 import { WORLDS } from '../worlds';
 import { screen, VIEWPORTS } from '../stories/screen';
+import { requests } from '../stories/bookFixtures';
 import { loadingElement, menuElement, pauseElement } from './Screens';
 
 /** The title menu, the loading card and the pause menu. */
@@ -24,6 +25,20 @@ const menu = (selected = dream, relax = false, mouseLock = true): Story => ({
 
 export const Menu = menu();
 export const MenuAndersonRelax = menu(anderson, true, false);
+
+/** After a few rides: each card's photo book count, and Granny's three requests for the next ride. */
+export const MenuWithRequests: Story = {
+  render: () => {
+    const s = screen({ fullHeight: true });
+    const books = {
+      dream: { found: 23, total: 40, secretsFound: 2, secretsTotal: 5, stillsFound: 1, stillsTotal: 6 },
+      anderson: { found: 7, total: 83, secretsFound: 0, secretsTotal: 0, stillsFound: 0, stillsTotal: 0 },
+      amelie: null,
+    };
+    s.add(menuElement({ worlds: WORLDS, selected: dream, relax: false, mouseLock: true, books, requests })).classList.add('show');
+    return s.box;
+  },
+};
 
 const loading = (def = dream, relax = false): Story => ({
   render: () => {
