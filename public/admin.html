@@ -63,6 +63,7 @@
       body: body ? JSON.stringify(body) : undefined,
     });
     if (res.status === 401) throw new Error('Wrong admin token.');
+    if (res.status === 429) throw new Error('Too many wrong tokens from here. Try again in an hour.');
     if (!res.ok) throw new Error('The server said ' + res.status + '.');
     return res.json();
   }
