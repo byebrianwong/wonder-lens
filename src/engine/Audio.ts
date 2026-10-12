@@ -519,6 +519,23 @@ export class AudioEngine {
     const notes = [0, 4, 7, 12, 16];
     for (let i = 0; i < Math.max(1, stars); i++) this.playVoice('musicbox', this.profile.root + 24 + notes[i], t + 0.12 + i * 0.09, 0.14);
   }
+  /**
+   * A soft glint: two high sine notes a fifth apart, rising gently into the reverb. Played when a subject is
+   * about to do something special by itself, so the rider gets the camera ready. Returns true if scheduled.
+   */
+  cue(): boolean {
+    if (!this.ctx) return false;
+    const ctx = this.ctx, t = ctx.currentTime + 0.02;
+    const root = (this.profile?.root ?? 60) + 31;
+    [0, 7].forEach((n, i) => {
+      const at = t + i * 0.11;
+      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = midiHz(root + n);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(0.045, at + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, at + 0.9);
+      o.connect(g).connect(this.sfxBus); g.connect(this.reverbSend); o.start(at); o.stop(at + 0.95);
+    });
+    return true;
+  }
   uiClick() {
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime;

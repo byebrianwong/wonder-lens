@@ -145,5 +145,18 @@ export interface WorldDef {
   accent2: string;
   /** camera field of view default */
   fov: number;
+  /**
+   * Optional: a character from the world who asks for three photos before each ride. The requests are
+   * shown on the start screen, in the HUD during the ride and in the album afterwards.
+   */
+  requester?: Requester;
   build(ctx: WorldContext): BuiltWorld;
+}
+
+/** A character who asks the rider for photos (see WorldDef.requester). */
+export interface Requester {
+  /** the character's name, for example 'Granny' */
+  name: string;
+  /** one line in the character's voice, shown above the requests */
+  greeting: string;
 }

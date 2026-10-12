@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/html-vite';
 import { DreamWorld } from '../worlds/dream/DreamWorld';
 import { legendRoll, photo, sceneryPhoto, subjects } from '../stories/fixtures';
 import { screen, showAll, VIEWPORTS } from '../stories/screen';
+import { requests } from '../stories/bookFixtures';
 import { Hud } from './Hud';
 
 /*
@@ -61,6 +62,19 @@ export const SpecialMoment = hud((h) => {
 /** The acorn and ocarina tools glow when the subject in the viewfinder would react to them. */
 export const ToolHints = hud((h) => { h.tagSubject(subjects.noface); h.setToolHints(true, true); h.setProgress(0.66); });
 export const LockHint = hud((h) => h.showLockHint(true));
+/** The ride's three photo requests under the film counter, one just done. */
+export const PhotoRequests = hud((h) => {
+  h.setFilm(18, 24);
+  h.setRequests('Granny', requests);
+  h.tickRequest(1);
+  h.toast('<b>Request done:</b> Haku · a first photo', 'request');
+});
+/** A sparkle over a subject about to do something by itself, and one just off the edge of the frame. */
+export const MomentCue = hud((h) => {
+  h.tagSubject(subjects.totoro);
+  h.setCues([{ id: 'totoro', x: innerWidth * 0.44, y: innerHeight * 0.42, edge: false }, { id: 'laputa', x: innerWidth * 0.025, y: innerHeight * 0.22, edge: true }]);
+  h.root.querySelectorAll('.cue').forEach((c) => c.classList.add('show'));
+});
 export const RelaxRide = hud((h) => { h.setMinimal(true); h.setFilm(Infinity, 24); h.caption("On Haku's back"); });
 export const Touch: Story = {
   ...hud((h) => h.tagSubject(subjects.kiki), { touch: true }),

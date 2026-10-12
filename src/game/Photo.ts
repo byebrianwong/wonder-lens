@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { clamp } from '../engine/math';
 import type { Subject } from './Subject';
+import type { FilmStill } from './types';
 
 export interface SubjectShot {
   subject: Subject;
@@ -22,7 +23,12 @@ export interface PhotoResult {
   bonuses: string[];
   u: number;
   time: number;
+  /** film stills this photo recreates (see applyFilmStills) */
+  stills?: FilmStillHit[];
 }
+
+/** A film still a photo matched, and the points it added. */
+export interface FilmStillHit { id: string; name: string; bonus: number; }
 
 export interface ScoringRules {
   /** worlds can reward exact centering (Wes Anderson) */
@@ -112,13 +118,49 @@ export function scorePhoto(
     if (primary.subject.rarity === 'legendary') bonuses.push('Legendary sighting');
     else if (primary.subject.rarity === 'rare') bonuses.push('Rare sighting');
   }
-  // stars rate the shot against what the subject could give: a clean, close, centred photo is 3 stars, a special moment 4
-  let stars = 0;
-  if (primary) {
-    const ratio = total / primary.subject.base;
-    stars = ratio < 0.45 ? 1 : ratio < 0.8 ? 2 : ratio < 1.25 ? 3 : 4;
-  }
+  const stars = primary ? starsFor(total, primary.subject.base) : 0;
   return { id: ++photoCounter, dataUrl, shots, primary, total, stars, bonuses, u, time };
+}
+
+/**
+ * Stars rate a score against what the subject could give: a clean, close, centred photo is 3 stars, a
+ * special moment 4.
+ */
+export function starsFor(score: number, base: number): number {
+  const ratio = score / base;
+  return ratio < 0.45 ? 1 : ratio < 0.8 ? 2 : ratio < 1.25 ? 3 : 4;
+}
+
+/**
+ * The film stills a photo recreates. A still matches when every one of its subjects is in the photo, the
+ * main subject (its first) is in the still's pose and size range, the photo was taken in its stretch of the
+ * ride, and its own test passes. Pure: it reads the photo and changes nothing, so it can be tried from the
+ * console with a made-up photo. The camera is only passed on to a still's `test`.
+ */
+export function matchFilmStills(photo: PhotoResult, stills: readonly FilmStill[], camera?: THREE.PerspectiveCamera): FilmStill[] {
+  return stills.filter((still) => {
+    if (!still.subjects.length) return false;
+    const shotOf = (id: string) => photo.shots.find((s) => s.subject.id === id);
+    if (!still.subjects.every((id) => shotOf(id))) return false;
+    const main = shotOf(still.subjects[0])!;
+    if (still.pose !== undefined && main.pose !== still.pose) return false;
+    if (still.size && (main.size < still.size[0] || main.size > still.size[1])) return false;
+    if (still.u && (photo.u < still.u[0] || photo.u > still.u[1])) return false;
+    if (still.test && !(camera && still.test(photo, camera))) return false;
+    return true;
+  });
+}
+
+/** Add the matched stills to a photo: their points go on the total, each gets a bonus label, and the photo counts as 4 stars. */
+export function applyFilmStills(photo: PhotoResult, matched: readonly FilmStill[]) {
+  if (!matched.length) return photo;
+  photo.stills = matched.map((s) => ({ id: s.id, name: s.name, bonus: s.bonus }));
+  for (const s of matched) {
+    photo.total += s.bonus;
+    photo.bonuses.unshift(`Film still: ${s.name}`);
+  }
+  photo.stars = 4;
+  return photo;
 }
 
 /** Downscale the freshly rendered frame into a thumbnail data URL. */
