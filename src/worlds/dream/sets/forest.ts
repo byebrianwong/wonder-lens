@@ -214,7 +214,7 @@ export function buildForest(ctx: SetContext): BuiltSet {
     taken.push({ x: o.x, z: o.z, r: o.r * 1.6 });
     trunkProxy(o.x, y0, o.z, o.r * 1.15, o.height * 0.7);
     if (o.crown !== false) {
-      const blobs = cedarCrownBlobs(o.height / o.r, hr, 0.42).map((b) => ({ c: b.c.multiplyScalar(o.r).add(base), r: b.r.multiplyScalar(o.r) }));
+      const blobs = cedarCrownBlobs(o.height / o.r, hr, 0.42).map((b) => ({ c: b.c.multiplyScalar(o.r).add(base), r: b.r.multiplyScalar(o.r), cardR: b.cardR?.multiplyScalar(o.r) }));
       stretch[si].add(heroCrown(blobs, o.leaf ?? 0x2a4a34, hr, { density: 0.1, cardScale: 1.6 }));
     }
     // which way the path is from this tree

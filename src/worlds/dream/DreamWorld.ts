@@ -5,6 +5,7 @@ import { makeLighting, type LightKey } from '../../game/lighting';
 import { Sky } from '../../engine/Sky';
 import { Rng, clamp, damp, lerp, smoothstep } from '../../engine/math';
 import { sphere, toon } from '../../engine/Builders';
+import { foliageTime } from '../../engine/Foliage';
 import { COVERS, SETS, SET_ORDER, makeCurve, makeRoad, mountAtZ, speedAtZ, type MountKind, type SetId } from './layout';
 import { FILMS, Lens, LightPool, cue, inZ, type BuiltSet, type ScreenFx, type SetContext } from './common';
 import { buildCatbusMount } from './mount';
@@ -245,6 +246,7 @@ function build(ctx: WorldContext): BuiltWorld {
     captions,
     update(dt, ride) {
       const t = ride.time, u = ride.u, z = ride.position.z;
+      foliageTime.value = t;
       fxState.flash = 0; fxState.wash = 0;
       ridePos.copy(ride.position);
       tan.copy(ride.tangent).setY(0).normalize();
