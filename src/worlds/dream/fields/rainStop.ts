@@ -84,7 +84,8 @@ const rainVert = /* glsl */ `
     float dist = -p.z;
     vLamp = 1.0 / (1.0 + dot(base - uLamp, base - uLamp) / 30.0);
     float fog = exp(-uFogDensity * uFogDensity * dist * dist);
-    vA = a * fog * smoothstep(2.0, 8.0, dist);
+    // fade the streaks close to the camera: zoomed in on Totoro, near ones read as thick grey bars
+    vA = a * fog * smoothstep(3.0, 12.0, dist);
     vAcross = corner.x;
     gl_Position = projectionMatrix * p;
   }

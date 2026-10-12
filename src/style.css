@@ -235,6 +235,8 @@ kbd { display: inline-block; font-family: var(--sans); font-size: 0.72em; paddin
   .hints { display: none; }
   .cards { right: 12px; bottom: 82px; }
   .card { width: 190px; }
+  /* a phone has room for one photo card; a stack of three covers the requests list */
+  .cards .card:not(:last-child) { display: none; }
   .reticle { width: 56vw; height: 56vw; }
   .subject-tag { top: calc(50% + 28vw + 10px); }
   .center-msg { top: calc(50% - 28vw - 30px); }
