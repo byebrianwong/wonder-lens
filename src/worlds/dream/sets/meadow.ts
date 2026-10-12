@@ -7,18 +7,16 @@ import { flowerField, fluffyForest } from '../../../engine/Foliage';
 import { CumulusField } from '../../../engine/Clouds';
 import { addGroundDetail, paintedDetailTexture } from '../../../engine/Ground';
 import { Drift } from '../../../engine/Particles';
-import { charToon } from '../../../engine/Paint';
 import { Heading } from '../../../engine/Rig';
 import { Rng, TAU, clamp, fbm, lerp, smoothstep } from '../../../engine/math';
 import { CASTLE_ROOM } from '../layout';
 import { FILMS, forwardOf, type BuiltSet, type SetContext } from '../common';
-import { granite } from '../../ghibli/propTextures';
 import { makeHowlCastle } from '../howl/castle';
 import { makeTurnipHead } from '../howl/turnipHead';
 import { makeCalcifer } from '../howl/calcifer';
 import { buildCastleRoom } from '../howl/room';
 import { Smoke, Ripples } from '../howl/smoke';
-import { buildMountains, buildHut, findSky, MirrorLake } from '../howl/scenery';
+import { buildBoulders, buildMountains, buildHut, findSky, MirrorLake } from '../howl/scenery';
 import { wakeTexture } from '../howl/paint';
 
 /*
@@ -297,35 +295,20 @@ export function buildMeadow(ctx: SetContext): BuiltSet {
   outside.add(fluffyForest({ shape: 'broad', ...meadowTrees }, broad, trng, { castShadow: true, variants: 1 }));
   outside.add(fluffyForest({ shape: 'poplar', trunk: 0x5a4a38, leaves: [0x5a8a3a, 0x4a7a34] }, poplars, trng, { castShadow: true, variants: 2 }));
   outside.add(fluffyForest({ shape: 'conifer', trunk: 0x4a3426, leaves: [0x2f5a3a, 0x3a6a44, 0x28503a] }, conifers, trng, { castShadow: false, variants: 2 }));
-  // rocks: grey boulders along the shore and in the grass, bigger ones on the hills
+  // rocks: rounded, mossy boulders along the shore and in the grass, bigger ones on the hills (one mesh)
   {
-    const rockMat = charToon({ map: granite(0x9a968a, 1765), rim: 0.25 });
-    const geos = [0, 1, 2].map((k) => {
-      const g = new THREE.IcosahedronGeometry(1, 2);
-      const p = g.attributes.position as THREE.BufferAttribute, v = new THREE.Vector3();
-      for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); const s = 0.75 + 0.45 * fbm(v.x * 1.3 + k * 7, v.z * 1.3 + v.y * 1.1, 3); v.multiplyScalar(s); v.y *= 0.62; p.setXYZ(i, v.x, v.y, v.z); }
-      g.computeVertexNormals();
-      return g;
-    });
-    const pl: Placement[][] = [[], [], []];
-    for (let i = 0; i < 4000 && pl.flat().length < (low ? 40 : 70); i++) {
+    const pl: Array<{ x: number; z: number; scale: number; rot: number }> = [];
+    for (let i = 0; i < 4000 && pl.length < (low ? 40 : 70); i++) {
       const x = trng.range(-200, 140), z = trng.range(-1850, -1530);
       const L = lakeInfo(x, z), r = Math.hypot(x / 170, (z + 1660) / 200);
       const shore = L.out > 0.3 && L.out < 6;
       if (!shore && !(r > 0.85 && trng.chance(0.4)) && !trng.chance(0.08)) continue;
       if (lateral(x, z).d < 6 || nearTrack(x, z) < 20 || hutDist(x, z) < 7 || L.out < 0.3) continue;
       const s = r > 0.85 ? trng.range(2.5, 5) : trng.range(0.6, 1.8);
-      pl[trng.int(0, 2)].push({ x, y: ground(x, z) - s * 0.15, z, scale: s, rot: trng.range(0, TAU) });
+      trng.int(0, 2); // (was the shape variant; kept so the random sequence is unchanged)
+      pl.push({ x, z, scale: s, rot: trng.range(0, TAU) });
     }
-    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), ps = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
-    pl.forEach((list, k) => {
-      if (!list.length) return;
-      const im = new THREE.InstancedMesh(geos[k], rockMat, list.length);
-      list.forEach((p, i) => { q.setFromAxisAngle(up, p.rot); im.setMatrixAt(i, m.compose(ps.set(p.x, p.y, p.z), q, sc.setScalar(p.scale))); });
-      im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere();
-      im.castShadow = true; im.receiveShadow = true;
-      outside.add(im);
-    });
+    outside.add(buildBoulders(pl, new Rng(1769), ground, low));
   }
 
   // ---------------------------------------------------------------- Turnip Head

@@ -1,7 +1,8 @@
 import * as THREE from 'three';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { box, cyl, mesh } from '../../../engine/Builders';
 import { Painter, boxUV, charToon, repeatUV } from '../../../engine/Paint';
-import { Rng, TAU, clamp, lerp, smoothstep } from '../../../engine/math';
+import { Rng, TAU, clamp, fbm, lerp } from '../../../engine/math';
 import type { HeightGrid } from '../../../engine/HeightGrid';
 import { css } from '../../ghibli/characterTextures';
 import { clayTiles, doorBoards, fieldstone } from './paint';
@@ -43,8 +44,10 @@ export const PANO = { cx: 0, cz: -1680, far: { r: 450, y0: -30, h: 260 }, near: 
 const dirOf = (u: number) => [Math.sin(u * TAU), Math.cos(u * TAU)] as const;
 
 /**
- * The far band: a full circle of snowy peaks. Each peak has a sunlit flank and a shadowed one, decided by
- * where the sun is (ahead and to the left); peaks against the sun get a bright rim along the ridge.
+ * The far band: Alpine ranges painted in four layers, the furthest palest and tallest. Each layer is one soft
+ * ridge line with rounded summits and saddles; snow lies above a ragged snow line, each column is lit by how its
+ * slope faces the sun (ahead and to the left), and mist lies in the valleys between the layers, so the ranges
+ * fade back into the haze. No outlines: the edges are where the colours change.
  */
 function paintPeaks(sun: THREE.Vector3) {
   const W = 2048, H = 512, B = PANO.far;
@@ -53,88 +56,83 @@ function paintPeaks(sun: THREE.Vector3) {
   g.clearRect(0, 0, W, H);
   const yPix = (y: number) => H - ((y - B.y0) / B.h) * H;
   const S = sun.clone().normalize();
-  // peaks: bigger ahead and to the sides, smaller behind (u = 0 is behind the rider, u = 0.5 ahead)
-  const peaks: Array<{ u: number; top: number; w: number; base: number }> = [];
-  let u = 0;
-  while (u < 1) {
-    const ahead = 0.5 - 0.5 * Math.cos(u * TAU);
-    peaks.push({ u, top: lerp(70, 205, ahead * 0.7 + 0.3 * rng.next()) * rng.range(0.8, 1.08), w: rng.range(0.022, 0.05), base: rng.range(38, 52) });
-    u += rng.range(0.018, 0.04);
-  }
-  // tallest first, so lower peaks (painted as nearer) overlap them
-  peaks.sort((a, b) => b.top - a.top);
-  const snowLit = new THREE.Color(0xfff2e6), snowShade = new THREE.Color(0x9aa6cc), rockLit = new THREE.Color(0xb89a86), rockShade = new THREE.Color(0x5a6488);
-  const forest = new THREE.Color(0x3a5a5a), haze = new THREE.Color(0xd8d0c8), rim = new THREE.Color(0xffe0a8);
-  const c = new THREE.Color();
   const cssOf = (col: THREE.Color) => `#${col.getHexString()}`;
-  for (const pk of peaks) {
-    const [dx, dz] = dirOf(pk.u);
-    const d = new THREE.Vector3(dx, 0, dz), t = new THREE.Vector3(dz, 0, -dx);
-    const flank = (s: number) => clamp(new THREE.Vector3().addScaledVector(d, -0.55).addScaledVector(t, 0.75 * s).add(new THREE.Vector3(0, 0.35, 0)).normalize().dot(S), -1, 1);
-    const litL = smoothstep(-0.15, 0.55, flank(-1)), litR = smoothstep(-0.15, 0.55, flank(1));
-    const backlit = smoothstep(0.2, 0.7, d.dot(new THREE.Vector3(S.x, 0, S.z).normalize()));
-    const near = 1 - (pk.top - 70) / 160;
-    // random shape decided once, so the copies drawn across the wrap-around seam match
-    const N = 26;
-    const jags = Array.from({ length: N + 1 }, (_, i) => (rng.next() - 0.5) * 14 * (1 - Math.abs((i / N) * 2 - 1) * 0.5));
-    const wiggle = Array.from({ length: 48 }, () => rng.next() - 0.5);
-    const streaks = Array.from({ length: 9 }, () => ({ x: rng.range(-1, 1), y: rng.range(0.45, 0.85), a: rng.range(0.25, 0.6), dx: rng.range(-8, 8), len: rng.range(30, 80) }));
-    const litSide = litR >= litL ? 1 : -1;
-    for (const off of [-W, 0, W]) {
-      const x0 = pk.u * W + off;
-      if (x0 + pk.w * W * 1.6 < 0 || x0 - pk.w * W * 1.6 > W) continue;
-      // the silhouette: a jagged peak falling away to both sides
-      const pts: Array<[number, number]> = [];
-      for (let i = 0; i <= N; i++) {
-        const k = (i / N) * 2 - 1;
-        const fall = Math.pow(Math.abs(k), 0.85);
-        const jag = jags[i] + Math.sin(k * 9 + pk.u * 50) * 6;
-        const y = pk.base + (pk.top - pk.base) * (1 - fall) + jag * (Math.abs(k) > 0.05 ? 1 : 0);
-        pts.push([x0 + k * pk.w * W * 1.6, yPix(y)]);
+  const snowLit = new THREE.Color(0xfff3e8), snowShade = new THREE.Color(0xaab4d6), rockLit = new THREE.Color(0xa69a92), rockShade = new THREE.Color(0x6a7398);
+  const haze = new THREE.Color(0xd8d4d0), foot = new THREE.Color(0x7a8c96);
+  const c = new THREE.Color(), c2 = new THREE.Color();
+  // furthest first; heights in band units (the band runs from y -30 to 230)
+  const layers = [
+    { lo: 95, hi: 205, base: 70, snow: 118, haze: 0.42, n: 18 },
+    { lo: 80, hi: 165, base: 58, snow: 112, haze: 0.28, n: 24 },
+    { lo: 66, hi: 128, base: 48, snow: 110, haze: 0.16, n: 30 },
+    { lo: 52, hi: 88, base: 40, snow: 999, haze: 0.08, n: 38 },
+  ];
+  const col = new Float32Array(W);
+  layers.forEach((L, li) => {
+    // the ridge: the highest of a row of soft summits round the circle, bigger ahead (u 0.5) than behind
+    const peaks = Array.from({ length: L.n }, (_, i) => {
+      const u = (i + rng.range(-0.3, 0.3)) / L.n, ahead = 0.5 - 0.5 * Math.cos(u * TAU);
+      return { u, top: lerp(L.lo, L.hi, ahead * 0.65 + 0.35 * rng.next()), w: (rng.range(0.6, 1.3) / L.n) * 1.4 };
+    });
+    const ph = rng.range(0, 100);
+    for (let x = 0; x < W; x++) {
+      const u = x / W;
+      let h = L.base;
+      for (const pk of peaks) {
+        let du = Math.abs(u - pk.u); du = Math.min(du, 1 - du);
+        const k = du / pk.w;
+        if (k >= 1) continue;
+        // a summit with long smooth flanks and a slightly rounded tip
+        const shape = 0.55 * (0.5 + 0.5 * Math.cos(Math.PI * k)) + 0.45 * Math.pow(1 - k, 1.6);
+        h = Math.max(h, L.base + (pk.top - L.base) * shape);
       }
-      const outline = () => { g.beginPath(); g.moveTo(pts[0][0], H); for (const [x, y] of pts) g.lineTo(x, y); g.lineTo(pts[N][0], H); g.closePath(); };
-      const grad = (lit: number) => {
-        const gr = g.createLinearGradient(0, yPix(pk.top), 0, yPix(pk.base - 20));
-        const snowT = clamp((pk.top - 95) / (pk.top - pk.base), 0.12, 0.7);
-        gr.addColorStop(0, cssOf(c.copy(snowShade).lerp(snowLit, lit)));
-        gr.addColorStop(snowT, cssOf(c.copy(snowShade).lerp(snowLit, lit * 0.9)));
-        gr.addColorStop(Math.min(0.95, snowT + 0.08), cssOf(c.copy(rockShade).lerp(rockLit, lit)));
-        gr.addColorStop(1, cssOf(c.copy(forest).lerp(haze, 0.35)));
-        return gr;
-      };
-      outline(); g.fillStyle = grad(Math.min(litL, litR)); g.fill();
-      g.save(); outline(); g.clip();
-      // the lit flank: everything on one side of a ridge line that wanders down from the summit
-      const sx = pts[N / 2][0], sy = pts[N / 2][1];
-      g.beginPath(); g.moveTo(sx, sy);
-      let rx = sx, wi = 0;
-      for (let y = sy; y < H; y += 12) { rx += wiggle[wi++ % wiggle.length] * 10 - litSide * 1.5; g.lineTo(rx, y); }
-      g.lineTo(sx + litSide * pk.w * W * 2, H); g.lineTo(sx + litSide * pk.w * W * 2, sy - 10); g.closePath();
-      g.fillStyle = grad(Math.max(litL, litR)); g.fill();
-      // gullies of rock running down through the snow, and snow fingers down into the rock
-      streaks.forEach((st, k) => {
-        const gx = sx + st.x * pk.w * W * 0.9, gy = yPix(lerp(pk.base, pk.top, st.y));
-        g.fillStyle = k % 2 ? `rgba(70,80,110,${st.a * 0.75})` : `rgba(250,246,244,${st.a})`;
-        g.beginPath(); g.moveTo(gx - 3, gy); g.lineTo(gx + 3, gy); g.lineTo(gx + st.dx, gy + st.len); g.fill();
-      });
-      g.restore();
-      // a bright rim along the ridge where the sun is behind the peak
-      if (backlit > 0.05) {
-        g.strokeStyle = cssOf(rim); g.globalAlpha = 0.85 * backlit; g.lineWidth = 3;
-        g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y + 1.5) : g.moveTo(x, y + 1.5))); g.stroke();
-        g.globalAlpha = 1;
-      }
-      // the taller (further) peaks are hazier
-      g.save(); outline(); g.clip();
-      g.fillStyle = `rgba(216,208,200,${0.18 * (1 - near)})`; g.fillRect(0, 0, W, H);
-      g.restore();
+      col[x] = h + (fbm(u * 60 + ph, li * 3.1, 3) - 0.5) * 5;
     }
-  }
-  // haze over the lower slopes, and a solid forested foot so the band is opaque down to its bottom
-  g.globalCompositeOperation = 'source-atop';
-  const hz = g.createLinearGradient(0, yPix(110), 0, H);
-  hz.addColorStop(0, 'rgba(216,208,200,0)'); hz.addColorStop(0.7, 'rgba(206,204,200,0.55)'); hz.addColorStop(1, 'rgba(190,196,196,0.7)');
-  g.fillStyle = hz; g.fillRect(0, 0, W, H);
+    // soften the ridge line a little (wrapping round the seam)
+    const sm = new Float32Array(W);
+    for (let x = 0; x < W; x++) { let a = 0; for (let k = -3; k <= 3; k++) a += col[(x + k + W) % W]; sm[x] = a / 7; }
+    const top = (x: number) => yPix(sm[((Math.round(x) % W) + W) % W]);
+    // each column: snow down to a ragged snow line, then rock, darker and hazier towards the foot
+    for (let x = 0; x < W; x += 2) {
+      const u = x / W, [dx, dz] = dirOf(u);
+      const slope = (sm[(x + 4) % W] - sm[(x - 4 + W) % W]) / ((8 / W) * TAU * B.r);
+      // the face's normal: back towards the valley, tilted by the slope along the band
+      const nx = -dx - dz * slope * 1.6, nz = -dz + dx * slope * 1.6, ny = 0.55;
+      const len = Math.hypot(nx, ny, nz);
+      const lit = clamp(((nx * S.x + ny * S.y + nz * S.z) / len) * 1.3 + 0.25, 0, 1);
+      const y0 = top(x), yb = yPix(L.base - 25);
+      const snowY = yPix(L.snow + (fbm(u * 40 + ph, 7 + li, 3) - 0.5) * 40);
+      const gr = g.createLinearGradient(0, y0, 0, yb);
+      const sT = clamp((snowY - y0) / Math.max(1, yb - y0), 0, 1);
+      c.copy(rockShade).lerp(rockLit, lit);
+      if (sT > 0.01) {
+        gr.addColorStop(0, cssOf(c2.copy(snowShade).lerp(snowLit, lit)));
+        gr.addColorStop(Math.max(0, sT - 0.04), cssOf(c2.copy(snowShade).lerp(snowLit, lit * 0.85)));
+        gr.addColorStop(Math.min(0.99, sT + 0.05), cssOf(c));
+      } else gr.addColorStop(0, cssOf(c));
+      gr.addColorStop(1, cssOf(c2.copy(foot).lerp(haze, 0.3)));
+      g.fillStyle = gr;
+      g.fillRect(x, y0, 2.2, H - y0);
+    }
+    // gullies: soft darker streaks down from the summits, and paler snow fingers, inside this layer only
+    g.save();
+    g.beginPath(); g.moveTo(0, H); for (let x = 0; x <= W; x += 4) g.lineTo(x, top(x)); g.lineTo(W, H); g.closePath(); g.clip();
+    g.lineCap = 'round';
+    for (const pk of peaks) for (let k = 0; k < 4; k++) {
+      const x = (pk.u + rng.range(-0.5, 0.5) * pk.w) * W, y = top(x) + rng.range(4, 14);
+      const len = rng.range(20, 70), dxs = rng.range(-10, 10);
+      g.strokeStyle = k % 2 ? 'rgba(90,100,130,0.16)' : 'rgba(255,250,246,0.22)';
+      g.lineWidth = rng.range(2, 5);
+      for (const off of [-W, 0, W]) { g.beginPath(); g.moveTo(x + off, y); g.quadraticCurveTo(x + off + dxs * 0.3, y + len * 0.5, x + off + dxs, y + len); g.stroke(); }
+    }
+    // this layer's haze, and mist lying in the valley at its foot
+    g.fillStyle = `rgba(216,212,208,${L.haze})`; g.fillRect(0, 0, W, H);
+    const mist = g.createLinearGradient(0, yPix(L.base + 30), 0, yPix(L.base - 10));
+    mist.addColorStop(0, 'rgba(222,218,214,0)'); mist.addColorStop(1, 'rgba(222,218,214,0.75)');
+    g.fillStyle = mist; g.fillRect(0, 0, W, H);
+    g.restore();
+  });
+  // a solid foot, so the band is opaque down to its bottom
   g.globalCompositeOperation = 'destination-over';
   g.fillStyle = '#9aa8b0'; g.fillRect(0, yPix(50), W, H);
   g.globalCompositeOperation = 'source-over';
@@ -249,6 +247,68 @@ export function buildMountains(sun: THREE.Vector3): Mountains {
       }
     },
   };
+}
+
+// ---------------------------------------------------------------- boulders
+/**
+ * Rounded, mossy boulders, each one its own shape, merged into one mesh. A boulder is a sphere pushed in and out
+ * by noise, wider than it is tall, with a flattened base so it sits in the grass. Its colour is painted on the
+ * vertices: grey stone, darker in the hollows, flecks of lichen, and moss on the parts that face up. A big
+ * boulder gets one or two small ones beside it. `ground` gives the height under each one.
+ */
+export function buildBoulders(placements: Array<{ x: number; z: number; scale: number; rot: number }>, rng: Rng, ground: (x: number, z: number) => number, low: boolean) {
+  const parts: THREE.BufferGeometry[] = [];
+  const stoneA = new THREE.Color(0x76777a), stoneB = new THREE.Color(0x92908a), hollowC = new THREE.Color(0x52555a);
+  const mossA = new THREE.Color(0x4f6e2c), mossB = new THREE.Color(0x7c9c3e), lichen = new THREE.Color(0xc4bf8e);
+  const v = new THREE.Vector3(), n = new THREE.Vector3(), c = new THREE.Color(), base = new THREE.Color(), moss = new THREE.Color();
+  const one = (x: number, z: number, s: number, rot: number) => {
+    let geo: THREE.BufferGeometry = new THREE.IcosahedronGeometry(1, s > 1.6 && !low ? 3 : 2);
+    geo.deleteAttribute('normal'); geo.deleteAttribute('uv');
+    geo = mergeVertices(geo);
+    const seed = rng.range(0, 100), sx = rng.range(1.0, 1.35), sy = rng.range(0.68, 0.92), sz = rng.range(0.85, 1.15);
+    const mossy = rng.range(0.6, 1);
+    base.copy(stoneA).lerp(stoneB, rng.next());
+    const pos = geo.attributes.position as THREE.BufferAttribute;
+    const disp = new Float32Array(pos.count);
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i);
+      // big lumps and small knobs
+      const d = 0.44 * (fbm(v.x * 1.3 + seed, v.z * 1.3 + v.y * 1.7, 3) - 0.5) + 0.14 * (fbm(v.x * 4 + seed * 2, v.y * 4 - v.z * 3, 2) - 0.5);
+      disp[i] = d;
+      v.multiplyScalar(1 + d);
+      v.set(v.x * sx, v.y * sy, v.z * sz);
+      // a flat base
+      const floor = -0.4 * sy;
+      if (v.y < floor) v.y = floor + (v.y - floor) * 0.2;
+      pos.setXYZ(i, v.x, v.y, v.z);
+    }
+    geo.computeVertexNormals();
+    const nrm = geo.attributes.normal as THREE.BufferAttribute;
+    const col = new Float32Array(pos.count * 3);
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i); n.fromBufferAttribute(nrm, i);
+      c.copy(base).lerp(hollowC, clamp(-disp[i] * 4, 0, 1) * 0.5);
+      if (fbm(v.x * 5 + seed, v.z * 5 - v.y * 4, 2) > 0.66) c.lerp(lichen, 0.45);
+      const m = clamp((n.y + (fbm(v.x * 2 + seed, v.z * 2, 2) - 0.5) * 0.9 + 0.05) * 2.2, 0, 1) * mossy;
+      moss.copy(mossA).lerp(mossB, fbm(v.x * 3 - seed, v.z * 3 + v.y, 2));
+      c.lerp(moss, m * 0.9);
+      col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    geo.scale(s, s, s).rotateY(rot).translate(x, ground(x, z) + 0.28 * sy * s, z);
+    parts.push(geo);
+  };
+  for (const p of placements) {
+    one(p.x, p.z, p.scale, p.rot);
+    if (p.scale < 1.2) continue;
+    for (let k = rng.int(1, 2); k > 0; k--) {
+      const a = rng.range(0, TAU), d = p.scale * rng.range(1.2, 1.7);
+      one(p.x + Math.cos(a) * d, p.z + Math.sin(a) * d, p.scale * rng.range(0.25, 0.45), rng.range(0, TAU));
+    }
+  }
+  const m = new THREE.Mesh(mergeGeometries(parts)!, charToon({ vertexColors: true, rim: 0.2, shade: 0x8c94b4 }));
+  m.castShadow = true; m.receiveShadow = true;
+  return m;
 }
 
 // ---------------------------------------------------------------- the mirror lake
