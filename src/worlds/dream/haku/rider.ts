@@ -40,7 +40,7 @@ const S = 1.4;
  */
 const AHEAD = 3.6, HEAD_Y = 0.05, CLIMB_KEEP = 0.5;
 /** At rest the head hangs this far below the flight path, its snout lifted by `pitch` (radians). */
-const REST = { y: -0.6, pitch: 0.35 };
+const REST = { y: -0.6, pitch: 0.5 };
 /**
  * A glance back: the head swings this far out to the side (and up), then turns this far towards that side, so
  * the side of his face is towards the rider (about 4.5 from the camera). The neck bends over its first BEND
@@ -83,11 +83,6 @@ export function buildHakuRider(ctx: SetContext) {
   const haku = makeHaku();
   const skull = haku.head.children[0] as THREE.Mesh;
   skull.userData.keep = true; // its ink outline is a child of it
-  // the tufts on his crown point back at the rider: shorter, so the top of his head shows between them
-  for (const c of haku.head.children) {
-    const geo = (c as THREE.Mesh).geometry as THREE.ConeGeometry | undefined;
-    if (geo?.type === 'ConeGeometry' && Math.abs(geo.parameters.height - 0.75) < 1e-3) c.scale.set(0.8, 0.5, 0.8);
-  }
   mergeStatic(haku.head);
   haku.group.scale.setScalar(S);
   haku.group.visible = false;

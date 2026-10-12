@@ -63,7 +63,7 @@ export const PanelEmpty = panel(board({ players: 0, rows: [], shots: [] }));
 export const AlbumSaveForm: Story = {
   render: () => {
     const s = screen({ fullHeight: true });
-    const a = new Album(s.box, summarize(legendRoll(), guide), guide, DreamWorld.title, DreamWorld.accent, () => {}, () => {}, false, 'dream');
+    const a = new Album(s.box, summarize(legendRoll(), guide), guide, DreamWorld.title, DreamWorld.accent, () => {}, () => {}, false, { worldId: 'dream' });
     s.add(a.root);
     a.root.classList.add('show');
     return s.box;

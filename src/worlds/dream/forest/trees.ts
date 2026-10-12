@@ -263,13 +263,16 @@ export function cedarCrownBlobs(height: number, rng: Rng, start = 0.45) {
   for (let i = 0; i < n; i++) {
     const t = i / (n - 1);
     const y = height * lerp(start + 0.06, 1.0, t);
-    const r = lerp(3.4, 1.3, t) * rng.range(0.9, 1.1);
-    blobs.push({ c: new THREE.Vector3(rng.range(-0.3, 0.3), y, rng.range(-0.3, 0.3)), r: new THREE.Vector3(r, r * 0.75, r) });
+    // a slimmer column than the clumps' reach, so the clumps stand out from it as separate masses.
+    // `cardR` keeps each blob's card count from its earlier size, so the random numbers after it (which
+    // place the rest of the wood) are unchanged.
+    const k = rng.range(0.9, 1.1), rWas = lerp(3.4, 1.3, t) * k, r = lerp(2.9, 1.2, t) * k;
+    blobs.push({ c: new THREE.Vector3(rng.range(-0.3, 0.3), y, rng.range(-0.3, 0.3)), r: new THREE.Vector3(r, r * 0.75, r), cardR: new THREE.Vector3(rWas, rWas * 0.75, rWas) });
   }
   for (let i = 0; i < 7; i++) {
-    const a = rng.range(0, TAU), y = height * rng.range(start, 0.88), off = rng.range(2.6, 4.2) * (1 - (y / height - start) * 0.6);
-    const r = rng.range(1.5, 2.2);
-    blobs.push({ c: new THREE.Vector3(Math.cos(a) * off, y, Math.sin(a) * off), r: new THREE.Vector3(r, r * 0.6, r) });
+    const a = rng.range(0, TAU), y = height * rng.range(start, 0.88), off = rng.range(3.0, 4.4) * (1 - (y / height - start) * 0.6);
+    const k = rng.next(), rWas = 1.5 + (2.2 - 1.5) * k, r = 1.4 + 0.6 * k;
+    blobs.push({ c: new THREE.Vector3(Math.cos(a) * off, y, Math.sin(a) * off), r: new THREE.Vector3(r, r * 0.6, r), cardR: new THREE.Vector3(rWas, rWas * 0.6, rWas) });
   }
   return blobs;
 }

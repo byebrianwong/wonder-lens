@@ -18,6 +18,8 @@ import { PoolWater } from '../forest/pool';
 import { MistLayer, Beams, Spray, type MistPuff, type Beam } from '../forest/air';
 import { makeNightWalker } from '../forest/nightWalker';
 import { makeForestSpirit, Blooms } from '../forest/forestSpirit';
+import { buildKodamaRider } from '../riders';
+import { momentCue } from '../secrets';
 
 /*
  * The Forest Spirit's wood before dawn (Princess Mononoke).
@@ -214,7 +216,7 @@ export function buildForest(ctx: SetContext): BuiltSet {
     taken.push({ x: o.x, z: o.z, r: o.r * 1.6 });
     trunkProxy(o.x, y0, o.z, o.r * 1.15, o.height * 0.7);
     if (o.crown !== false) {
-      const blobs = cedarCrownBlobs(o.height / o.r, hr, 0.42).map((b) => ({ c: b.c.multiplyScalar(o.r).add(base), r: b.r.multiplyScalar(o.r) }));
+      const blobs = cedarCrownBlobs(o.height / o.r, hr, 0.42).map((b) => ({ c: b.c.multiplyScalar(o.r).add(base), r: b.r.multiplyScalar(o.r), cardR: b.cardR?.multiplyScalar(o.r) }));
       stretch[si].add(heroCrown(blobs, o.leaf ?? 0x2a4a34, hr, { density: 0.1, cardScale: 1.6 }));
     }
     // which way the path is from this tree
@@ -714,7 +716,8 @@ export function buildForest(ctx: SetContext): BuiltSet {
     id: 'kodama', name: 'Kodama', from: FILMS.mononoke, group: kodMarker, radius: 4.5, base: 700, rarity: 'rare', crowd: true,
     hint: 'Hundreds of little tree spirits all through the wood: on the roots, on the fallen cedar, on shelves of fungus up the trunks. Play the ocarina and their heads rattle in a wave; an acorn makes the ones nearby turn and rattle.',
     poses: { rattle: { label: 'Rattling heads', mult: 1.6 } }, centerOffset: V(0, 0.8, 0), maxDistance: 90, reactRange: 16,
-    onCall: () => { kodS.setPose('rattle', 3); return true; },
+    // the ocarina also brings one of them along on the Catbus's head (a secret: see riders.ts)
+    onCall: () => { kodS.setPose('rattle', 3); kodamaRider.found(); return true; },
     onItem: () => { kodS.setPose('rattle', 2.5); return true; },
   });
   const walkerS = new Subject({
@@ -723,6 +726,8 @@ export function buildForest(ctx: SetContext): BuiltSet {
     poses: { gaze: { label: 'The Night-Walker looks down', mult: 2.0 } }, centerOffset: V(0, 55, 0), maxDistance: 230,
     facing: () => V(0, 0, 1).applyQuaternion(walker.head.getWorldQuaternion(new THREE.Quaternion())),
     onCall: () => { walker.gaze(); walkerS.setPose('gaze', 4); return true; },
+    // just before it stands at its full height and starts across the pool
+    cue: momentCue(ctx, -788),
   });
   const deerS = new Subject({
     id: 'forest-spirit', name: 'The Forest Spirit', from: FILMS.mononoke, group: deer.group, radius: 5, base: 1400, rarity: 'legendary',
@@ -731,6 +736,8 @@ export function buildForest(ctx: SetContext): BuiltSet {
     centerOffset: V(0, 4.6, 0.8), maxDistance: 130, reactRange: 16,
     facing: () => V(0, 0, 1).applyQuaternion(deer.head.getWorldQuaternion(new THREE.Quaternion())),
     onCall: () => { deer.gaze(); deerS.setPose('gaze', 3.5); return true; },
+    // just before it steps out from behind the thicket
+    cue: momentCue(ctx, -836),
     onItem: () => {
       const p = deer.group.position;
       blooms.spawn(V(p.x, p.y + 0.02, p.z), nowT, 44, 6, 4, 1.0);
@@ -753,7 +760,8 @@ export function buildForest(ctx: SetContext): BuiltSet {
       return true;
     },
   });
-  const subjects = [kodS, walkerS, deerS, cedarS];
+  const kodamaRider = buildKodamaRider(ctx);
+  const subjects = [kodS, walkerS, deerS, cedarS, kodamaRider.subject];
   for (const s of subjects) s.active = false;
 
   // =========================================================================================

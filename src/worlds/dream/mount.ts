@@ -24,6 +24,12 @@ export interface CatbusMount {
   setSign(text: string): void;
   /** a world point the Catbus turns its head towards while it runs, or null to look ahead */
   lookAt(p: THREE.Vector3 | null): void;
+  /**
+   * Tilts the Catbus's body about its paws, nose down for a positive angle. The passengers stay upright and
+   * keep their distance behind the rider: tilted with the body, the seats behind the head swing up and
+   * forward, and on the bathhouse stairs No-Face ended up round the camera.
+   */
+  tilt(angle: number): void;
 }
 
 export const SEAT = new THREE.Vector3(0, 5.1, -1.5);
@@ -60,17 +66,32 @@ export function buildCatbusMount(): CatbusMount {
 
   // passenger spots along the back, behind the rider
   const seats: THREE.Group[] = [];
+  const seatAt: THREE.Vector3[] = [];
   for (const z of [-2.4, -3.6]) {
     const s = new THREE.Group();
     s.position.set(0, 3.32, z);
     root.add(s);
     seats.push(s);
+    seatAt.push(s.position.clone());
   }
+  const xAxis = new THREE.Vector3(1, 0, 0), inv = new THREE.Quaternion(), p = new THREE.Vector3();
 
   const mount: CatbusMount = {
     catbus, root, seat: SEAT.clone(), seats,
     setSign(t) { if (t === text) return; text = t; draw(); },
     lookAt(p) { catbus.lookTarget = p; },
+    tilt(angle) {
+      root.quaternion.setFromAxisAngle(xAxis, angle);
+      inv.copy(root.quaternion).invert();
+      seats.forEach((s, i) => {
+        // the fur under the seat moves up or down with the body, but not forward
+        const a = seatAt[i];
+        p.copy(a).applyQuaternion(root.quaternion);
+        p.set(a.x, p.y, a.z).applyQuaternion(inv);
+        s.position.copy(p);
+        s.quaternion.copy(inv);
+      });
+    },
   };
   mount.setSign('ANYWHERE');
   return mount;

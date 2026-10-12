@@ -5,6 +5,9 @@ import { AudioEngine } from './engine/Audio';
 import { Game } from './game/Game';
 import { WORLDS } from './worlds';
 import { loadingElement, menuElement } from './game/Screens';
+import { bookProgress, clearBook, loadBook } from './game/PhotoBook';
+import { currentRequests } from './game/Requests';
+import { BookView } from './game/BookView';
 import { openPanel } from './game/Board';
 import type { WorldDef } from './game/types';
 
@@ -34,15 +37,31 @@ let game: Game | null = null;
 let selected: WorldDef = WORLDS[0];
 let relax = false;
 
-function showMenu() {
+async function showMenu(fadeIn = true) {
+  // each world's photo book, for the counts on the cards and the selected world's requests
+  const books = await Promise.all(WORLDS.map((w) => loadBook(w.id)));
+  const progress = Object.fromEntries(books.map((b) => [b.world, b.catalog ? bookProgress(b) : null]));
+  const selectedBook = books.find((b) => b.world === selected.id)!;
+  const scroll = ui.querySelector<HTMLElement>('.menu')?.scrollTop ?? 0;
   ui.innerHTML = '';
-  const menu = menuElement({ worlds: WORLDS, selected, relax, mouseLock: input.mode === 'lock' });
+  const menu = menuElement({ worlds: WORLDS, selected, relax, mouseLock: input.mode === 'lock', books: progress, requests: currentRequests(selectedBook) });
   ui.appendChild(menu);
-  requestAnimationFrame(() => menu.classList.add('show'));
+  if (!fadeIn) menu.scrollTop = scroll;
+  if (fadeIn) requestAnimationFrame(() => menu.classList.add('show'));
+  else menu.classList.add('show');
+  menu.querySelectorAll<HTMLButtonElement>('.book-btn').forEach((b) => b.addEventListener('click', async () => {
+    const def = WORLDS.find((w) => w.id === b.dataset.book) ?? WORLDS[0];
+    audio.start(); audio.uiClick();
+    const view: BookView = new BookView(ui, { worldTitle: def.title, accent: def.accent, book: await loadBook(def.id) }, {
+      // back to the menu, so the card's count and the requests follow a cleared book
+      onClose: () => { view.destroy(); showMenu(false); },
+      onClear: async () => { await clearBook(def.id); return loadBook(def.id); },
+    });
+  }));
   menu.querySelectorAll<HTMLButtonElement>('.world-card').forEach((b) => b.addEventListener('click', () => {
     selected = WORLDS.find((w) => w.id === b.dataset.id) ?? WORLDS[0];
     audio.start(); audio.uiClick();
-    showMenu();
+    showMenu(false);
   }));
   menu.querySelectorAll<HTMLButtonElement>('.mode').forEach((b) => b.addEventListener('click', () => {
     relax = b.dataset.mode === 'relax';

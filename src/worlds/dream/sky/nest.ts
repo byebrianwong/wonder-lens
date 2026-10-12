@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Rng, TAU, clamp, lerp, smoothstep } from '../../../engine/math';
 import { NEST, type Road } from '../layout';
 import type { ScreenFx } from '../common';
+import { GLSL_CLOUD_WEAR, lumpPuff } from '../../../engine/Clouds';
 import { GLSL_CAP, GLSL_NOISE, noise3, type SkyLight } from './shared';
 
 /*
@@ -107,7 +108,8 @@ function puffMass(puffs: Puff[], ring: { r: number; y: number }, y0: number, y1:
     const p = new THREE.IcosahedronGeometry(r, 2);
     p.deleteAttribute('uv');
     p.translate(x, y, z);
-    return p;
+    // lumpy, not round (lumps sized to the puff)
+    return lumpPuff(p, r, 4.5 / r);
   }), false)!;
   const pos = g.attributes.position as THREE.BufferAttribute;
   const cn = new Float32Array(pos.count * 3), ch = new Float32Array(pos.count);
@@ -174,7 +176,7 @@ const WALL_VERT = /* glsl */ `
 /** Brightness cap, golden lining, lightning glow and fog, shared by the wall and the billows. */
 const STORM_COMMON = /* glsl */ `
   uniform vec3 uSunDir; uniform vec3 uRim; uniform vec3 uFogColor; uniform float uFogDensity;
-  uniform vec4 uBolt[${GLOWS}]; uniform vec3 uBoltCol; uniform vec2 uCap;
+  uniform vec4 uBolt[${GLOWS}]; uniform vec3 uBoltCol; uniform vec2 uCap; uniform vec2 uLiningCap;
   vec3 stormFinish(vec3 col, vec3 n, vec3 world, float fogDepth, float puff, float flick) {
     // the body of the cloud stays below the bloom threshold (the sunny inside is allowed brighter than the storm)
     col = capLum(col, uCap.x, uCap.y);
@@ -187,8 +189,8 @@ const STORM_COMMON = /* glsl */ `
     float g = 0.0;
     for (int i = 0; i < ${GLOWS}; i++) { vec3 dv = world - uBolt[i].xyz; g += uBolt[i].w * exp(-dot(dv, dv) / 16000.0); }
     col += uBoltCol * (g * (0.5 + puff) + flick);
-    // the lining and the lightning may bloom a little, but never blow out
-    col = capLum(col, 1.05, 1.7);
+    // the lining and the lightning may bloom a little on the wall, but never blow out (the billows stay under the bloom)
+    col = capLum(col, uLiningCap.x, uLiningCap.y);
     float f = 1.0 - exp(-uFogDensity * uFogDensity * fogDepth * fogDepth);
     return mix(col, uFogColor, clamp(f, 0.0, 1.0));
   }
@@ -215,9 +217,11 @@ const WALL_FRAG = /* glsl */ `
     float flick = 0.0;
   #ifdef INNER
     // darker bands only low down, where the wall meets the cloud floor of the eye, drifting slowly
-    float low = 1.0 - smoothstep(0.0, 75.0, vWorld.y);
+    float low = 1.0 - smoothstep(0.0, 110.0, vWorld.y);
     float band = smoothstep(0.3, 0.85, 0.5 + 0.5 * sin(vWorld.y * 0.09 + puff * 4.0 + sin(theta * 3.0) * 1.2 - uTime * 0.05));
     col = mix(col, uDeep, clamp(low * (0.35 + 0.45 * band), 0.0, 1.0));
+    // painted heads of cloud: the hollows between them sit in blue-lilac shade, even on the sunny side
+    col = mix(col, uShade, (1.0 - smoothstep(0.32, 0.62, puff)) * 0.6);
     // blue sky light on the tops of the billows
     col += uBand * 0.18 * clamp(n.y, 0.0, 1.0);
   #else
@@ -238,7 +242,7 @@ const WALL_FRAG = /* glsl */ `
   #endif
     // creases between the lumps sit in their own shade (softly on the sunny inside); the tops of lumps catch the sky
   #ifdef INNER
-    col *= mix(0.86, 1.0, smoothstep(0.0, 0.6, vBulge));
+    col *= mix(0.74, 1.0, smoothstep(0.0, 0.6, vBulge));
   #else
     col *= mix(0.72, 1.0, smoothstep(0.0, 0.6, vBulge));
   #endif
@@ -249,10 +253,13 @@ const WALL_FRAG = /* glsl */ `
 
 const PUFF_VERT = /* glsl */ `
   attribute vec3 cloudN; attribute float cloudH;
-  varying vec3 vN; varying vec3 vWorld; varying float vH; varying float vFogDepth;
+  varying vec3 vN; varying vec3 vPN; varying vec3 vObj; varying vec3 vWorld; varying float vH; varying float vFogDepth;
   void main() {
     vec4 wp = modelMatrix * vec4(position, 1.0);
-    vN = normalize(mat3(modelMatrix) * normalize(normal * 0.5 + cloudN * 0.8));
+    // the noise that wears the outlines, scaled to these big puffs (10-28 across, the engine's cumulus is sized for about 4)
+    vObj = position * 0.22;
+    vPN = normalize(mat3(modelMatrix) * normal);
+    vN = normalize(mat3(modelMatrix) * normalize(normal * 0.24 + cloudN));
     vH = cloudH; vWorld = wp.xyz;
     vec4 mv = viewMatrix * wp;
     vFogDepth = -mv.z;
@@ -262,17 +269,22 @@ const PUFF_VERT = /* glsl */ `
 
 const PUFF_FRAG = /* glsl */ `
   uniform vec3 uLit; uniform vec3 uShade; uniform vec3 uDeep;
-  varying vec3 vN; varying vec3 vWorld; varying float vH; varying float vFogDepth;
+  varying vec3 vN; varying vec3 vPN; varying vec3 vObj; varying vec3 vWorld; varying float vH; varying float vFogDepth;
   ${GLSL_CAP}
   ${STORM_COMMON}
+  ${GLSL_CLOUD_WEAR}
   void main() {
     vec3 n = normalize(vN);
-    float d = dot(n, uSunDir);
+    // ragged outlines instead of round ones (drawn with alpha-to-coverage)
+    float nz = cloudNoise2(vObj);
+    float a = cloudWear(nz, normalize(vPN), normalize(cameraPosition - vWorld), 1.0);
+    if (a < 0.02) discard;
+    float d = dot(n, uSunDir) + (nz - 0.5) * 0.3;
     float lit = smoothstep(-0.45, 0.55, d) * 0.8 + smoothstep(0.35, 0.8, d) * 0.2;
     vec3 col = mix(uShade, uLit, lit);
     col *= mix(0.72, 1.0, smoothstep(0.0, 0.45, vH));
     col = mix(col, uDeep, (1.0 - smoothstep(30.0, 260.0, vWorld.y)) * 0.55);
-    gl_FragColor = vec4(stormFinish(col, n, vWorld, vFogDepth, 0.5, 0.0), 1.0);
+    gl_FragColor = vec4(stormFinish(col, n, vWorld, vFogDepth, 0.5, 0.0), a);
   }
 `;
 
@@ -303,11 +315,12 @@ export function buildNest(road: Road, lowDetail: boolean): Nest {
     uBolt: { value: glow4 }, uBoltCol: { value: new THREE.Color(0.75, 0.82, 1.0).multiplyScalar(1.7) },
     uSpin: { value: 0 }, uTime: { value: 0 }, uFlicker: { value: 0 },
   };
-  const colours = () => ({ uLit: { value: new THREE.Color() }, uShade: { value: new THREE.Color() }, uDeep: { value: new THREE.Color() }, uBand: { value: new THREE.Color() }, uCap: { value: new THREE.Vector2(0.58, 0.8) } });
+  const colours = () => ({ uLit: { value: new THREE.Color() }, uShade: { value: new THREE.Color() }, uDeep: { value: new THREE.Color() }, uBand: { value: new THREE.Color() }, uCap: { value: new THREE.Vector2(0.58, 0.8) }, uLiningCap: { value: new THREE.Vector2(1.05, 1.7) } });
   const outC = colours(), inC = colours(), puffC = colours();
   const outerMat = new THREE.ShaderMaterial({ uniforms: { ...common, ...outC }, vertexShader: WALL_VERT, fragmentShader: WALL_FRAG });
   const innerMat = new THREE.ShaderMaterial({ uniforms: { ...common, ...inC }, vertexShader: WALL_VERT, fragmentShader: WALL_FRAG, defines: { INNER: '' } });
-  const puffMat = new THREE.ShaderMaterial({ uniforms: { ...common, ...puffC }, vertexShader: PUFF_VERT, fragmentShader: PUFF_FRAG });
+  puffC.uLiningCap.value.set(0.8, 0.93);
+  const puffMat = new THREE.ShaderMaterial({ uniforms: { ...common, ...puffC }, vertexShader: PUFF_VERT, fragmentShader: PUFF_FRAG, alphaToCoverage: true });
 
   // ---------- the two faces of the wall ----------
   const seg = lowDetail ? 120 : 180, step = lowDetail ? 9 : 6;
@@ -493,12 +506,13 @@ export function buildNest(road: Road, lowDetail: boolean): Nest {
   group.add(proxy);
 
   const white = new THREE.Color(1, 1, 1), warm = new THREE.Color(0xffd0a8), cream = new THREE.Color(1.0, 0.96, 0.9);
-  // the sunny inside may be brighter than the storm outside, still below the bloom threshold
-  inC.uCap.value.set(0.7, 0.93);
+  // the sunny inside may be brighter than the storm outside, but well below the bloom threshold, so it reads as
+  // painted cloud and not a white fog
+  inC.uCap.value.set(0.5, 0.72);
   // outside: cool slate blue-grey, very dark slate in the bands and at the foot, pale grey-blue between bands
   const slate = new THREE.Color(0x7c8ca8), deepOut = new THREE.Color(0x323c50), paleOut = new THREE.Color(0xa8b4c8);
-  // inside: white-cream sunlit cumulus, pale sky-blue-lilac shade, a soft dusky blue only low down
-  const shadeIn = new THREE.Color(0xcad4f0), deepIn = new THREE.Color(0x96a2c4);
+  // inside: cream sunlit cumulus, blue-lilac shade, a dusky blue low down
+  const shadeIn = new THREE.Color(0xa8b8e0), deepIn = new THREE.Color(0x7a88b8);
 
   const nest: Nest = {
     group, proxy, onBolt: null, flashLevel: 0,
@@ -517,7 +531,7 @@ export function buildNest(road: Road, lowDetail: boolean): Nest {
       outC.uShade.value.copy(slate).lerp(sky.topColor.value, 0.15).multiplyScalar(0.85 + 0.2 * I);
       outC.uDeep.value.copy(deepOut);
       outC.uBand.value.copy(paleOut).multiplyScalar(0.8 + 0.2 * I);
-      inC.uLit.value.copy(cream).lerp(light.sunColor, 0.15).multiplyScalar(1.0 + 0.2 * I);
+      inC.uLit.value.copy(cream).lerp(light.sunColor, 0.15).multiplyScalar(0.82 + 0.15 * I);
       inC.uShade.value.copy(shadeIn).lerp(sky.midColor.value, 0.2);
       inC.uDeep.value.copy(deepIn);
       inC.uBand.value.copy(sky.topColor.value);

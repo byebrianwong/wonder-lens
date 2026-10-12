@@ -12,6 +12,7 @@ import { buildCloudSea, buildMoon, worldLight } from '../garden/clouds';
 import { dancePose, flyPose, gatherPose, getCast, playPose, poseKid, type TotoroPose } from '../garden/cast';
 import { buildSootSwarm, makeSootSprite } from '../garden/soot';
 import { NoteStream, buildSprouts } from '../garden/fx';
+import { momentCue } from '../secrets';
 
 /*
  * Totoro's garden at midnight (My Neighbor Totoro), z 60 to -230. In ride order:
@@ -200,6 +201,8 @@ export function buildGarden(ctx: SetContext): BuiltSet {
       if (z < -172 && z > -202) { duetT = 0; totoroS.setPose('duet', 3); } else totoroS.setPose('roar', 2.4);
       return true;
     }, reactRange: 16,
+    // just before he hops onto his top and the tree bursts out of the seed bed
+    cue: momentCue(ctx, -18),
   });
   const chuAnchor = new THREE.Object3D(); troupe.add(chuAnchor);
   const chuS = new Subject({

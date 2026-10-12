@@ -64,7 +64,7 @@ export function buildSky(ctx: SetContext): BuiltSet {
   ];
   const gate = softenCumulus(new CumulusField(rng, gatePl, { variants: 4 }));
   own.add(gate.group);
-  const gateLit = new THREE.Color(0.52, 0.5, 0.6), gateShade = new THREE.Color(0.16, 0.18, 0.24), boltTint = new THREE.Color(0.75, 0.82, 1.0), tmpC = new THREE.Color();
+  const gateLit = new THREE.Color(0.56, 0.54, 0.7), gateShade = new THREE.Color(0.24, 0.25, 0.4), boltTint = new THREE.Color(0.75, 0.82, 1.0), tmpC = new THREE.Color();
 
   // ---------- landings: a puff of cloud under the paws ----------
   const puffs = new Puffs(0xfff2e8, 48, 4242);

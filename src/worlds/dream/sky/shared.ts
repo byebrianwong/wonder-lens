@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { CumulusField } from '../../../engine/Clouds';
+import { CUMULUS_HOOK, type CumulusField } from '../../../engine/Clouds';
 
 /*
  * Small things the sky scene's pieces share: GLSL noise, a CPU 3D noise, and `SkyLight`, which reads the
@@ -53,20 +53,19 @@ export function softenCumulus(field: CumulusField) {
   const m = field.material;
   m.uniforms.uLift = { value: new THREE.Color(0.84, 0.7, 0.82) };
   m.uniforms.uLiftAmt = { value: 0 };
+  // a lower cap than the engine's: the sun is low and close, and its own glow already brightens these clouds
+  field.uniforms.uCap.value.set(0.55, 0.78);
   const decl = 'uniform vec3 uFogColor; uniform float uFogDensity;';
-  const fogLine = 'float fog = 1.0 - exp(';
-  if (!m.fragmentShader.includes(decl) || !m.fragmentShader.includes(fogLine)) {
+  if (!m.fragmentShader.includes(decl) || !m.fragmentShader.includes(CUMULUS_HOOK)) {
     console.warn('[dream/sky] CumulusField shader changed; sky clouds are not softened');
     return field;
   }
   m.fragmentShader = m.fragmentShader
-    .replace(decl, `${decl}\nuniform vec3 uLift; uniform float uLiftAmt;\n${GLSL_CAP}`)
-    .replace(fogLine, /* glsl */ `
+    .replace(decl, `${decl}\nuniform vec3 uLift; uniform float uLiftAmt;`)
+    .replace(CUMULUS_HOOK, /* glsl */ `
       col = mix(col, uLift, (1.0 - lit) * uLiftAmt);
       float nearSun = smoothstep(0.8, 0.97, clamp(dot(-V, uSunDir), 0.0, 1.0));
-      col *= 1.0 - 0.25 * nearSun * (1.0 - rim);
-      col = capLum(col, 0.6, 0.82);
-      ${fogLine}`);
+      col *= 1.0 - 0.25 * nearSun * (1.0 - rim);`);
   return field;
 }
 

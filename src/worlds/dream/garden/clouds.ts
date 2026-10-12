@@ -58,6 +58,9 @@ const FLOOR_FRAG = /* glsl */ `
     float a = smoothstep(0.26, 0.42, h);
     vec2 hd = (vW.xz - uHoleC.xz) / uHoleR;
     a *= smoothstep(0.9, 1.08, length(hd) + (h - 0.5) * 0.25);
+    // Seen from below and nearly edge-on (climbing the tree, under the sea), the billows squash into thin grey
+    // stripes that cut across the cumulus standing in the sea. Fade the underside out at those angles.
+    if (!gl_FrontFacing) a *= smoothstep(0.04, 0.25, abs(normalize(cameraPosition - vW).y));
     float fog = 1.0 - exp(-uFogDensity * uFogDensity * vDepth * vDepth);
     col = mix(col, uFog, clamp(fog, 0.0, 1.0));
     a *= uOpacity * (1.0 - smoothstep(900.0, 1200.0, length(vW.xz - uHoleC.xz)));
@@ -124,8 +127,11 @@ export function buildCloudSea(o: { y: number; hole: THREE.Vector3; holeR: [numbe
         cumulus.update(light.sky, light.fog, light.sun.intensity);
         // moonlit: silver on top, deep blue in the shade
         const cu = cumulus.uniforms;
-        cu.uLit.value.lerp(tint, 0.4).multiplyScalar(1.25);
-        uniforms.uLit.value.copy(cu.uLit.value).multiplyScalar(1.05);
+        cu.uLit.value.lerp(tint, 0.4);
+        uniforms.uLit.value.copy(cu.uLit.value).multiplyScalar(1.3);
+        // the cumulus stay a moonlit blue-grey, a little darker than the sea they stand in; their rims catch the moon
+        cu.uLit.value.multiplyScalar(0.88);
+        cu.uRim.value.multiplyScalar(1.3);
         uniforms.uShade.value.copy(cu.uShade.value).multiplyScalar(0.95);
         uniforms.uFog.value.copy(light.fog.color);
         uniforms.uFogDensity.value = light.fog.density * 0.6;

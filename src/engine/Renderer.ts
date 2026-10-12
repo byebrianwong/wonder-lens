@@ -201,6 +201,53 @@ export class Renderer {
         if (u) for (const k in u) upload(u[k]?.value);
       }
     });
+    this.precompileShadows(scene, camera);
+  }
+
+  /**
+   * Compile the shadow pass's programs too. compileAsync leaves them out. A shadow caster with an alpha-tested
+   * map (leaf cards, for example) gets its own depth program, which three.js compiles the first time the caster
+   * falls inside the sun's shadow camera, so each one stalled a frame mid-ride (50-120 ms in Catbus to
+   * Anywhere). This draws one frame with every directional shadow camera stretched over the whole world and
+   * every hidden object shown, then puts everything back. Lights keep their visibility (see precompile).
+   */
+  private precompileShadows(scene: THREE.Scene, camera: THREE.Camera) {
+    const r = this.renderer;
+    if (!r.shadowMap.enabled) return;
+    // a light, and every group holding one, keeps its visibility: the light count is part of every program
+    const keep = new Set<THREE.Object3D>();
+    scene.traverse((o) => {
+      if (!(o as THREE.Light).isLight) return;
+      keep.add(o);
+      o.traverseAncestors((a) => keep.add(a));
+    });
+    const shown: THREE.Object3D[] = [];
+    scene.traverse((o) => {
+      if (!o.visible && !keep.has(o)) { o.visible = true; shown.push(o); }
+    });
+    const cams: Array<[THREE.OrthographicCamera, number[]]> = [];
+    scene.traverse((o) => {
+      const l = o as THREE.DirectionalLight;
+      if (!l.isDirectionalLight || !l.castShadow) return;
+      const c = l.shadow.camera;
+      cams.push([c, [c.left, c.right, c.top, c.bottom, c.near, c.far]]);
+      c.left = c.bottom = -5000; c.right = c.top = 5000; c.near = -5000; c.far = 5000;
+      c.updateProjectionMatrix();
+    });
+    const prev = r.getRenderTarget();
+    try {
+      r.shadowMap.needsUpdate = true;
+      r.setRenderTarget(this.composer.renderTarget1);
+      r.render(scene, camera);
+    } finally {
+      r.setRenderTarget(prev);
+      for (const o of shown) o.visible = false;
+      for (const [c, v] of cams) {
+        [c.left, c.right, c.top, c.bottom, c.near, c.far] = v;
+        c.updateProjectionMatrix();
+      }
+      r.shadowMap.needsUpdate = true;
+    }
   }
 
   resize() {

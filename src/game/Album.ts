@@ -1,5 +1,8 @@
 import type { PhotoResult } from './Photo';
 import type { Subject } from './Subject';
+import type { BookProgress } from './PhotoBook';
+import type { Requester } from './types';
+import { requestsHtml, type RequestStatus } from './Screens';
 import { boardHtml, MAX_SHARE, savedHtml, saveFormHtml, wireShots } from './Board';
 import { rememberName, savedName, submitRun } from './Leaderboard';
 
@@ -10,6 +13,8 @@ export interface AlbumSummary {
   bestBySubject: Map<string, PhotoResult>;
   totalScore: number;
   found: number;
+  /** the best photo of each film still matched this ride, by still id; each still's bonus counts once */
+  stills: Map<string, PhotoResult>;
   rank: string;
   rankBlurb: string;
 }
@@ -25,8 +30,12 @@ export function summarize(photos: PhotoResult[], subjects: Subject[]): AlbumSumm
   // like Pokemon Snap: your album score is the best shot of each subject, plus a little for volume
   let total = 0;
   for (const [id, p] of best) total += p.shots.find((x) => x.subject.id === id)?.score ?? 0;
+  const stills = new Map<string, PhotoResult>();
+  for (const p of photos) for (const h of p.stills ?? []) if (!stills.has(h.id)) { stills.set(h.id, p); total += h.bonus; }
   const found = best.size;
-  const ratio = subjects.length ? found / subjects.length : 0;
+  // secret subjects count towards the rank only as a bonus: a ride that misses them can still be a Legend
+  const regular = subjects.filter((s) => !s.secret).length;
+  const ratio = regular ? Math.min(1, found / regular) : 0;
   const rank = ratio >= 0.9 && total > 14000 ? 'Legend' : ratio >= 0.7 ? 'Wanderer' : ratio >= 0.45 ? 'Explorer' : ratio > 0.2 ? 'Visitor' : 'Passenger';
   const blurb = {
     Legend: 'You saw everything and framed it beautifully. The spirits know your name.',
@@ -35,14 +44,29 @@ export function summarize(photos: PhotoResult[], subjects: Subject[]): AlbumSumm
     Visitor: 'You caught a few glimpses. Ride again and look everywhere, including behind you.',
     Passenger: 'Sometimes it is enough to just watch the world go by.',
   }[rank]!;
-  return { photos, bestBySubject: best, totalScore: total, found, rank, rankBlurb: blurb };
+  return { photos, bestBySubject: best, totalScore: total, found, stills, rank, rankBlurb: blurb };
+}
+
+/** What the album shows beyond the ride itself: the photo book and the photo requests. */
+export interface AlbumExtras {
+  /** subjects this ride added to the photo book ('new') or improved ('best'), keyed 's:<id>' ('f:<id>' for stills) */
+  fresh?: Map<string, 'new' | 'best'>;
+  /** secret subjects already in the photo book before this ride: the field guide may name them */
+  knownSecrets?: Set<string>;
+  /** the photo book after this ride */
+  book?: BookProgress;
+  onBook?: () => void;
+  requester?: Requester;
+  requests?: RequestStatus[];
+  /** the world's id: shows the form that saves the ride to the leaderboard */
+  worldId?: string;
 }
 
 /** Full-screen end-of-ride album. */
 export class Album {
   root: HTMLElement;
   constructor(parent: HTMLElement, summary: AlbumSummary, subjects: Subject[], worldTitle: string, accent: string,
-    onAgain: () => void, onMenu: () => void, relax: boolean, worldId?: string) {
+    onAgain: () => void, onMenu: () => void, relax: boolean, extras: AlbumExtras = {}) {
     this.root = document.createElement('div');
     this.root.className = 'album';
     this.root.style.setProperty('--accent', accent);
@@ -50,13 +74,27 @@ export class Album {
     const guide = subjects.map((s) => {
       const p = summary.bestBySubject.get(s.id);
       const shot = p?.shots.find((x) => x.subject.id === s.id);
+      // an unknown secret stays a secret: no hint
+      if (!p && s.secret && !extras.knownSecrets?.has(s.id)) {
+        return `<div class="guide-item secret"><div class="guide-thumb"><span>?</span></div>
+          <div class="guide-text"><div class="guide-name">???</div><div class="guide-from">A secret</div></div></div>`;
+      }
+      const fresh = extras.fresh?.get('s:' + s.id);
       return `<div class="guide-item ${p ? 'found' : ''}">
         <div class="guide-thumb">${p ? `<img src="${p.dataUrl}">` : '<span>?</span>'}</div>
+        ${fresh ? `<span class="ribbon ${fresh}">${fresh === 'new' ? 'New' : 'New best'}</span>` : ''}
         <div class="guide-text"><div class="guide-name">${p ? s.name : '???'}</div>
         <div class="guide-from">${p ? s.from : 'Not yet photographed'}</div>
         ${shot ? `<div class="guide-score">${shot.score.toLocaleString()} pts${shot.pose !== 'idle' ? ' · ' + shot.poseLabel : ''}</div>` : `<div class="guide-hint">${s.hint || ''}</div>`}</div>
       </div>`;
     }).join('');
+    const regular = subjects.filter((s) => !s.secret);
+    const regularFound = regular.filter((s) => summary.bestBySubject.has(s.id)).length;
+    const secretsFound = summary.found - regularFound;
+    const book = extras.book;
+    const freshCount = extras.fresh?.size ?? 0;
+    const requests = extras.requests?.length
+      ? `<section class="album-requests">${requestsHtml(extras.requester, extras.requests)}</section>` : '';
     const sorted = summary.photos.slice().sort((a, b) => b.total - a.total);
     const hero = sorted[0];
     const heroHtml = hero ? `<section class="hero-shot"><h2>Shot of the ride</h2><figure class="album-photo hero" data-id="${hero.id}"><img src="${hero.dataUrl}"><figcaption><b>${hero.primary ? hero.primary.subject.name : 'Scenery'}</b><span>${stars(hero.stars)}</span><em>${hero.total.toLocaleString()} pts${hero.bonuses.length ? ' · ' + hero.bonuses.join(' · ') : ''}</em></figcaption></figure></section>` : '';
@@ -73,16 +111,19 @@ export class Album {
           <p>${summary.rankBlurb}</p>
           <div class="album-stats">
             <div><b>${total}</b><span>album score</span></div>
-            <div><b>${summary.found}<i>/${subjects.length}</i></b><span>subjects found</span></div>
+            <div><b>${regularFound}<i>/${regular.length}</i></b><span>subjects found${secretsFound ? ` +${secretsFound} secret` : ''}</span></div>
             <div><b>${summary.photos.length}</b><span>photos taken</span></div>
+            ${book ? `<div><b>${book.found}<i>/${book.total}</i></b><span>photo book${freshCount ? ` · ${freshCount} new` : ''}</span></div>` : ''}
           </div>
           <div class="album-actions">
             <button class="btn primary" data-act="again">Ride again</button>
+            ${extras.onBook ? '<button class="btn" data-act="book">Open the photo book</button>' : ''}
             <button class="btn" data-act="menu">Choose a world</button>
           </div>
         </header>
-        ${worldId && !relax && summary.totalScore > 0 ? '<section class="lb-save"></section>' : ''}
+        ${extras.worldId && !relax && summary.totalScore > 0 ? '<section class="lb-save"></section>' : ''}
         ${heroHtml}
+        ${requests}
         <section><h2>Field guide</h2><div class="guide">${guide}</div></section>
         <section><h2>Your photos</h2><div class="album-grid">${photos || '<p class="empty">No photos this time. Next ride, try the shutter.</p>'}</div></section>
       </div>
@@ -91,6 +132,7 @@ export class Album {
     requestAnimationFrame(() => this.root.classList.add('show'));
     this.root.querySelector('[data-act=again]')!.addEventListener('click', onAgain);
     this.root.querySelector('[data-act=menu]')!.addEventListener('click', onMenu);
+    this.root.querySelector('[data-act=book]')?.addEventListener('click', () => extras.onBook?.());
     const lb = this.root.querySelector('.lightbox') as HTMLElement;
     const lbImg = lb.querySelector('img') as HTMLImageElement;
     const lbLink = lb.querySelector('a') as HTMLAnchorElement;
@@ -104,7 +146,7 @@ export class Album {
     lb.querySelector('[data-act=close]')!.addEventListener('click', () => lb.classList.remove('show'));
     lb.addEventListener('click', (e) => { if (e.target === lb) lb.classList.remove('show'); });
     const save = this.root.querySelector('.lb-save') as HTMLElement | null;
-    if (save && worldId) mountSave(save, summary, sorted, worldId);
+    if (save && extras.worldId) mountSave(save, summary, sorted, extras.worldId);
   }
   destroy() { this.root.remove(); }
 }
