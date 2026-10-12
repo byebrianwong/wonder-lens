@@ -35,7 +35,7 @@ export interface Review {
   photos: { verdict: Verdict; reason: string }[];
 }
 
-const MODEL = 'claude-opus-5-5';
+const MODEL = 'claude-sonnet-5-5';
 
 const SYSTEM = `You review player submissions for the public leaderboard of Wonder Lens, a browser game. Players ride through stylized, painterly 3D worlds (a Studio Ghibli style dream at night, a Wes Anderson style pastel film set, an Amélie style Paris) and photograph the characters they meet. A genuine photo is a frame rendered by the game: soft 3D scenery, cartoon or toy-like characters and figures, no real people, and no on-screen writing.
 
