@@ -1,5 +1,7 @@
 import type { PhotoResult } from './Photo';
 import type { Subject } from './Subject';
+import { boardHtml, MAX_SHARE, savedHtml, saveFormHtml, wireShots } from './Board';
+import { rememberName, savedName, submitRun } from './Leaderboard';
 
 const stars = (n: number) => '★'.repeat(n) + '<span class="dim">' + '★'.repeat(Math.max(0, 4 - n)) + '</span>';
 
@@ -40,7 +42,7 @@ export function summarize(photos: PhotoResult[], subjects: Subject[]): AlbumSumm
 export class Album {
   root: HTMLElement;
   constructor(parent: HTMLElement, summary: AlbumSummary, subjects: Subject[], worldTitle: string, accent: string,
-    onAgain: () => void, onMenu: () => void, relax: boolean) {
+    onAgain: () => void, onMenu: () => void, relax: boolean, worldId?: string) {
     this.root = document.createElement('div');
     this.root.className = 'album';
     this.root.style.setProperty('--accent', accent);
@@ -79,6 +81,7 @@ export class Album {
             <button class="btn" data-act="menu">Choose a world</button>
           </div>
         </header>
+        ${worldId && !relax && summary.totalScore > 0 ? '<section class="lb-save"></section>' : ''}
         ${heroHtml}
         <section><h2>Field guide</h2><div class="guide">${guide}</div></section>
         <section><h2>Your photos</h2><div class="album-grid">${photos || '<p class="empty">No photos this time. Next ride, try the shutter.</p>'}</div></section>
@@ -100,6 +103,52 @@ export class Album {
     }));
     lb.querySelector('[data-act=close]')!.addEventListener('click', () => lb.classList.remove('show'));
     lb.addEventListener('click', (e) => { if (e.target === lb) lb.classList.remove('show'); });
+    const save = this.root.querySelector('.lb-save') as HTMLElement | null;
+    if (save && worldId) mountSave(save, summary, sorted, worldId);
   }
   destroy() { this.root.remove(); }
+}
+
+/** The "save to the leaderboard" form: a name, up to three photos to share, then the board. */
+function mountSave(section: HTMLElement, summary: AlbumSummary, sorted: PhotoResult[], worldId: string) {
+  const options = sorted.slice(0, 6).map((p) => ({ id: p.id, dataUrl: p.dataUrl, label: p.primary ? p.primary.subject.name : 'Scenery' }));
+  const picked = new Set(options.slice(0, 1).map((o) => o.id));
+  section.innerHTML = saveFormHtml({ name: savedName(), photos: options, picked: [...picked] });
+  const status = section.querySelector('.lb-status') as HTMLElement;
+  section.querySelectorAll<HTMLButtonElement>('.lb-pick-item').forEach((b) => b.addEventListener('click', () => {
+    const id = Number(b.dataset.id);
+    if (picked.has(id)) picked.delete(id);
+    else if (picked.size < MAX_SHARE) picked.add(id);
+    else { status.textContent = `You can share up to ${MAX_SHARE} photos.`; return; }
+    status.textContent = '';
+    b.classList.toggle('on', picked.has(id));
+    b.setAttribute('aria-pressed', String(picked.has(id)));
+  }));
+  const form = section.querySelector('form') as HTMLFormElement;
+  const input = section.querySelector('.lb-name') as HTMLInputElement;
+  const button = section.querySelector('.lb-save-btn') as HTMLButtonElement;
+  // keys typed into the name box must not reach the game's own shortcuts (M mutes)
+  input.addEventListener('keydown', (e) => e.stopPropagation());
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = input.value.trim();
+    if (!name) { input.focus(); return; }
+    button.disabled = true; input.disabled = true;
+    button.textContent = picked.size ? 'Checking photos…' : 'Saving…';
+    status.textContent = '';
+    const result = await submitRun({
+      world: worldId, name, score: summary.totalScore, found: summary.found, rank: summary.rank,
+      photos: sorted.filter((p) => picked.has(p.id)),
+    });
+    if (result.ok) {
+      rememberName(name);
+      section.innerHTML = `<h2>Leaderboard</h2>${savedHtml(result.place, result.board.players, result.photos)}<div class="lb-board">${boardHtml(result.board, { rows: 10 })}</div>`;
+      wireShots(section);
+    } else {
+      button.disabled = false; input.disabled = false;
+      button.textContent = 'Save score';
+      status.textContent = result.message;
+      if (result.error === 'name') input.focus();
+    }
+  });
 }

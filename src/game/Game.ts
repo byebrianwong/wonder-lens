@@ -327,7 +327,7 @@ export class Game {
       try {
         const summary = summarize(this.photos, this.world.subjects);
         this.album = new Album(this.o.ui, summary, this.world.subjects, this.o.def.title, this.o.def.accent,
-          () => this.o.onAgain(), () => this.exit(), this.o.relax);
+          () => this.o.onAgain(), () => this.exit(), this.o.relax, this.o.def.id);
       } catch (err) {
         console.error('[wonder lens] album failed', err);
         this.exit();

@@ -13,6 +13,7 @@
   },
   "devDependencies": {
     "@storybook/html-vite": "^10.6.0",
+    "@types/node": "^26.6.5",
     "@types/three": "^0.186.0",
     "chromatic": "^18.9.5",
     "storybook": "^10.6.0",
@@ -20,6 +21,10 @@
     "vite": "^8.3.0"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
+    "@upstash/redis": "^1.39.0",
+    "@vercel/blob": "^2.8.1",
+    "obscenity": "^0.4.6",
     "three": "^0.186.1"
   }
 }

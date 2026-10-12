@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Wonder Lens admin</title>
+<style>
+  :root { color-scheme: dark; --bg: #0b0e14; --ink: #f2efe8; --dim: rgba(242,239,232,0.6); --line: rgba(255,255,255,0.12); --ok: #7fc7a4; --warn: #ffb27a; --bad: #ff7a7a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; display: flex; flex-direction: column; gap: 28px; }
+  h1 { font: 400 2rem Georgia, serif; margin: 0; }
+  h2 { font: 400 1.4rem Georgia, serif; margin: 0 0 10px; }
+  p { color: var(--dim); margin: 0; }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; border: 1px solid var(--line); background: rgba(255,255,255,0.08); border-radius: 999px; padding: 5px 12px; }
+  button:hover { background: rgba(255,255,255,0.16); }
+  button.bad { border-color: var(--bad); }
+  button.ok { border-color: var(--ok); }
+  input { background: rgba(255,255,255,0.06); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; min-width: 0; }
+  .login { display: flex; gap: 8px; flex-wrap: wrap; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+  .shot { border: 1px solid var(--line); border-radius: 12px; padding: 8px; display: flex; flex-direction: column; gap: 6px; background: rgba(255,255,255,0.03); }
+  .shot img { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 6px; display: block; background: #222; }
+  .noimg { aspect-ratio: 16/9; display: grid; place-items: center; border-radius: 6px; background: rgba(255,255,255,0.05); color: var(--dim); font-size: 0.85rem; text-align: center; padding: 8px; }
+  .meta { font-size: 0.82rem; color: var(--dim); }
+  .tag { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.12em; padding: 1px 7px; border-radius: 999px; border: 1px solid currentColor; }
+  .approved { color: var(--ok); } .pending { color: var(--warn); } .rejected { color: var(--bad); }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  th { color: var(--dim); font-weight: 400; }
+  .empty { color: var(--dim); }
+  #msg { color: var(--warn); min-height: 1.2em; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Wonder Lens admin</h1>
+    <p>Review shared photos and leaderboard names. Photos Claude approved are already public; photos waiting here are hidden until you approve them.</p>
+  </header>
+  <form class="login" id="login">
+    <input id="token" type="password" placeholder="Admin token (ADMIN_TOKEN)" autocomplete="current-password" aria-label="Admin token">
+    <button type="submit">Open</button>
+  </form>
+  <div id="msg" role="status"></div>
+  <section><h2>Waiting for review</h2><div id="pending" class="grid"></div></section>
+  <section><h2>Recent photos</h2><div id="recent" class="grid"></div></section>
+  <section><h2>Leaderboards</h2><div id="boards"></div></section>
+</main>
+<script>
+  // The admin token is kept for this tab only and sent as a header, never in the URL.
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  let token = sessionStorage.getItem('wl.admin') || '';
+  $('token').value = token;
+
+  async function call(method, body) {
+    const res = await fetch('/api/admin', {
+      method, headers: { 'x-admin-token': token, 'content-type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (res.status === 401) throw new Error('Wrong admin token.');
+    if (!res.ok) throw new Error('The server said ' + res.status + '.');
+    return res.json();
+  }
+
+  function shotCard(s) {
+    const when = new Date(s.at).toLocaleString();
+    const img = s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener"><img src="${esc(s.url)}" alt=""></a>` : `<div class="noimg">Image deleted<br>${esc(s.reason)}</div>`;
+    const buttons = [
+      s.status !== 'approved' && s.url ? `<button class="ok" data-act="approve" data-id="${esc(s.id)}">Approve</button>` : '',
+      s.status !== 'rejected' ? `<button class="bad" data-act="hide" data-id="${esc(s.id)}">Hide</button>` : '',
+      `<button data-act="delete" data-id="${esc(s.id)}">Delete</button>`,
+    ].join('');
+    return `<div class="shot">${img}
+      <div class="row"><span class="tag ${esc(s.status)}">${esc(s.status)}</span><b>${esc(s.subject)}</b></div>
+      <div class="meta">${esc(s.name)} · ${esc(s.world)} · ${Number(s.score).toLocaleString()} pts · ${esc(when)}</div>
+      <div class="meta">${esc(s.reason)}</div>
+      <div class="row">${buttons}</div></div>`;
+  }
+
+  async function load() {
+    $('msg').textContent = 'Loading…';
+    try {
+      const d = await call('GET');
+      $('msg').textContent = '';
+      $('pending').innerHTML = d.pending.map(shotCard).join('') || '<p class="empty">Nothing waiting.</p>';
+      $('recent').innerHTML = d.recent.map(shotCard).join('') || '<p class="empty">No photos in the last 30 days.</p>';
+      $('boards').innerHTML = Object.entries(d.boards).map(([world, rows]) => `
+        <h3>${esc(world)}</h3>
+        ${rows.length ? `<table><tr><th>#</th><th>Name</th><th>Score</th><th>Found</th><th>When</th><th></th></tr>
+          ${rows.map((r) => `<tr><td>${r.place}</td><td>${esc(r.name)}</td><td>${r.score.toLocaleString()}</td><td>${r.found}/${r.total}</td>
+            <td>${esc(new Date(r.at).toLocaleDateString())}</td>
+            <td><button class="bad" data-act="remove-player" data-world="${esc(world)}" data-player="${esc(r.player)}">Remove</button></td></tr>`).join('')}
+        </table>` : '<p class="empty">No scores.</p>'}`).join('');
+    } catch (e) {
+      $('msg').textContent = e.message;
+    }
+  }
+
+  $('login').addEventListener('submit', (e) => {
+    e.preventDefault();
+    token = $('token').value.trim();
+    sessionStorage.setItem('wl.admin', token);
+    load();
+  });
+
+  document.addEventListener('click', async (e) => {
+    const b = e.target.closest('button[data-act]');
+    if (!b) return;
+    const act = b.dataset.act;
+    if (act === 'remove-player' && !confirm('Remove this player from the board and delete their shared photos?')) return;
+    if (act === 'delete' && !confirm('Delete this photo for good?')) return;
+    b.disabled = true;
+    try {
+      await call('POST', act === 'remove-player'
+        ? { action: act, world: b.dataset.world, player: b.dataset.player }
+        : { action: act, id: b.dataset.id });
+      await load();
+    } catch (err) {
+      $('msg').textContent = err.message;
+      b.disabled = false;
+    }
+  });
+
+  if (token) load();
+</script>
+</body>
+</html>
