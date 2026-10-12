@@ -22,7 +22,8 @@ npm install
 npm run dev
 ```
 
-Then open http://localhost:5173. `npm run build` makes a static bundle in `dist/` that any static host can serve.
+Then open http://localhost:5173. `npm run build` makes the game's static bundle in `dist/`. The leaderboard needs the
+serverless functions in `api/`, so the full site runs on Vercel (see below).
 
 ## Controls
 
@@ -53,8 +54,38 @@ the reticle turns gold and names the moment while a special moment is on.
 Relax ride: no HUD, unlimited film, and after a few seconds without input the camera drifts on its own towards
 whatever is worth looking at.
 
+## Leaderboard and shared photos
+
+After a Snap ride, players can save their score with a name and share up to 3 photos. There are no accounts: the
+browser keeps a random player id in localStorage, so a player keeps their line on the board on the same browser.
+Each world has one board covering the last 30 days. A player's line shows their best run from those 30 days.
+The menu's Leaderboards button shows each world's board and the 12 best shared photos.
+
+Safety checks, all on the server (`server/moderate.ts`):
+
+- Names: 1 to 16 letters, numbers, spaces or `. - _ '`, then a word filter (the `obscenity` package), then Claude.
+- Photos: must be small JPEGs. Claude checks that each one looks like a frame from the game and is fit for anyone
+  to see. Approved photos appear at once. Rejected photos are deleted straight away. If the check is not set up or
+  fails, the photo stays hidden until you approve it on `/admin.html`.
+- At most 12 saves per IP address per hour, and scores above what a world allows are refused (`server/worlds.ts`).
+- At most 100 Claude checks a day across all players (`CLAUDE_DAILY_LIMIT` changes it). After that, names get only
+  the word filter and photos wait for review, so a flood of saves cannot run up the API bill.
+
+On Vercel the functions need these environment variables:
+
+| Variable | What it is | How to get it |
+| --- | --- | --- |
+| `KV_REST_API_URL`, `KV_REST_API_TOKEN` | Upstash Redis, which stores scores | Vercel dashboard → Storage → Upstash for Redis, connected to the project |
+| `BLOB_READ_WRITE_TOKEN` | Vercel Blob, which stores shared photos | Vercel dashboard → Storage → Blob, connected to the project |
+| `ANTHROPIC_API_KEY` | Claude, for the name and photo checks | A key from platform.claude.com. Without it, every photo waits for review. |
+| `ADMIN_TOKEN` | The password for `/admin.html` | Any long random string |
+
+Locally, `npm run dev` runs the same functions inside the dev server and keeps everything in memory (the admin
+password is `dev`). Put the variables in `.env.local` to use the real services instead.
+
 ## Project layout
 
 - `src/engine/` renderer and post-processing, input, synthesised audio, sky, particles, procedural geometry helpers
 - `src/game/` ride, camera rig, photo scoring, subjects, HUD, album, the game loop
 - `src/worlds/` one folder per world; see `WORLD_GUIDE.md` for how to build one
+- `api/` and `server/` the leaderboard's serverless functions and their rules; `public/admin.html` the moderation page

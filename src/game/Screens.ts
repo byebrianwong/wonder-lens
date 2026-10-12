@@ -42,7 +42,10 @@ export function menuElement({ worlds, selected, relax, mouseLock }: MenuState): 
           <button class="mode ${!relax ? 'on' : ''}" data-mode="snap"><b>Snap ride</b><span>24 shots. Score your best photo of every character.</span></button>
           <button class="mode ${relax ? 'on' : ''}" data-mode="relax"><b>Relax ride</b><span>No HUD, no limits. Just watch the world go by.</span></button>
         </div>
-        <button class="btn start">Board the ${selected.vehicleName.replace(/^The /, '')}</button>
+        <div class="start-row">
+          <button class="btn lb-open">Leaderboards</button>
+          <button class="btn start">Board the ${selected.vehicleName.replace(/^The /, '')}</button>
+        </div>
       </div>
       <footer class="menu-foot">
         <div class="controls">
