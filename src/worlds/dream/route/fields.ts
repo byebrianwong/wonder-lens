@@ -17,7 +17,8 @@ export const PTS: [number, number, number][] = [
   [-3, 8.5, -600], [-3, 5.5, -610],
 ];
 
-// fast in the dive; a little slower on the wire, so there is time to look round at Totoro and the fields
+// fast in the dive; a little slower on the wire, so there is time to look round at Totoro and the fields;
+// slow past the bus stop in the rain, like a bus pulling in
 export const SPEED: Array<[number, number]> = [
-  [-230, 1.15], [-262, 1.3], [-340, 1.25], [-372, 1.1], [-570, 1.1], [-600, 0.95],
+  [-230, 1.15], [-262, 1.3], [-340, 1.25], [-372, 1.1], [-484, 1.1], [-502, 0.62], [-528, 0.62], [-546, 1.1], [-570, 1.1], [-600, 0.95],
 ];

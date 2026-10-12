@@ -48,7 +48,7 @@ export function getCast(ctx: SetContext): Cast {
  * umbrella's shaft and tip, a hand and its forearm) are merged into one mesh on that joint. Meshes with an
  * outline or other children, skinned meshes and outlines are left alone, so nothing moves differently.
  */
-function mergeSiblings(root: THREE.Object3D) {
+export function mergeSiblings(root: THREE.Object3D) {
   const parents: THREE.Object3D[] = [];
   root.traverse((o) => parents.push(o));
   for (const parent of parents) {

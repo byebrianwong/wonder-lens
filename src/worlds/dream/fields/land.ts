@@ -30,7 +30,8 @@ export const BACK_Z = -290;
 export const SPOTS = {
   camphor: { x: 58, z: -472, r: 30, top: 4.4 },
   inari: { x: -17, z: -517, r: 10, y: 0.7 },
-  busStop: { x: -8.4, z: -521 },
+  // at the edge of the shrine's clearing, far enough from the wire that the rider can see the stop past the Catbus
+  busStop: { x: -13, z: -526.5 },
   owlPole: { x: 7.5, z: -446 },
 };
 

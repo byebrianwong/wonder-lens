@@ -10,6 +10,7 @@ import { BED, HOME_OZ, PADDIES_BACK, PADDIES_FRONT_LEFT, laneX } from '../garden
 import { buildPlace } from '../garden/place';
 import { getCast, poseKid, wavePose, type TotoroPose } from '../garden/cast';
 import { buildBirds, buildDew, buildMist, buildSprouts } from '../garden/fx';
+import { momentCue, secretsOf } from '../secrets';
 
 /*
  * Home, at dawn (My Neighbor Totoro), z -2400 to -2620: the same garden as at the start, at sunrise.
@@ -21,6 +22,8 @@ import { buildBirds, buildDew, buildMist, buildSprouts } from '../garden/fx';
  *           the edge of the camphor wood ahead on the left, waving now and then (Totoro has his umbrella back)
  *  z -2556  Satsuki and Mei, still in their nightclothes, dancing round the seed bed (on the right at
  *           z -2582), now full of fresh green sprouts; as you come they turn and jump for joy, arms up
+ *  (secret) if Calcifer was fed in Howl's castle, the castle walks down the hill on the right and across the
+ *           misty meadow towards the lane, in the sunrise (it is the meadow scene's castle, moved here)
  *  z -2588  the closing shot (the world runs the Catbus off along a curve up the grassy hill ahead-right,
  *           whose ground this scene shapes to meet that curve, and raises the camera): the girls run after
  *           it along the lane and wave both arms; Totoro and the little ones wave goodbye from the wood
@@ -136,6 +139,8 @@ export function buildHome(ctx: SetContext): BuiltSet {
     hint: "Back home at sunrise, still in their nightclothes, jumping for joy by the seed bed: it was a dream, but it wasn't a dream! Play the ocarina and they wave with both arms.",
     poses: { cheer: { label: "It wasn't a dream!", mult: 1.8 }, wave: { label: 'Waving with both arms', mult: 1.6 } },
     onCall: () => { waveT = 0; girlsS.setPose('wave', 2.4); return true; }, maxDistance: 120,
+    // just before they turn and jump for joy as you come
+    cue: momentCue(ctx, -2552),
   });
   const totoroS = new Subject({
     id: 'totoro-dawn', name: 'Totoro at dawn', from: FILMS.totoro, group: totoro.group, radius: 3.2, base: 1400, rarity: 'legendary',
@@ -161,6 +166,53 @@ export function buildHome(ctx: SetContext): BuiltSet {
   for (const s of [girlsS, totoroS, sproutS]) s.active = false;
   cast.subjects.home = [girlsS, totoroS, sproutS];
 
+  // ---------- Howl's castle at dawn: a secret, there only if the rider fed Calcifer ----------
+  // The meadow scene's castle and its smoke are moved into this scene when it starts. It comes down the right
+  // flank of the hill the Catbus runs over at the end and walks across the meadow towards the lane.
+  const secrets = secretsOf(ctx);
+  const howl = secrets.howlCastle, howlSmoke = secrets.howlSmoke;
+  const walkPath = new THREE.CatmullRomCurve3([new THREE.Vector3(104, 0, -2726), new THREE.Vector3(128, 0, -2650), new THREE.Vector3(160, 0, -2560), new THREE.Vector3(186, 0, -2470)]);
+  const walkLen = walkPath.getLength();
+  const howlHolder = new THREE.Group();
+  group.add(howlHolder);
+  let walked = -1;
+  const castleS: Subject | null = howl ? new Subject({
+    id: 'castle-dawn', name: "Howl's castle at dawn", from: FILMS.howl, group: howl.body, radius: 17, base: 1300, rarity: 'legendary', secret: true,
+    hint: "Throw Calcifer something to eat in Howl's castle, and the castle comes walking over the hills at sunrise to see you home. Look right as you come down to the garden.",
+    poses: { hop: { label: 'A hop in the morning', mult: 1.7 } },
+    centerOffset: new THREE.Vector3(0, 17, 0), facing: forwardOf(howl.group), maxDistance: 460, reactRange: 26,
+    onCall: () => { howl.hop(); castleS!.setPose('hop', 1.8); return true; },
+  }) : null;
+  if (castleS) castleS.active = false;
+  const walkP = new THREE.Vector3(), walkT = new THREE.Vector3();
+  const walkCastle = (dt: number, t: number, z: number) => {
+    if (!howl || !castleS) return;
+    const on = secrets.calcifer && z < SHOW_Z0;
+    castleS.active = on;
+    if (!on) return;
+    if (walked < 0) {
+      // the first time: take the castle (and its smoke) over from the meadow, standing up and walking
+      walked = 0;
+      howlHolder.add(howl.group);
+      if (howlSmoke) group.add(howlSmoke.mesh);
+      howl.blocker.visible = true;
+      howl.proxy.position.y = 18; howl.proxy.scale.y = 1;
+      howl.onStep = (p) => howlSmoke?.emit(new THREE.Vector3(p.x, p.y + 0.5, p.z), { n: 5, vel: new THREE.Vector3(0, 1.2, 0), spread: 1.8, size: 1.0, grow: 2.6, life: 1.6, color: 0xe8d8c0, alpha: 0.4, jitter: 1.0 });
+    }
+    walked = Math.min(walkLen - 1, walked + dt * 5.5);
+    const k = walked / walkLen;
+    walkPath.getPointAt(k, walkP);
+    walkPath.getTangentAt(k, walkT);
+    // the holder carries the castle at the height of the ground under it; its legs reach down from there
+    const gy = place.height(walkP.x, walkP.z);
+    howlHolder.position.y = walked === 0 ? gy : howlHolder.position.y + (gy - howlHolder.position.y) * (1 - Math.exp(-dt * 3));
+    const d = howl.drive;
+    d.x = walkP.x; d.z = walkP.z; d.yaw = Math.atan2(walkT.x, walkT.z); d.gait = walked;
+    d.lift = 7; d.walk = 1; d.crouch = 0; d.tongue[0] = d.tongue[1] = d.tongue[2] = 0; d.hopScale = 1;
+    howl.update(dt, t, (x, zz) => place.height(x, zz) - howlHolder.position.y);
+    howlSmoke?.update(dt, ctx.scene.fog as THREE.FogExp2 | null);
+  };
+
   let clock = 0;
   const pose: TotoroPose = {}, poseC: TotoroPose = {}, poseB: TotoroPose = {};
   const tmp = new THREE.Vector3(), mid = new THREE.Vector3();
@@ -173,7 +225,7 @@ export function buildHome(ctx: SetContext): BuiltSet {
     // drawn from inside the white cloud cover (full from z -2392) to the end
     show: [U(SHOW_Z0), 1],
     occluders: [place.terrain, place.proxies],
-    subjects: [girlsS, totoroS, sproutS], water: -Infinity,
+    subjects: [girlsS, totoroS, sproutS, ...(castleS ? [castleS] : [])], water: -Infinity,
     floor: (x, z) => place.height(x, z),
     onItemLand(p) { puffs.burst(p, 5, 0xeaf4d8, 1.4, 1, 0.7); },
     update(dt, t, ride) {
@@ -185,6 +237,7 @@ export function buildHome(ctx: SetContext): BuiltSet {
       for (const s of [girlsS, totoroS, sproutS]) s.active = z < SETS.home.z0 + 6;
       place.update(t, camera);
       mist.update(t); dew.update(t); birds.update(t); puffs.update(dt);
+      walkCastle(dt, t, z);
       findCatbus();
 
       // ---- sprouts swaying in the morning air; new ones pop up with a bounce ----

@@ -16,6 +16,8 @@ import { buildPowerLines } from '../fields/powerLines';
 import { makeFlyingTotoro } from '../fields/flyingTotoro';
 import { makeOwl } from '../fields/owl';
 import { Fireflies } from '../fields/fireflies';
+import { RAIN_Z, buildRainStop } from '../fields/rainStop';
+import { momentCue } from '../secrets';
 import { bench, busStopSign, camphorTree, farmhouse, fieldMats, stoneFox, stoneLantern, storehouse, torii, wayShrine } from '../fields/buildings';
 
 /*
@@ -33,8 +35,10 @@ import { bench, busStopSign, camphorTree, farmhouse, fieldMats, stoneFox, stoneL
  *  -390  Totoro swoops across in front to the left and back again
  *  -446  the owl on the telephone pole to the right watches the Catbus pass
  *  -472  the great camphor tree on the right, its rope and shrine lit by lanterns; Totoro flies out by it
- *  -500  Totoro crosses ahead to the left
- *  -520  the Inari-mae bus stop below on the left: its sign, its lamp on the pole, the little red shrine
+ *  -496  rain over the Inari-mae bus stop below on the left (its sign, its lamp on the pole, the little red
+ *        shrine): Satsuki waits under her umbrella with Mei asleep on her back, and Totoro beside her with
+ *        the umbrella she lent him. The Catbus slows to pass them (see fields/rainStop.ts)
+ *  -548  Totoro on his top crosses ahead to the left
  *  -575  past the last paddies, a meadow; Totoro climbs away towards the moon (gone by -638)
  *  -588  the wire ends at the last pole; the Catbus jumps down onto the bank at the edge of the wood
  */
@@ -144,7 +148,7 @@ export function buildFields(ctx: SetContext): BuiltSet {
     at(l.group, -13.4, -519.8, Math.PI / 2);
     glowSpots.push({ p: l.group.position.clone().add(l.light), w: 0.45, d: 0 });
   }
-  at(bench(M), -10.4, -517.2, Math.PI / 2);
+  at(bench(M), -11.6, -517.2, Math.PI / 2);
   const stop = busStopSign(M);
   at(stop.group, B.x, B.z, 0.75, group);
 
@@ -158,6 +162,10 @@ export function buildFields(ctx: SetContext): BuiltSet {
     group.add(lightShaft(l.clone().add(new THREE.Vector3(0, -0.15, 0)), new THREE.Vector3(l.x, H(l.x, l.z), l.z), 3.6, 0xffd8a0, 0.13));
   }
   const bulbBase = lines.bulbs.color.clone();
+
+  // ---------- the bus stop in the rain: Totoro and the girls waiting ----------
+  const rainStop = buildRainStop(H, lines.lamps[1], low);
+  group.add(rainStop.group);
 
   // ---------- the owl on the telephone pole ----------
   const owl = makeOwl();
@@ -201,6 +209,8 @@ export function buildFields(ctx: SetContext): BuiltSet {
     floorTrees.push({ x, y: H(x, z) - 0.2, z, scale: rng.range(1.2, 2.0), rot: rng.range(0, TAU) });
     n++;
   }
+  // a tree behind the bus stop, whose drops come down on Totoro's umbrella
+  floorTrees.push({ x: -16, y: H(-16, -532) - 0.2, z: -532, scale: 2.1, rot: 1.1 });
   // the dark wood behind the bus stop
   for (let k = 0; k < 16; k++) { const x = rng.range(-46, -27), z = rng.range(-532, -502); groves.push({ x, y: H(x, z) - 0.3, z, scale: rng.range(1.7, 2.4), rot: rng.range(0, TAU) }); }
   // the edge of the wood at the far end, leaving a wide gap for the path into it (broad crowns spread far,
@@ -327,7 +337,8 @@ export function buildFields(ctx: SetContext): BuiltSet {
   fly.group.rotation.y = Math.PI;
   const Z = { swoop0: -238, swoop1: -318, climb0: -574, climb1: -638 };
   // which side he flies on (+ right, radians from straight ahead) and how far out, by the rider's z
-  const BEARING: Array<[number, number]> = [[-300, 0.55], [-376, 0.55], [-402, -0.42], [-418, -0.42], [-444, 0.6], [-484, 0.62], [-510, -0.5], [-600, -0.5]];
+  // (he keeps to the right past the bus stop on the left, so the Totoro waiting there has that side to himself)
+  const BEARING: Array<[number, number]> = [[-300, 0.55], [-376, 0.55], [-402, -0.42], [-418, -0.42], [-444, 0.6], [-484, 0.62], [-538, 0.62], [-558, -0.5], [-600, -0.5]];
   const DIST: Array<[number, number]> = [[-300, 22], [-440, 22], [-458, 30], [-490, 30], [-505, 22], [-600, 24]];
   type Phase = 'park' | 'swoop' | 'fly' | 'climb' | 'gone';
   const tt = {
@@ -356,6 +367,9 @@ export function buildFields(ctx: SetContext): BuiltSet {
     poses: { roar: { label: 'A roar of joy', mult: 1.8 }, roll: { label: 'Barrel roll', mult: 1.6 }, flying: { label: 'Flying alongside', mult: 1.5 } },
     centerOffset: new THREE.Vector3(0, fly.centre, 0), facing: forwardOf(fly.totoro.group), maxDistance: 140, reactRange: 16,
     onCall: () => {
+      // past the bus stop he lets the Totoro waiting there have the ocarina to himself
+      const rz = ctx.vehicle.position.z;
+      if (rz < RAIN_Z.z0 - 12 && rz > RAIN_Z.z1 + 20) return false;
       fly.roar();
       camera.getWorldDirection(look);
       const ls = look.dot(side);
@@ -365,6 +379,8 @@ export function buildFields(ctx: SetContext): BuiltSet {
       return true;
     },
     onItem: () => { fly.roll(); totoroS.setPose('roll', 1.6); return true; },
+    // just before he climbs away towards the moon
+    cue: momentCue(ctx, Z.climb0),
   });
   const camphorAnchor = new THREE.Object3D();
   camphorAnchor.position.set(C.x, cy, C.z);
@@ -403,7 +419,7 @@ export function buildFields(ctx: SetContext): BuiltSet {
     onCall: () => { flareT = 0; stopS.setPose('glow', 2.4); return true; },
     onItem: () => { sign.v += 4; stopS.setPose('ding', 1.4); return true; },
   });
-  const subjects = [totoroS, camphorS, owlS, firefliesS, stopS];
+  const subjects = [totoroS, camphorS, owlS, firefliesS, stopS, ...rainStop.subjects];
   for (const s of subjects) s.active = false;
 
   // ---------- hide what the fog has swallowed ----------
@@ -471,6 +487,9 @@ export function buildFields(ctx: SetContext): BuiltSet {
       const nearGround = camPos.y - H(camPos.x, camPos.z) < 26 && z < -290;
       grass.group.visible = nearGround;
       if (nearGround) grass.update(t, camera);
+
+      // ---- the bus stop in the rain ----
+      rainStop.update(dt, t, z, camPos, fog, skyU ? skyU.midColor.value : null);
 
       // ---- the wire under the Catbus ----
       lines.update(dt, z);

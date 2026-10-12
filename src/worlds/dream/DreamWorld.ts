@@ -17,6 +17,7 @@ import { buildMeadow } from './sets/meadow';
 import { buildBathhouse } from './sets/bathhouse';
 import { buildHaku } from './sets/haku';
 import { buildHome } from './sets/home';
+import { filmStills } from './stills';
 
 /** What the destination board on the Catbus says in each scene (the rider reads it from behind). */
 const SIGNS: Record<SetId, string> = {
@@ -211,6 +212,7 @@ function build(ctx: WorldContext): BuiltWorld {
     get waterLevel() { return current.water; },
     groundHeight: (x, z) => current.floor(x, z),
     speedAt: (u) => speedAtZ(curve.getPointAt(clamp(u, 0, 1)).z),
+    filmStills: filmStills(K, () => sky.uniforms.moonDir.value),
     makeProjectile: () => {
       // an acorn: a nut with a little cap
       const g = new THREE.Group();
@@ -234,7 +236,8 @@ function build(ctx: WorldContext): BuiltWorld {
       const birds = 0.25 * w(-840, -880, -900, -920) + 0.45 * w(-1250, -1270, -1500, -1510) + 0.5 * w(-1520, -1540, -1745, -1760) + 0.55 * w(-2420, -2450, -2700, -2720);
       return {
         wind: 0.1 + 0.4 * air + 0.9 * storm + 0.15 * w(-1250, -1260, -1460, -1470),
-        rain: 0.8 * storm,
+        // the storm, and the shower over the bus stop in the fields
+        rain: 0.8 * storm + 0.5 * w(-480, -496, -540, -556),
         sea: 0.12 * w(-750, -770, -860, -870) + 0.15 * w(-1630, -1645, -1710, -1720) + 0.3 * w(-2100, -2120, -2290, -2300),
         birds,
         crickets: 0.32 * night,
