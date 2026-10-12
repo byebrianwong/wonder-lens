@@ -18,6 +18,7 @@ import { buildCastleRoom } from '../howl/room';
 import { Smoke, Ripples } from '../howl/smoke';
 import { buildBoulders, buildMountains, buildHut, findSky, MirrorLake } from '../howl/scenery';
 import { wakeTexture } from '../howl/paint';
+import { momentCue, secretsOf } from '../secrets';
 
 /*
  * Howl's meadow at golden hour (z -1510 to -1792).
@@ -246,6 +247,9 @@ export function buildMeadow(ctx: SetContext): BuiltSet {
   outside.add(ripples.mesh);
   const castle = makeHowlCastle({ profile: (zl) => road.at(HOME.z + zl).y, smoke, rng: new Rng(1759) });
   outside.add(castle.group);
+  // if Calcifer is fed, the home scene borrows the castle to walk it over the hills at dawn (a secret)
+  secretsOf(ctx).howlCastle = castle;
+  secretsOf(ctx).howlSmoke = smoke;
   castle.onStep = (p) => {
     if (ground(p.x, p.z) < -0.05) {
       ripples.add(p.x, p.z, 8, 2.4); ripples.add(p.x, p.z, 4.5, 1.6);
@@ -349,6 +353,8 @@ export function buildMeadow(ctx: SetContext): BuiltSet {
     poses: { hop: { label: 'A happy hop', mult: 1.8 }, sneeze: { label: 'Cannon sneeze', mult: 1.4 } },
     centerOffset: new THREE.Vector3(0, 17, 0), facing: forwardOf(castle.group), maxDistance: 320, reactRange: 26,
     update: (_dt, ride) => { castleS.active = within(ride.position.z, -1505, -1762); },
+    // just before it turns round and sits down in front of you
+    cue: momentCue(ctx, -1697),
     onCall: () => { castle.hop(); castleS.setPose('hop', 1.8); return true; },
     onItem: () => { castle.sneeze(); castleS.setPose('sneeze', 1.4); return true; },
   });
@@ -367,7 +373,8 @@ export function buildMeadow(ctx: SetContext): BuiltSet {
     poses: { flare: { label: 'Calcifer flares up', mult: 2.0 }, grin: { label: "Calcifer's grin", mult: 1.6 } },
     centerOffset: new THREE.Vector3(0, 1.0, 0), facing: forwardOf(cal.group), maxDistance: 50, reactRange: 5,
     update: (_dt, ride) => { calS.active = within(ride.position.z, -1736, -1812); },
-    onItem: () => { cal.swallow(); calS.setPose('flare', 2.6); return true; },
+    // fed, he takes the castle out walking at dawn, over the hills behind the garden (a secret: see sets/home.ts)
+    onItem: () => { cal.swallow(); calS.setPose('flare', 2.6); secretsOf(ctx).calcifer = true; return true; },
     onCall: () => { cal.grin(); calS.setPose('grin', 1.8); return true; },
   });
   const hutAnchor = new THREE.Object3D();

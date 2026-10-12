@@ -18,6 +18,7 @@ import { Plumes } from '../bathhouse/steam';
 import { buildTown } from '../bathhouse/town';
 import { spiritWater } from '../bathhouse/water';
 import { LanternField, WAVE } from '../bathhouse/wave';
+import { momentCue, secretsOf } from '../secrets';
 
 /*
  * The bathhouse at dusk, down to the boiler room (Spirited Away).
@@ -103,7 +104,9 @@ export function buildBathhouse(ctx: SetContext): BuiltSet {
     id: 'bathhouse', name: 'The Aburaya', from: FILMS.spirited, group: bathAnchor, radius: 30, base: 900, rarity: 'rare',
     hint: 'The bathhouse of the spirits, across the red bridge at dusk. Take it while its lanterns are lighting up, just after you come out of the door.',
     poses: { lanterns: { label: 'The lanterns lighting up', mult: 1.6 } }, maxDistance: 400,
-    update: (_dt, ride) => { const z = zOf(ride); bathS.active = z < -1793 && z > -1990; },
+    // on from when the inner doors of Howl's castle have opened onto it, so the cue can show before the lanterns light
+    update: (_dt, ride) => { const z = zOf(ride); bathS.active = z < -1784 && z > -1990; },
+    cue: momentCue(ctx, -1800),
   });
   subjects.push(bathS);
 
@@ -134,7 +137,8 @@ export function buildBathhouse(ctx: SetContext): BuiltSet {
     poses: { offer: { label: 'Offering gold', mult: 1.9 }, gulp: { label: 'Gulp', mult: 1.8 } }, centerOffset: new THREE.Vector3(0, 2.9, 0),
     facing: () => forwardOf(current().group)(),
     onCall: () => { current().offer(); noFaceS.setPose('offer', 4); return true; },
-    onItem: () => { current().gulp(); noFaceS.setPose('gulp', 1.6); return true; }, reactRange: 14, maxDistance: 130, swallows: true,
+    // fed, he follows you onto the sea train under Haku (a secret: see sets/haku.ts)
+    onItem: () => { current().gulp(); noFaceS.setPose('gulp', 1.6); secretsOf(ctx).noFace = true; return true; }, reactRange: 14, maxDistance: 130, swallows: true,
     update: (_dt, ride) => {
       // runs every frame, wherever the ride is: the riding No-Face never shows outside his stretch
       const z = zOf(ride);

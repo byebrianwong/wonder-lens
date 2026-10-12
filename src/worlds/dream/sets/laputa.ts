@@ -13,6 +13,8 @@ import { buildGarden } from '../laputa/garden';
 import { Bins, CRYSTAL, CX, CZ, KEEP1, KEEP2, RIM, Y_K1, Y_K2, radiusOf } from '../laputa/parts';
 import { makePlan } from '../laputa/plan';
 import { acornMesh, makeRobot } from '../laputa/robot';
+import { buildFoxsquirrelRider } from '../riders';
+import { momentCue } from '../secrets';
 
 /*
  * Laputa, in the calm eye of the Dragon's Nest (Castle in the Sky), z -1230 to -1510.
@@ -140,6 +142,8 @@ export function buildLaputa(ctx: SetContext): BuiltSet {
         acorn.userData.owner = 'herd';
       }
       herdS.setPose('scamper', 3.5);
+      // one of them comes along on the Catbus (a secret: see riders.ts)
+      foxRider.found();
       return true;
     },
     onCall: () => { herd.alert(2.8); herdS.setPose('listen', 2.6); return true; },
@@ -164,10 +168,16 @@ export function buildLaputa(ctx: SetContext): BuiltSet {
     hint: "The castle in the sky, floating in the calm eye of the Dragon's Nest. It is best seen whole as the storm clears, and from below as you fall off its edge. Play the ocarina and its crystal flares and its birds rise.",
     poses: { flock: { label: 'Laputa awakes', mult: 1.6 } }, maxDistance: 420,
     onCall: () => { flockT = 0; flareT = 0; laputaS.setPose('flock', 4.5); return true; },
+    // just before the storm clears and the whole island hangs ahead
+    cue: momentCue(ctx, -1258),
   });
-  const subjects = [robotS, herdS, fallenS, treeS, laputaS];
+  const foxRider = buildFoxsquirrelRider(ctx);
+  const subjects = [robotS, herdS, fallenS, treeS, laputaS, foxRider.subject];
 
   const crownPivot = castle.crown.parent!;
+  // The island's own walls would hide its centre from every photo of it taken from outside, so they only
+  // block photos once the rider is over the island (raycasts skip layer 31).
+  let proxiesFar: boolean | null = null;
   const timed = [castle.falls.uniforms, castle.mist.uniforms, ...garden.water.map((w) => w.uniforms)];
   const zOf = (z: number, a: number, b: number) => z <= a && z > b;
 
@@ -179,6 +189,9 @@ export function buildLaputa(ctx: SetContext): BuiltSet {
       // the rider's eye, on the Catbus's back
       eye.copy(ride.position).add(tmp.set(0, ctx.mount.seat.y, 0));
       const fog = ctx.scene.fog as THREE.FogExp2;
+
+      const far = z > -1290;
+      if (far !== proxiesFar) { proxiesFar = far; proxies.traverse((o) => o.layers.set(far ? 31 : 0)); }
 
       // ---- subjects on and off by stretch ----
       laputaS.active = zOf(z, -1236, -1505);
