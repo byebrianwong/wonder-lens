@@ -98,7 +98,38 @@ export interface BuiltWorld {
    * changes vehicle (the train's clatter stops while the rider is on a toboggan).
    */
   vehicleAt?(u: number): number;
+  /**
+   * Optional: famous shots from the films. A photo that matches one gets a "Film still" bonus, and the
+   * photo book lists each still with a hint until it has been matched.
+   */
+  filmStills?: FilmStill[];
   dispose(): void;
+}
+
+/**
+ * A famous frame from a film that the rider can recreate. A photo matches when every listed subject is in
+ * it and every optional condition holds. The first subject in `subjects` is the main one.
+ */
+export interface FilmStill {
+  id: string;
+  /** the still's name, shown as the bonus and in the photo book, for example 'The Catbus arrives' */
+  name: string;
+  /** the film it is from */
+  from: string;
+  /** where and when to look, shown in the photo book until the still is matched */
+  hint: string;
+  /** points added to the photo when it matches */
+  bonus: number;
+  /** ids of subjects that must all be in the photo */
+  subjects: string[];
+  /** the pose the main subject must be in */
+  pose?: string;
+  /** range of the main subject's size in the frame, as a share of the frame height (SubjectShot.size) */
+  size?: [number, number];
+  /** stretch of the ride (u, 0..1) the photo must be taken in */
+  u?: [number, number];
+  /** any further test, for example that the camera looks up at the subject */
+  test?: (photo: import('./Photo').PhotoResult, camera: THREE.PerspectiveCamera) => boolean;
 }
 
 export interface WorldDef {

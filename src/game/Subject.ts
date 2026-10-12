@@ -38,6 +38,17 @@ export interface SubjectSpec {
   crowd?: boolean;
   /** a thrown item that hits it directly is swallowed instead of bouncing off */
   swallows?: boolean;
+  /**
+   * A secret subject: it only appears when the rider does something earlier in the ride. The photo book
+   * shows it as an unknown entry, with its hint hidden, until it has been photographed once.
+   */
+  secret?: boolean;
+  /**
+   * Returns true for about 1.5 s before a timed special moment that happens by itself (one the rider does
+   * not cause), such as a character rising or a castle coming into view. The game shows a small sparkle
+   * at the subject and plays a soft sound, so the rider knows to get the camera ready.
+   */
+  cue?: () => boolean;
 }
 
 const tmp = new THREE.Vector3();
@@ -58,6 +69,7 @@ export class Subject {
   readonly reactRange: number;
   readonly crowd: boolean;
   readonly swallows: boolean;
+  readonly secret: boolean;
   pose = 'idle';
   poseTimer = 0;
   private centerOffset: THREE.Vector3;
@@ -79,7 +91,11 @@ export class Subject {
     this.reactRange = spec.reactRange ?? 14;
     this.crowd = spec.crowd ?? false;
     this.swallows = spec.swallows ?? false;
+    this.secret = spec.secret ?? false;
   }
+
+  /** true for a moment before a timed special moment (see SubjectSpec.cue) */
+  get cueing() { return this.active && !!this.spec.cue?.(); }
 
   get reactsToItems() { return !!this.spec.onItem; }
   get reactsToCall() { return !!this.spec.onCall; }
