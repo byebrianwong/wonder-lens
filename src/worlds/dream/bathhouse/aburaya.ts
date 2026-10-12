@@ -173,7 +173,9 @@ export function buildAburaya(road: Road, m: BridgeMats, lanterns: LanternField, 
     face(A, V(P.back.x1, 0, zb), V(P.back.x1, 0, P.back.z1), -16.3, DECK, 4.4, (r, k) => {
       if (r === 0) return k % 3 === 0 ? CELL.woodWindow : CELL.plaster;
       if (r === 4) return k % 3 === 1 ? CELL.ironWindow : CELL.brick;
-      return (k + r) % 4 === 0 ? CELL.woodWindow : (k + r) % 4 === 2 ? CELL.shojiDim : CELL.boards;
+      // lit screens all the way down, so the wall beside the stairs is not a dark mass at dusk
+      const c = (k + r) % 4;
+      return c === 0 ? CELL.shojiFigure : c === 2 ? CELL.shoji : c === 1 ? CELL.woodWindow : CELL.boards;
     });
     // the back face, seen when you leave on Haku
     face(A, V(P.back.x1, 0, P.back.z1 - 0.01), V(BOILER.x0, 0, P.back.z1 - 0.01), BOILER.roof, DECK, 1.8, () => CELL.boards);
@@ -257,8 +259,14 @@ export function buildAburaya(road: Road, m: BridgeMats, lanterns: LanternField, 
     g.add(new THREE.Mesh(wallStrip(curve, lat(STAIRS.x1 - 0.12), -1.0, 0.04, 80, true, 2), dark), new THREE.Mesh(wallStrip(curve, lat(STAIRS.x0 + 0.12), -1.0, 0.04, 80, false, 2), dark));
     g.add(new THREE.Mesh(wallStrip(curve, lat(STAIRS.x1 - 0.1), 1.02, 1.18, 80, true, 2), red), new THREE.Mesh(wallStrip(curve, lat(STAIRS.x1 - 0.1), 0.5, 0.58, 80, true, 2), red));
     g.add(new THREE.Mesh(wallStrip(curve, lat(STAIRS.x0 + 0.25), 0.92, 1.02, 80, false, 2), dark));
-    // a big iron pipe running down the wall beside the stairs
-    g.add(new THREE.Mesh(new THREE.TubeGeometry(subCurve(road, STAIRS.top + 2, STAIRS.bottom - 4, 30), 60, 0.32, 8).translate(STAIRS.x0 + 0.45 - STAIRS.pathX, 5.8, 0), new THREE.MeshLambertMaterial({ color: 0x3a3430 })));
+    // a big iron pipe running down the wall beside the stairs, below the rider's eye so it does not cross the view
+    g.add(new THREE.Mesh(new THREE.TubeGeometry(subCurve(road, STAIRS.top + 2, STAIRS.bottom - 4, 30), 60, 0.32, 8).translate(STAIRS.x0 + 0.45 - STAIRS.pathX, 2.4, 0), new THREE.MeshLambertMaterial({ color: 0x3a3430 })));
+    // lanterns hung on the wall all the way down, between the outer ones
+    for (let z = STAIRS.top - 7.6; z > STAIRS.bottom - 2; z -= 7.2) {
+      const y = at(z).y;
+      g.add(box(0.7, 0.12, 0.12, m.dark, STAIRS.x0 + 0.35, y + 5.0, z));
+      lanterns.add(V(STAIRS.x0 + 0.62, y + 4.3, z), 1.0, z > -1935 ? LANTERN.white : LANTERN.yellow, -Math.PI / 2);
+    }
     // posts: railing posts on the outer edge, tall ones holding lanterns, legs down to the ledge
     for (let z = STAIRS.top - 1; z > STAIRS.bottom; z -= 2.4) {
       const y = at(z).y;
