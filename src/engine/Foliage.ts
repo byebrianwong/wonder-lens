@@ -26,16 +26,31 @@ export interface FluffyStyle {
   snow?: number;
 }
 
-export interface Blob { c: THREE.Vector3; r: THREE.Vector3 }
+export interface Blob {
+  c: THREE.Vector3;
+  r: THREE.Vector3;
+  /**
+   * The radii that set how many cards the blob gets (default `r`). Every card draws from the caller's random
+   * numbers, which go on to place the rest of the scene, so a blob whose size changed keeps the card count of
+   * its old size here and nothing else in the scene moves.
+   */
+  cardR?: THREE.Vector3;
+}
 
 let leafTexCache: THREE.Texture | null = null;
-/** A cluster of leaves on a transparent canvas, light grey so it tints to any colour. */
+/**
+ * A rounded clump of leaves on a transparent background, light grey so it tints to any colour.
+ *
+ * The clump stays well inside the square, with leaf tips poking out round its edge, so a card never shows a
+ * straight edge. Transparent pixels carry the grey of the outer leaves instead of black: the smaller mipmaps
+ * average edge pixels with their neighbours, and black there drew a dark outline round every distant card.
+ */
 export function leafClusterTexture() {
   if (leafTexCache) return leafTexCache;
   const S = 256;
   const rng = new Rng(4242);
   const c = document.createElement('canvas'); c.width = c.height = S;
-  const g = c.getContext('2d')!;
+  const g = c.getContext('2d', { willReadFrequently: true })!;
   const leaf = (x: number, y: number, len: number, wid: number, rot: number, shade: number) => {
     g.save(); g.translate(x, y); g.rotate(rot);
     g.beginPath();
@@ -47,21 +62,51 @@ export function leafClusterTexture() {
     g.fill();
     g.restore();
   };
-  // darker leaves underneath, lighter on top, all inside a soft round silhouette
+  // the clump's outline: a few rounded lobes, so it is not a plain disc
+  const lobes = [0, 1, 2, 3, 4].map(() => ({ a: rng.range(0, Math.PI * 2), k: rng.range(0.1, 0.2) }));
+  const reach = (a: number) => 1 + lobes.reduce((s, l) => s + l.k * Math.max(0, Math.cos(a - l.a)) ** 3, 0) - 0.08;
+  // a solid core, so the clump has no holes in its middle at a distance
+  g.fillStyle = 'rgb(168,168,168)';
+  g.beginPath();
+  for (let i = 0; i <= 48; i++) { const a = (i / 48) * Math.PI * 2, r = 66 * reach(a); g.lineTo(S / 2 + Math.cos(a) * r, S / 2 + Math.sin(a) * r); }
+  g.fill();
+  // darker leaves underneath, lighter on top; each pass is a little smaller than the one below it
   for (let pass = 0; pass < 3; pass++) {
-    const n = [34, 30, 22][pass];
+    const n = [36, 32, 24][pass];
     for (let i = 0; i < n; i++) {
       const a = rng.range(0, Math.PI * 2);
-      const d = Math.sqrt(rng.next()) * [96, 88, 70][pass];
-      const x = S / 2 + Math.cos(a) * d, y = S / 2 + Math.sin(a) * d * 0.92;
-      const len = rng.range(44, 70), wid = len * rng.range(0.34, 0.46);
-      const shade = Math.round([178, 210, 240][pass] + rng.range(-10, 10));
-      leaf(x, y, len, wid, a + rng.range(-0.6, 0.6), shade);
+      const d = Math.sqrt(rng.next()) * [80, 68, 54][pass] * reach(a);
+      const x = S / 2 + Math.cos(a) * d, y = S / 2 + Math.sin(a) * d;
+      const len = rng.range(38, 58), wid = len * rng.range(0.34, 0.46);
+      const shade = Math.round([176, 208, 238][pass] + rng.range(-10, 10));
+      // outer leaves point outwards; the ones on top lie every which way, so the clump does not read as a star
+      leaf(x, y, len, wid, d > 50 ? a + rng.range(-0.7, 0.7) : rng.range(0, Math.PI * 2), shade);
     }
   }
-  const t = new THREE.CanvasTexture(c);
+  // leaf tips round the rim, mostly pointing outwards, so the outline is ragged; all of them end inside the square
+  for (let i = 0; i < 46; i++) {
+    const a = rng.range(0, Math.PI * 2);
+    const len = rng.range(28, 46), d = Math.min(118 - len / 2, rng.range(80, 98) * reach(a) - len / 2);
+    leaf(S / 2 + Math.cos(a) * d, S / 2 + Math.sin(a) * d, len, len * rng.range(0.32, 0.44), a + rng.range(-0.6, 0.6), Math.round(196 + rng.range(-16, 16)));
+  }
+  // copy into a data texture, giving the transparent pixels the outer leaves' grey
+  const src = g.getImageData(0, 0, S, S).data;
+  const data = new Uint8Array(S * S * 4);
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const i = (y * S + x) * 4, o = ((S - 1 - y) * S + x) * 4; // flipped so v = 1 is the top, as with a canvas texture
+      const a = src[i + 3];
+      for (let ch = 0; ch < 3; ch++) data[o + ch] = a ? src[i + ch] : 190;
+      data[o + 3] = a;
+    }
+  }
+  const t = new THREE.DataTexture(data, S, S, THREE.RGBAFormat);
   t.colorSpace = THREE.SRGBColorSpace;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.magFilter = THREE.LinearFilter;
+  t.generateMipmaps = true;
   t.anisotropy = 4;
+  t.needsUpdate = true;
   leafTexCache = t;
   return t;
 }
@@ -90,6 +135,63 @@ const CARD_VERTEX = /* glsl */ `
   gl_Position = projectionMatrix * mvPosition;
 `;
 
+/**
+ * Painted cards: where this corner sits on the card on screen, -1..1 across, for the clump shading below.
+ * Cards also sway a little in the wind, each card by a small part of its own size, out of step with its
+ * neighbours. `foliageTime` drives it; a world that never sets it gets still leaves.
+ */
+const CARD_VERTEX_PAINTED = /* glsl */ `
+  vCardOff = cardCorner * (1.41421 / max(length(cardCorner), 1e-5));
+  #ifdef USE_INSTANCING
+    vec3 swayAt = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
+  #else
+    vec3 swayAt = (modelMatrix * vec4(transformed, 1.0)).xyz;
+  #endif
+  float swayPhase = dot(swayAt, vec3(0.31, 0.17, 0.23));
+  vec2 sway = vec2(sin(foliageTime * 1.3 + swayPhase) + 0.5 * sin(foliageTime * 2.9 + swayPhase * 1.7), 0.4 * sin(foliageTime * 1.7 + swayPhase * 1.3));
+  mvPosition.xy += sway * length(cardCorner) * cardScale * 0.05;
+  gl_Position = projectionMatrix * mvPosition;
+`;
+
+/** Seconds of wind for the leaf cards' sway. A world sets it each frame; left at 0 the leaves stay still. */
+export const foliageTime = { value: 0 };
+
+/**
+ * Painted cards, before lighting. Each card is shaded as a small rounded clump: its normal leans towards
+ * its own edge, so the top of a clump catches the light and its underside falls into shade.
+ * The card's own normal (the rounded leaf mass it belongs to) is kept for the rim below.
+ */
+const CARD_NORMAL_PAINTED = /* glsl */ `
+  #include <normal_fragment_maps>
+  paintedMass = normal;
+  normal = normalize( normal + vec3( vCardOff * 0.55, 0.0 ) );
+`;
+
+/**
+ * Painted cards, lighting. Each light also draws a light rim along the edge of every leaf mass on the side
+ * it shines from, strongest when the light is behind the tree (the moon behind a wood at night). Where a
+ * mass turns away from the viewer it also picks up more of the sky's light. Both separate one mass from
+ * the ones behind it. `paintedMass` is the card's own normal, before the clump shading bends it.
+ */
+const CARD_LIGHT_PAINTED = /* glsl */ `
+  #include <lights_toon_pars_fragment>
+  vec3 paintedMass;
+  void RE_Direct_Painted( const in IncidentLight directLight, const in vec3 geometryPosition, const in vec3 geometryNormal, const in vec3 geometryViewDir, const in vec3 geometryClearcoatNormal, const in ToonMaterial material, inout ReflectedLight reflectedLight ) {
+    RE_Direct_Toon( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
+    float edge = smoothstep( 0.45, 0.95, 1.0 - abs( dot( paintedMass, geometryViewDir ) ) );
+    float facing = smoothstep( -0.25, 0.35, dot( paintedMass, directLight.direction ) );
+    float behind = max( dot( directLight.direction, -geometryViewDir ), 0.0 );
+    reflectedLight.directDiffuse += directLight.color * BRDF_Lambert( material.diffuseColor ) * edge * facing * ( 0.3 + 1.2 * behind );
+  }
+  #undef RE_Direct
+  #define RE_Direct RE_Direct_Painted
+`;
+
+const CARD_RIM_PAINTED = /* glsl */ `
+  #include <lights_fragment_end>
+  reflectedLight.indirectDiffuse *= 1.0 + 0.6 * smoothstep( 0.45, 0.95, 1.0 - abs( dot( paintedMass, normalize( vViewPosition ) ) ) );
+`;
+
 /** Snow on a card: white, keeping the leaf texture's light and dark so the clumps still read. */
 const SNOW_FRAGMENT = /* glsl */ `
   #include <color_fragment>
@@ -99,54 +201,110 @@ const SNOW_FRAGMENT = /* glsl */ `
   #endif
 `;
 
-function patchCards(material: THREE.Material, key: string, snow = false) {
+/** `painted` adds the clump shading and rim light (lit leaf materials only, not depth or flowers). */
+function patchCards(material: THREE.Material, key: string, snow = false, painted = false) {
   material.onBeforeCompile = (shader) => {
+    const vary = painted ? '\nvarying vec2 vCardOff;' : '';
+    if (painted) shader.uniforms.foliageTime = foliageTime;
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>\nattribute vec2 cardCorner;${snow ? '\nattribute float cardSnow; varying float vSnow;' : ''}`)
-      .replace('#include <project_vertex>', `#include <project_vertex>\n${CARD_VERTEX}${snow ? '\nvSnow = cardSnow;' : ''}`);
-    if (snow) {
+      .replace('#include <common>', `#include <common>\nattribute vec2 cardCorner;${vary}${painted ? '\nuniform float foliageTime;' : ''}${snow ? '\nattribute float cardSnow; varying float vSnow;' : ''}`)
+      .replace('#include <project_vertex>', `#include <project_vertex>\n${CARD_VERTEX}${painted ? CARD_VERTEX_PAINTED : ''}${snow ? '\nvSnow = cardSnow;' : ''}`);
+    if (snow || painted) {
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nvarying float vSnow;')
-        .replace('#include <color_fragment>', SNOW_FRAGMENT);
+        .replace('#include <common>', `#include <common>${vary}${snow ? '\nvarying float vSnow;' : ''}`);
+    }
+    if (snow) shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', SNOW_FRAGMENT);
+    if (painted) {
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <lights_toon_pars_fragment>', CARD_LIGHT_PAINTED)
+        .replace('#include <normal_fragment_maps>', CARD_NORMAL_PAINTED)
+        .replace('#include <lights_fragment_end>', CARD_RIM_PAINTED);
     }
   };
   material.customProgramCacheKey = () => key;
 }
 
-/** Material for camera-facing leaf cards. With `snow`, cards carrying a `cardSnow` weight turn white. */
+/**
+ * Material for camera-facing leaf cards. With `snow`, cards carrying a `cardSnow` weight turn white.
+ * Edges use alpha to coverage, so with the scene's multisampling a card's outline is smooth rather than
+ * a stair of whole pixels.
+ */
 export function foliageMaterial(snow = false) {
   const tex = leafClusterTexture();
-  const mat = new THREE.MeshToonMaterial({ map: tex, alphaTest: 0.5, vertexColors: true, gradientMap: foliageRamp(), side: THREE.DoubleSide });
-  patchCards(mat, snow ? 'foliage-cards-snow-v1' : 'foliage-cards-v1', snow);
+  const mat = new THREE.MeshToonMaterial({ map: tex, alphaTest: 0.5, alphaToCoverage: true, vertexColors: true, gradientMap: foliageRamp(), side: THREE.DoubleSide });
+  patchCards(mat, snow ? 'foliage-cards-snow-v2' : 'foliage-cards-v2', snow, true);
   const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: tex, alphaTest: 0.5 });
   patchCards(depth, 'foliage-cards-depth-v1');
   return { material: mat, depth };
 }
 
 /**
+ * A blob's lobes: a few directions in which it bulges, so its outline is a cluster of rounded clumps
+ * rather than one smooth ellipse. Seeded from the blob itself, so it draws nothing from the caller's
+ * random numbers (those also place the rest of a scene).
+ */
+function blobLobes(b: Blob) {
+  const seed = Math.abs(Math.round(b.c.x * 7919 + b.c.y * 104729 + b.c.z * 1299709 + b.r.x * 15485863)) % 2147483647;
+  const lr = new Rng(seed + 1);
+  const n = lr.int(4, 6);
+  return Array.from({ length: n }, () => ({
+    dir: new THREE.Vector3(lr.range(-1, 1), lr.range(-0.3, 1), lr.range(-1, 1)).normalize(),
+    k: lr.range(0.6, 1),
+  }));
+}
+
+/**
  * Cards spread through a set of blobs. Returns a geometry whose vertices sit at card centres and carry
  * cardCorner offsets; the shader expands them. Cards deeper inside a blob are darker.
+ *
+ * Each blob bulges into a few lobes. A card on a lobe takes part of its normal from the lobe's own centre,
+ * so every lobe is lit like a small sphere: bright on top, in shade underneath.
  */
-export function canopyGeometry(blobs: Blob[], rng: Rng, opts: { density?: number; cardScale?: number; center?: THREE.Vector3; snow?: number } = {}) {
+export function canopyGeometry(blobs: Blob[], rng: Rng, opts: { density?: number; cardScale?: number; center?: THREE.Vector3; snow?: number; lobes?: number } = {}) {
+  const lobed = opts.lobes ?? 1;
   const center = opts.center ?? blobs.reduce((a, b) => a.add(b.c), new THREE.Vector3()).multiplyScalar(1 / blobs.length);
   const pos: number[] = [], nrm: number[] = [], col: number[] = [], uv: number[] = [], corner: number[] = [], idx: number[] = [], snow: number[] = [];
   const d = new THREE.Vector3(), p = new THREE.Vector3(), n = new THREE.Vector3(), n2 = new THREE.Vector3();
   let v = 0;
+  const lc = new THREE.Vector3(), ln = new THREE.Vector3();
   for (const b of blobs) {
     const rAvg = (b.r.x + b.r.y + b.r.z) / 3;
-    const count = Math.max(6, Math.round(13 * rAvg * rAvg * (opts.density ?? 1)));
+    const lobes = blobLobes(b);
+    const cr = b.cardR ?? b.r, cAvg = (cr.x + cr.y + cr.z) / 3;
+    const count = Math.max(6, Math.round(13 * cAvg * cAvg * (opts.density ?? 1)));
     for (let i = 0; i < count; i++) {
       // random direction, biased towards the surface so the silhouette is full
       d.set(rng.range(-1, 1), rng.range(-1, 1), rng.range(-1, 1));
       if (d.lengthSq() > 1 || d.lengthSq() < 1e-4) { i--; continue; }
       d.normalize();
       const depth = rng.chance(0.72) ? rng.range(0.72, 1.0) : rng.range(0.25, 0.72);
-      p.set(d.x * b.r.x, d.y * b.r.y, d.z * b.r.z).multiplyScalar(depth).add(b.c);
+      // the lobes bulging this way push the card out
+      let bulge = 0, top: (typeof lobes)[number] | null = null, topW = 0;
+      for (const l of lobes) {
+        const w = l.k * Math.max(0, d.dot(l.dir)) ** 4;
+        bulge += w;
+        if (w > topW) { topW = w; top = l; }
+      }
+      p.set(d.x * b.r.x, d.y * b.r.y, d.z * b.r.z).multiplyScalar(depth * (1 + lobed * (0.3 * Math.min(bulge, 1) - 0.1))).add(b.c);
       n.copy(d).multiplyScalar(0.62);
       n2.copy(p).sub(center).normalize().multiplyScalar(0.38);
       n.add(n2).add(new THREE.Vector3(0, 0.12, 0)).normalize();
-      const size = (0.36 * rAvg + 0.2) * (opts.cardScale ?? 1) * rng.range(0.8, 1.2);
-      const shade = (0.78 + 0.22 * depth) * rng.range(0.94, 1.05);
+      if (top) {
+        lc.set(top.dir.x * b.r.x, top.dir.y * b.r.y, top.dir.z * b.r.z).multiplyScalar(0.62).add(b.c);
+        ln.copy(p).sub(lc).normalize();
+        n.lerp(ln, 0.55 * lobed * Math.min(topW * 1.4, 1)).normalize();
+      }
+      const size = (0.36 * rAvg + 0.2) * (opts.cardScale ?? 1) * rng.range(0.75, 1.25);
+      // darker where this mass meets or sinks into another one, so the masses read apart, and a little
+      // darker underneath
+      let crease = 0;
+      for (const o of blobs) {
+        if (o === b) continue;
+        const q = Math.hypot((p.x - o.c.x) / o.r.x, (p.y - o.c.y) / o.r.y, (p.z - o.c.z) / o.r.z);
+        crease = Math.max(crease, THREE.MathUtils.smoothstep(1.3 - q, 0, 0.5));
+      }
+      const under = THREE.MathUtils.smoothstep(-d.y, 0.1, 0.9);
+      const shade = (0.74 + 0.26 * depth) * (1 - 0.22 * crease) * (1 - 0.14 * under) * rng.range(0.94, 1.05);
       const rot = rng.range(0, Math.PI * 2), cs = Math.cos(rot), sn = Math.sin(rot);
       // snow settles on the outer cards that face the sky
       const sw = opts.snow ? THREE.MathUtils.smoothstep(n.y, 0.2, 0.7) * THREE.MathUtils.smoothstep(depth, 0.55, 0.85) * opts.snow * rng.range(0.75, 1) : 0;
@@ -198,17 +356,22 @@ export function treeLayout(shape: FluffyShape, rng: Rng, size = 1) {
     const broad = shape === 'broad';
     const trunkH = (broad ? 2.4 : 2.0) * rng.range(0.9, 1.15);
     const crown = V(0, trunkH + (broad ? 1.9 : 1.7), 0);
-    const mainR = broad ? R(2.5, 1.7, 2.5) : R(1.8, 1.6, 1.8);
-    blobs.push({ c: crown, r: mainR });
+    // a smaller middle mass with the side masses standing clear of it, so the crown reads as several
+    // rounded masses with gaps between them; the crown's overall reach is the same as before. Each blob
+    // keeps the card count of its earlier size (`cardR`), so the random numbers after it are unchanged.
+    const mainR = broad ? R(2.0, 1.5, 2.0) : R(1.5, 1.4, 1.5);
+    blobs.push({ c: crown, r: mainR, cardR: broad ? R(2.5, 1.7, 2.5) : R(1.8, 1.6, 1.8) });
     const n = broad ? rng.int(5, 7) : rng.int(3, 5);
     const top = V(0, trunkH, 0);
     wood.push(limb(base, top, 0.34 * size, 0.24 * size, 7));
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2 + rng.range(-0.4, 0.4);
-      const off = (broad ? rng.range(2.0, 2.8) : rng.range(1.1, 1.6));
+      const off = (broad ? rng.range(2.4, 3.0) : rng.range(1.45, 1.85));
       const c = V(Math.cos(a) * off, trunkH + (broad ? rng.range(1.0, 2.2) : rng.range(1.0, 2.4)), Math.sin(a) * off);
-      const r = broad ? rng.range(1.2, 1.6) : rng.range(0.95, 1.25);
-      blobs.push({ c, r: R(r, r * 0.85, r) });
+      const k = rng.next();
+      const r = broad ? 1.1 + 0.35 * k : 0.9 + 0.2 * k;
+      const rWas = broad ? 1.2 + (1.6 - 1.2) * k : 0.95 + (1.25 - 0.95) * k;
+      blobs.push({ c, r: R(r, r * 0.85, r), cardR: R(rWas, rWas * 0.85, rWas) });
       wood.push(limb(top, c.clone().lerp(top, 0.25), 0.16 * size, 0.07 * size, 5));
     }
     blobs.push({ c: V(rng.range(-0.3, 0.3), trunkH + (broad ? 3.2 : 3.1), rng.range(-0.3, 0.3)), r: R(broad ? 1.5 : 1.2) });
@@ -254,7 +417,9 @@ export function fluffyForest(style: FluffyStyle, placements: Placement[], rng: R
   const layouts: Array<{ canopy: THREE.BufferGeometry; wood: THREE.BufferGeometry | null }> = [];
   for (let vi = 0; vi < variants; vi++) {
     const layout = treeLayout(style.shape, rng, style.size ?? 1);
-    layouts.push({ canopy: canopyGeometry(layout.blobs, rng, { density: style.density, snow: style.snow }), wood: layout.wood });
+    // conifers and poplars keep their tapering outline: their tiers bulge less
+    const lobes = style.shape === 'conifer' ? 0.35 : style.shape === 'poplar' ? 0.6 : 1;
+    layouts.push({ canopy: canopyGeometry(layout.blobs, rng, { density: style.density, snow: style.snow, lobes }), wood: layout.wood });
   }
   const chunks = new Map<number, Array<{ pl: Placement; i: number }>>();
   placements.forEach((pl, i) => { const k = Math.floor(pl.z / CHUNK); if (!chunks.has(k)) chunks.set(k, []); chunks.get(k)!.push({ pl, i }); });
