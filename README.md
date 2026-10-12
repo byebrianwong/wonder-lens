@@ -68,6 +68,8 @@ Safety checks, all on the server (`server/moderate.ts`):
   to see. Approved photos appear at once. Rejected photos are deleted straight away. If the check is not set up or
   fails, the photo stays hidden until you approve it on `/admin.html`.
 - At most 12 saves per IP address per hour, and scores above what a world allows are refused (`server/worlds.ts`).
+- At most 100 Claude checks a day across all players (`CLAUDE_DAILY_LIMIT` changes it). After that, names get only
+  the word filter and photos wait for review, so a flood of saves cannot run up the API bill.
 
 On Vercel the functions need these environment variables:
 

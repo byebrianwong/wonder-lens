@@ -24,6 +24,11 @@ const MAX_PHOTOS = 3;
 const MAX_PHOTO_BYTES = 250_000;
 /** submissions allowed per IP address per hour */
 const RATE = 12;
+/**
+ * Claude checks allowed per day across all players, so a flood of saves cannot run up the API bill.
+ * Past it, names get only the word filter and photos wait for review. Set CLAUDE_DAILY_LIMIT to change it.
+ */
+const claudeDailyLimit = () => Number(process.env.CLAUDE_DAILY_LIMIT) || 100;
 
 interface Run { at: number; score: number; found: number; rank: string; shots: string[] }
 interface PlayerRec { name: string; runs: Run[] }
@@ -46,6 +51,8 @@ const K = {
   /** shot id -> when it was sent, for shots waiting for a person to look */
   pending: 'wl:pending',
   rate: (ip: string) => `wl:rate:${ip}`,
+  /** Claude checks made on one day (UTC) */
+  checks: (day: string) => `wl:checks:${day}`,
 };
 
 const RANKS = ['Legend', 'Wanderer', 'Explorer', 'Visitor', 'Passenger'];
@@ -177,7 +184,9 @@ export async function submit(kv: Kv, photos: PhotoStore, body: SubmitBody, ip: s
   // 3. the name and photos must pass the safety checks
   const name = cleanName(body.name);
   if (!name) return { ok: false, error: 'name', message: 'Please choose another name (up to 16 letters, numbers or spaces).' };
-  const checked = await review(name, jpegs);
+  const day = new Date(now).toISOString().slice(0, 10);
+  const underLimit = (await kv.hit(K.checks(day), 2 * 24 * 3600)) <= claudeDailyLimit();
+  const checked = await review(name, jpegs, underLimit);
   if (!checked.nameOk) return { ok: false, error: 'name', message: 'Please choose another name.' };
 
   // 4. store the photos. Rejected images are thrown away; only the reason is kept for /admin.html.

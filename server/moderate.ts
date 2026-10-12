@@ -68,12 +68,17 @@ const SCHEMA = {
 
 interface ClaudeAnswer { name_ok: boolean; name_reason: string; photos: { index: number; ok: boolean; reason: string }[] }
 
-/** Ask Claude about a name and up to three JPEG photos. Never throws. */
-export async function review(name: string, photos: Uint8Array[]): Promise<Review> {
+/**
+ * Ask Claude about a name and up to three JPEG photos. Never throws.
+ * `useClaude` is false once the day's limit of checks is used up; the name then has only the word
+ * filter, and the photos wait for review.
+ */
+export async function review(name: string, photos: Uint8Array[], useClaude = true): Promise<Review> {
   const pending = (reason: string): Review => ({
     nameOk: true, nameReason: reason, photos: photos.map(() => ({ verdict: 'pending', reason })),
   });
   if (!process.env.ANTHROPIC_API_KEY) return pending('Automatic check is not set up');
+  if (!useClaude) return pending("Today's limit of automatic checks was reached");
   try {
     const client = new Anthropic({ maxRetries: 1, timeout: 25_000 });
     const content: Anthropic.Beta.BetaContentBlockParam[] = [];
@@ -84,7 +89,8 @@ export async function review(name: string, photos: Uint8Array[]): Promise<Review
     content.push({ type: 'text', text: `Player name: ${JSON.stringify(name)}\nNumber of photos: ${photos.length}` });
     const res = await client.beta.messages.create({
       model: MODEL,
-      max_tokens: 4000,
+      // the answer is a short JSON object; this also caps what one check can cost
+      max_tokens: 2000,
       // if a safety classifier declines the request, Anthropic re-runs it on a fallback model
       betas: ['server-side-fallback-2026-07-01'],
       fallbacks: 'default',
