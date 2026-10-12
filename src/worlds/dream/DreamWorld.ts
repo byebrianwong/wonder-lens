@@ -173,7 +173,7 @@ function build(ctx: WorldContext): BuiltWorld {
   const tan = new THREE.Vector3(), prevTan = new THREE.Vector3(0, 0, -1);
   let bank = 0, grinDone = false, grinBye = false, freeT = -1, freeYaw = Math.PI, freePitch = 0, climbLift = 0;
   const mInv = new THREE.Matrix4(), mW = new THREE.Matrix4(), qW = new THREE.Quaternion(), pW = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
-  const yAxis = new THREE.Vector3(0, 1, 0), xAxis = new THREE.Vector3(1, 0, 0);
+  const yAxis = new THREE.Vector3(0, 1, 0);
   const camPos = new THREE.Vector3(), lookPick = new THREE.Vector3(), lookTarget = new THREE.Vector3();
   let lookT = 0, lookHave = false;
   const runOff = new THREE.CubicBezierCurve3(new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3());
@@ -313,7 +313,7 @@ function build(ctx: WorldContext): BuiltWorld {
         const flat = Math.hypot(ride.tangent.x, ride.tangent.z);
         const extra = Math.atan2(ride.tangent.y, flat) - Math.atan2(ride.tangent.y * 0.35, flat);
         mount.root.position.set(0, 0, 0);
-        mount.root.quaternion.setFromAxisAngle(xAxis, -extra * 0.9);
+        mount.tilt(-extra * 0.9);
         // nose up, the head rises into the view: lift the seat with it
         climbLift = damp(climbLift, Math.max(0, Math.sin(extra * 0.9)) * 3.2, 4, dt);
         mount.root.userData.lastP = null;
