@@ -356,7 +356,7 @@ export class Game {
         this.album = new Album(this.o.ui, summary, this.world.subjects, this.o.def.title, this.o.def.accent,
           () => this.o.onAgain(), () => this.exit(), this.o.relax, {
             fresh: this.fresh, knownSecrets: this.knownSecrets, onBook: () => this.showBook(),
-            requester: this.o.def.requester, requests: this.requests,
+            requester: this.o.def.requester, requests: this.requests, worldId: this.o.def.id,
           });
         dropRequests(this.o.def.id);
         // the photo book count is filled in once the last photo has been saved

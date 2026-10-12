@@ -8,6 +8,7 @@ import { loadingElement, menuElement } from './game/Screens';
 import { bookProgress, clearBook, loadBook } from './game/PhotoBook';
 import { currentRequests } from './game/Requests';
 import { BookView } from './game/BookView';
+import { openPanel } from './game/Board';
 import type { WorldDef } from './game/types';
 
 const canvas = document.getElementById('view') as HTMLCanvasElement;
@@ -70,6 +71,10 @@ async function showMenu(fadeIn = true) {
   (menu.querySelector('#mouseMode') as HTMLInputElement).addEventListener('change', (e) => {
     input.mode = (e.target as HTMLInputElement).checked ? 'lock' : 'drag';
     localStorage.setItem('ride.mouse', input.mode);
+  });
+  menu.querySelector('.lb-open')!.addEventListener('click', () => {
+    audio.start(); audio.uiClick();
+    openPanel(ui, WORLDS, selected);
   });
   menu.querySelector('.start')!.addEventListener('click', () => {
     audio.start(); audio.uiClick();
