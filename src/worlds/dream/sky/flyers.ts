@@ -110,6 +110,9 @@ export function buildKiki(camera: THREE.Camera) {
     const yawRate = (yaw - kk.prevYaw) / Math.max(dt, 1e-3);
     kk.prevYaw = yaw;
     kiki.group.rotation.set(kk.pitch.update(clamp(-kk.vel.y * 0.08, -0.35, 0.35), dt), yaw, kk.bank.update(clamp(-yawRate * 0.45, -0.55, 0.55), dt));
+    // her dress and bow flutter with her speed through the air; her body and head follow the broom's roll
+    kiki.airspeed = kk.vel.length();
+    kiki.bank = kiki.group.rotation.z;
     kiki.group.visible = true;
     const near = kiki.group.position.distanceTo(eye);
     kikiS.active = jijiS.active = kk.phase === 'fly' || (kk.phase === 'in' && near < 60);

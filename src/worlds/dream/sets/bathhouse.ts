@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Subject } from '../../../game/Subject';
 import { Rng, clamp, smoothstep } from '../../../engine/math';
 import { mergeStatic } from '../../../engine/Builders';
+import { AngleSpring, Spring } from '../../../engine/Rig';
 import { makeNoFace, makeRadishSpirit, makeSootSprites } from '../../ghibli/characters';
 import { FILMS, forwardOf, optimize, type BuiltSet, type SetContext } from '../common';
 import { buildAburaya } from '../bathhouse/aburaya';
@@ -115,6 +116,8 @@ export function buildBathhouse(ctx: SetContext): BuiltSet {
   nfBridge.group.position.copy(NOFACE);
   nfBridge.group.rotation.y = 0.5;
   live.add(nfBridge.group);
+  /** his body turns slowly after the head; the head turns at its own pace */
+  const nfYaw = new AngleSpring(0.5, 0.18, 0.9), nfTurn = new Spring(0, 0.6, 0.8);
   const nfRide = makeNoFace();
   nfRide.group.scale.setScalar(0.55);
   nfRide.group.position.set(0, -0.28, 0);
@@ -207,7 +210,7 @@ export function buildBathhouse(ctx: SetContext): BuiltSet {
   const sootDir = sootTo.clone().sub(sootFrom), sootLen = sootDir.length();
   sootDir.normalize();
   const sootSide = V(-sootDir.z, 0, sootDir.x);
-  const soots: Array<{ wrap: THREE.Group; ch: ReturnType<typeof makeSootSprites>; coal: THREE.Object3D[]; u0: number }> = [];
+  const soots: Array<{ wrap: THREE.Group; ch: ReturnType<typeof makeSootSprites>; coal: THREE.Object3D[]; u0: number; sq: Spring }> = [];
   {
     const nSoot = ctx.lowDetail ? 6 : 9;
     let seed = 300;
@@ -222,19 +225,19 @@ export function buildBathhouse(ctx: SetContext): BuiltSet {
       live.add(wrap);
       const coal: THREE.Object3D[] = [];
       ch.group.traverse((o) => { const mm = o as THREE.Mesh; if (mm.isMesh && mm.geometry.type === 'DodecahedronGeometry') coal.push(mm); });
-      soots.push({ wrap, ch, coal, u0: i / nSoot });
+      soots.push({ wrap, ch, coal, u0: i / nSoot, sq: new Spring(1, 5, 0.45) });
     }
   }
   const sootAnchor = new THREE.Object3D();
   sootAnchor.position.copy(sootFrom).lerp(sootTo, 0.5);
   live.add(sootAnchor);
-  let sootLoop = 0, swarmT = 0;
+  let sootLoop = 0, swarmT = 0, sootJumpT = 0;
   const sootS = new Subject({
     id: 'soot-coal', name: 'Soot sprites with coal', from: FILMS.spirited, group: sootAnchor, radius: 4.5, base: 720,
     hint: 'A line of soot sprites carrying lumps of coal from the heap to the furnace, in the boiler room. Throw an acorn among them and they swarm it; play the ocarina and they all jump.',
     poses: { swarm: { label: 'Swarming', mult: 1.7 }, jump: { label: 'All jump', mult: 1.4 } }, centerOffset: new THREE.Vector3(0, 0.5, 0), crowd: true,
     onItem: (pos) => { for (const s of soots) s.ch.swarmTo(pos); swarmT = 5; sootS.setPose('swarm', 5); return true; },
-    onCall: () => { for (const s of soots) s.ch.jump(); sootS.setPose('jump', 1.2); return true; }, reactRange: 16, maxDistance: 80,
+    onCall: () => { for (const s of soots) s.ch.jump(); sootJumpT = 1.2; sootS.setPose('jump', 1.2); return true; }, reactRange: 16, maxDistance: 80,
     update: (_dt, ride) => { const z = zOf(ride); sootS.active = z < -1985 && z > -2055; },
   });
   subjects.push(sootS);
@@ -294,7 +297,17 @@ export function buildBathhouse(ctx: SetContext): BuiltSet {
       if (!riding && z < -1861 && z > -2050 && !inView(nfBridge.group.getWorldPosition(tmp).setY(NOFACE.y + 2.5)) && !inView(mount.seats[0].getWorldPosition(new THREE.Vector3()))) setRiding(true);
       nfBridge.group.visible = !riding;
       nfRide.group.visible = riding && z > -2060;
-      if (nfBridge.group.visible) nfBridge.update(dt, t);
+      if (nfBridge.group.visible) {
+        // he watches the Catbus go by: the mask turns first, and the body comes round after it, slowly
+        const want = Math.atan2(camPos.x - NOFACE.x, camPos.z - NOFACE.z);
+        const body = nfYaw.update(want, dt);
+        const lead = Math.atan2(Math.sin(want - body), Math.cos(want - body));
+        nfBridge.turn = nfTurn.update(clamp(lead, -0.9, 0.9), dt);
+        nfBridge.group.rotation.y = body;
+        // and he floats a little, never quite still
+        nfBridge.group.position.y = NOFACE.y + 0.06 + Math.sin(t * 0.8) * 0.06;
+        nfBridge.update(dt, t);
+      }
       if (nfRide.group.visible) nfRide.update(dt, t);
 
       // ---- the Radish Spirit, the Kasuga line ----
@@ -316,16 +329,57 @@ export function buildBathhouse(ctx: SetContext): BuiltSet {
         br.fire.color.setRGB(2.4 * fl, 1.45 * fl, 0.9 * fl);
         // soot sprites walk the loop (it pauses while they swarm an acorn)
         if (swarmT > 0) swarmT -= dt; else sootLoop += dt * 0.9 / (sootLen * 2 + 2);
+        if (sootJumpT > 0) sootJumpT -= dt;
         for (const s of soots) {
-          const u = (s.u0 + sootLoop) % 1;
-          const there = u < 0.5;
-          const a = there ? u * 2 : (u - 0.5) * 2;
-          sootP.copy(there ? sootFrom : sootTo).lerp(there ? sootTo : sootFrom, a).addScaledVector(sootSide, there ? 0.5 : -0.5);
+          // the loop in units of distance walked: along to the furnace, a second there (throw the coal in,
+          // turn round), back along the other side, a second at the heap (turn round, pick up a new lump)
+          const v = ((s.u0 + sootLoop) % 1) * (sootLen * 2 + 2);
+          const there = v < sootLen + 1;
+          let a: number, side: number, turn = 0, toss = -1, grab = -1;
+          if (v < sootLen) { a = v / sootLen; side = 0.5; }
+          else if (v < sootLen + 1) { const k = v - sootLen; a = 1; toss = clamp(k / 0.6, 0, 1); turn = smoothstep(0.55, 1, k); side = 0.5 - turn; }
+          else if (v < sootLen * 2 + 1) { a = 1 - (v - sootLen - 1) / sootLen; side = -0.5; turn = 1; }
+          else { const k = v - sootLen * 2 - 1; a = 0; turn = 1 + smoothstep(0, 0.45, k); side = -0.5 + (turn - 1); grab = clamp((k - 0.4) / 0.6, 0, 1); }
+          // it walks in little hops, moving on while it is in the air: a step every 0.45 along the way
+          const walking = toss < 0 && grab < 0;
+          const n = Math.max(1, Math.round(sootLen / 0.45));
+          const f = (a * n) % 1, stepA = walking ? (Math.floor(a * n) + f * f * (3 - 2 * f)) / n : a;
+          sootP.copy(sootFrom).lerp(sootTo, stepA).addScaledVector(sootSide, side);
           s.wrap.position.copy(sootP);
-          s.wrap.rotation.y = Math.atan2(there ? sootDir.x : -sootDir.x, there ? sootDir.z : -sootDir.z);
-          // the lump goes into the fire at the furnace end and is picked up again at the heap
-          for (const c of s.coal) c.visible = there;
+          // turning round is a half turn on the spot, with a little hop; at the furnace it first turns to face
+          // the fire's mouth to throw
+          const dirA = Math.atan2(sootDir.x, sootDir.z);
+          let yaw = dirA + Math.PI * turn;
+          if (toss >= 0) {
+            const fireA = Math.atan2(FURNACE.x - sootP.x, FURNACE.z - sootP.z);
+            const toFire = dirA + Math.atan2(Math.sin(fireA - dirA), Math.cos(fireA - dirA)) * smoothstep(0, 0.25, toss);
+            yaw = toFire + (dirA + Math.PI - toFire) * smoothstep(0.55, 1, v - sootLen);
+          }
+          s.wrap.rotation.y = yaw;
           s.ch.update(dt, t);
+          // in the air it stretches a little; it squashes as it lands
+          let hop = 0, sq = 1;
+          if (walking) { hop = Math.sin(f * Math.PI) * 0.13; sq = 1 + 0.1 * Math.sin(f * Math.PI) - 0.25 * Math.max(0, 1 - f * 5); }
+          else hop = 0.1 * Math.abs(Math.sin(turn * Math.PI));
+          const inner = s.ch.group.children[0];
+          for (const c of s.coal) { c.visible = there ? toss < 0.75 : grab > 0; c.position.set(0, 0.78, 0); c.scale.setScalar(1); }
+          // throwing: crouch, spring up and fling the lump forward and down into the furnace's mouth
+          if (toss >= 0) {
+            sq = toss < 0.35 ? 1 - 0.28 * smoothstep(0, 0.35, toss) : 0.72 + 0.48 * smoothstep(0.35, 0.55, toss) - 0.2 * smoothstep(0.55, 0.9, toss);
+            hop = Math.max(hop, toss > 0.35 ? Math.sin(clamp((toss - 0.35) / 0.45, 0, 1) * Math.PI) * 0.22 : 0);
+            const fling = smoothstep(0.35, 0.75, toss);
+            for (const c of s.coal) { c.position.set(0, 0.78 + Math.sin(fling * Math.PI) * 0.5 - fling * 0.4, fling * 1.1); c.scale.setScalar(1 - fling * 0.4); }
+          }
+          // picking up: crouch low, the lump comes up from the ground in front onto the head, and stand up tall
+          if (grab >= 0) {
+            sq = grab < 0.4 ? 1 - 0.3 * smoothstep(0, 0.4, grab) : 0.7 + 0.42 * smoothstep(0.4, 0.75, grab) - 0.12 * smoothstep(0.75, 1, grab);
+            const up = smoothstep(0.3, 0.8, grab);
+            for (const c of s.coal) { c.position.set(0, 0.15 + 0.63 * up, 0.35 * (1 - up)); c.scale.setScalar(0.5 + 0.5 * smoothstep(0, 0.4, grab)); }
+          }
+          if (swarmT <= 0 && sootJumpT <= 0) inner.position.y = hop;
+          // (through a quick spring, so the squash never pops and wobbles a little after each landing)
+          sq = s.sq.update(sq, dt);
+          s.wrap.scale.set(1.5 / Math.sqrt(sq), 1.5 * sq, 1.5 / Math.sqrt(sq));
         }
         // the shutters burst open as the paper birds arrive, and the birds pour in
         const open = smoothstep(-2024.5, -2027, z);

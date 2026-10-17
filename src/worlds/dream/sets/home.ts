@@ -278,7 +278,9 @@ export function buildHome(ctx: SetContext): BuiltSet {
       [satsuki, mei].forEach((k, i) => {
         const a = t * 1.1 + i * Math.PI;
         const ringP = new THREE.Vector3(bed.x + Math.cos(a) * 3.4, 0, bed.z + Math.sin(a) * 2.8);
-        const restP = bed.clone().add(new THREE.Vector3(-3.2 + i * 1.1, 0, 1.6 - i * 1.4));
+        // side by side as seen from the lane (Mei a step nearer and to the right), so she is not hidden
+        // behind her sister while they jump
+        const restP = bed.clone().add(new THREE.Vector3(i ? -2.0 : -3.4, 0, i ? 2.4 : 1.2));
         const at = restP.clone().lerp(ringP, roundK);
         const runP = at.clone().lerp(RUN_TO[i], smoothstep(0, 1, chase));
         runP.y = place.height(runP.x, runP.z);

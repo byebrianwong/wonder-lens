@@ -48,6 +48,11 @@ const REST = { y: -0.6, pitch: 0.5 };
  * meets the head.
  */
 const GLANCE = { out: 2.6, up: 0.3, yaw: 1.65, pitch: 0.12 }, BEND = 2.2, NECK = 0.75;
+/**
+ * Swimming through the air: the head weaves `side` to each side (world units) every 2π/`rate` seconds and
+ * rises and dips `rise`, turning `yaw` and lifting its snout `pitch` (radians) ahead of the movement.
+ */
+const SWIM = { rate: 1.15, side: 0.32, rise: 0.11, yaw: 0.16, pitch: 0.08 };
 /** Haku appears here, under the paper cover */
 const SHOW_Z = -2046;
 /** z-keyed glances back at the rider: [from z, to z, side (+1 turns his head to his left)] */
@@ -205,9 +210,13 @@ export function buildHakuRider(ctx: SetContext) {
         const gs = Math.sign(glance), gk = Math.abs(glance);
         // the head swings out first, then turns its face to the rider (and turns back first on the way home)
         const out = smoothstep(0, 0.6, gk), turn = smoothstep(0.3, 1, gk);
-        rideState.offset.set(gs * GLANCE.out * out, REST.y + GLANCE.up * out, 0).applyQuaternion(qb).divideScalar(S);
-        rideState.yaw = gs * GLANCE.yaw * turn + Math.sin(t * 0.7) * 0.04;
-        rideState.pitch = REST.pitch + (GLANCE.pitch - REST.pitch) * turn + Math.sin(t * 1.1) * 0.03;
+        // between glances he swims through the air: the head weaves slowly from side to side and rises and
+        // dips twice as often, always pointing a little ahead into the way it is moving (the neck bends after it)
+        const swim = 1 - out, wv = t * SWIM.rate;
+        const sx = Math.sin(wv) * SWIM.side * swim, sy = Math.sin(wv * 2 + 0.8) * SWIM.rise * swim;
+        rideState.offset.set(gs * GLANCE.out * out + sx, REST.y + GLANCE.up * out + sy, 0).applyQuaternion(qb).divideScalar(S);
+        rideState.yaw = gs * GLANCE.yaw * turn - Math.cos(wv) * SWIM.yaw * swim + Math.sin(t * 0.7) * 0.03;
+        rideState.pitch = REST.pitch + (GLANCE.pitch - REST.pitch) * turn + Math.cos(wv * 2 + 0.8) * SWIM.pitch * swim + Math.sin(t * 1.1) * 0.02;
         rideState.pos.copy(headWorld).divideScalar(S);
         haku.ride = rideState;
         // lay the body along the path behind when he first appears, or after the ride jumps

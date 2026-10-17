@@ -5,7 +5,7 @@ import { envelope } from '../../../engine/Rig';
 import { Rng, TAU, clamp, lerp, smoothstep } from '../../../engine/math';
 import { SETS } from '../layout';
 import { FILMS, forwardOf, optimize, showRange, type BuiltSet, type SetContext } from '../common';
-import { Birds, circlePose, circlers } from '../laputa/birds';
+import { Birds, circlePose, circlers, lastLift, wingbeat } from '../laputa/birds';
 import { buildCastle, crystalFog } from '../laputa/castle';
 import { cloudTop, eyeClouds } from '../laputa/clouds';
 import { Foxsquirrels } from '../laputa/foxsquirrel';
@@ -87,11 +87,20 @@ export function buildLaputa(ctx: SetContext): BuiltSet {
   const lastPos = Array.from({ length: birds.count }, () => new THREE.Vector3(0, -500, 0));
   const tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3();
   const heads = lastPos.map((_, i) => i * 1.7);
-  /** place bird i, facing the way it moved since last frame (or keeping its last heading when it sits still) */
+  /**
+   * place bird i, turning towards the way it moved since last frame (or keeping its last heading when it sits
+   * still). It turns over a fraction of a second rather than at once, so a bird whose path doubles back for a
+   * frame does not flip round.
+   */
+  let birdDt = 1 / 60;
   const placeBird = (i: number, p: THREE.Vector3, flap: number, bank: number, scale = 1) => {
     const lp = lastPos[i];
     const dx = p.x - lp.x, dz = p.z - lp.z;
-    if (dx * dx + dz * dz > 1e-5) heads[i] = Math.atan2(dx, dz);
+    if (dx * dx + dz * dz > 1e-5) {
+      const want = Math.atan2(dx, dz);
+      // the first placement (from far below) faces the way at once
+      heads[i] = lp.y < -400 ? want : heads[i] + Math.atan2(Math.sin(want - heads[i]), Math.cos(want - heads[i])) * (1 - Math.exp(-7 * birdDt));
+    }
     const heading = heads[i];
     birds.set(i, p, heading, bank, flap, scale);
     lp.copy(p);
@@ -225,6 +234,7 @@ export function buildLaputa(ctx: SetContext): BuiltSet {
       herd.update(dt, t, eye);
 
       // ---- birds ----
+      birdDt = dt;
       let i = 0;
       if (flockT >= 0) { flockT += dt; if (flockT > 7) flockT = -1; }
       const spread = flockT >= 0 ? envelope(flockT, 0, 1.2, 3.5, 7) : 0;
@@ -239,7 +249,13 @@ export function buildLaputa(ctx: SetContext): BuiltSet {
         tmp.set(along.x + along.rx * escortOff[j].x, along.y + ctx.mount.seat.y + escortOff[j].y + Math.sin(t * 1.3 + j) * 0.6, z + escortOff[j].z);
         const w = kIn * (1 - kOut);
         h.lerp(tmp, w * w * (3 - 2 * w));
-        placeBird(i++, h, w > 0.05 ? Math.sin(t * 9 + j) * 0.75 : home.flap, home.bank * (1 - w));
+        // alongside the Catbus each one flaps at its own pace, gliding now and then; the change from its
+        // circling wings to these is blended, not switched
+        const beat = 1 - 0.8 * smoothstep(0.55, 0.8, Math.sin(t * 0.7 + j * 1.9));
+        const escortFlap = wingbeat(t, 8.2 + (j % 4) * 0.7, j * 1.3, beat, 0.75);
+        const k = smoothstep(0, 0.25, w);
+        h.y += lastLift() * k;
+        placeBird(i++, h, home.flap + (escortFlap - home.flap) * k, home.bank * (1 - w));
       });
       // the fallen robot's birds: sit and peck; startled, they circle up over it and settle again
       if (nestT >= 0) { nestT += dt; if (nestT > 7) nestT = -1; }
@@ -250,7 +266,11 @@ export function buildLaputa(ctx: SetContext): BuiltSet {
         const peck = Math.max(0, Math.sin(t * 3 + j * 2)) ** 8 * 0.08;
         tmp2.copy(tmp).sub(p).multiplyScalar(up).add(p);
         tmp2.y -= peck * (1 - up);
-        placeBird(i++, tmp2, up > 0.1 ? Math.sin(t * 11 + j) * 0.8 : -1.15, 0, lerp(0.55, 0.7, up));
+        // the wings open out of their folded pose as they lift off, and fold again as they land
+        const open = smoothstep(0, 0.2, up);
+        const fly = wingbeat(t, 11, j, 1, 0.8);
+        tmp2.y += lastLift() * open;
+        placeBird(i++, tmp2, -1.15 + (fly + 1.15) * open, 0, lerp(0.55, 0.7, up));
       });
       birds.commit();
 

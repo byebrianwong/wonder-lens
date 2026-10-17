@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeStatic, mesh } from '../../../engine/Builders';
 import { charToon, boxUV, repeatUV } from '../../../engine/Paint';
 import { Spring, limbGeometry, outline, taperedTube, envelope } from '../../../engine/Rig';
-import { Rng, TAU, clamp, lerp, smoothstep } from '../../../engine/math';
+import { Rng, TAU, clamp, lerp } from '../../../engine/math';
 import { metalPlates } from '../../ghibli/characterTextures';
 import { slate, deckPlanks } from '../../ghibli/propTextures';
 import { brick, clayTiles, doorBoards, legScales, timberWall } from './paint';
@@ -433,10 +433,18 @@ export function makeHowlCastle(o: { profile: (zLocal: number) => number; smoke: 
 
   // ---------- animation state ----------
   const drive: CastleDrive = { x: 0, z: 0, yaw: 0, lift: 0, walk: 0, gait: 0, crouch: 1, tongue: [1, 1, 1], hopScale: 1 };
-  const sway = { roll: new Spring(0, 0.9, 0.35), pitch: new Spring(0, 1.1, 0.4) };
-  let hopT = -1, sneezeT = -1, sneezeIdx = 0, blinkT = 3, smokeT = 0, burst = 0;
+  const sway = { roll: new Spring(0, 0.9, 0.35), pitch: new Spring(0, 1.1, 0.4), sag: new Spring(0, 1.5, 0.3) };
+  let hopT = -1, sneezeT = -1, sneezeIdx = 0, blinkT = 3, smokeT = 0, burst = 0, stepPuff = 0, sagSet = false;
   const H = new THREE.Vector3(), F = new THREE.Vector3(), D = new THREE.Vector3(), J = new THREE.Vector3(), hint = new THREE.Vector3(), perp = new THREE.Vector3(), tmp = new THREE.Vector3();
   const CYCLE = 13, DUTY = 0.68, STRIDE = CYCLE * DUTY;
+  /** how long (as a part of the walk cycle) the body takes to drop onto a foot that has just come down */
+  const THUD = 0.16;
+  let puffN = 0;
+  /** 0..1 eased like a heavy thing falling into place: it speeds up, hits 1 at 0.72, bounces back `back`, settles */
+  const slap = (k: number, back: number) => {
+    k = clamp(k, 0, 1);
+    return k < 0.72 ? (k / 0.72) ** 2 : 1 - back * Math.sin(((k - 0.72) / 0.28) * Math.PI);
+  };
 
   const castle: HowlCastle = {
     group: root, body, drive, blocker, proxy, onStep: null,
@@ -458,20 +466,36 @@ export function makeHowlCastle(o: { profile: (zLocal: number) => number; smoke: 
       let jolt = 0;
       if (sneezeT >= 0) { sneezeT += dt; jolt = envelope(sneezeT, 0, 0.06, 0.12, 0.7) * d.hopScale; if (sneezeT > 1.4) sneezeT = -1; }
       const w = d.walk;
-      body.position.y = d.lift + hop + w * 0.35 * Math.cos(ph * TAU * 2);
-      const roll = w * 0.04 * Math.sin(ph * TAU) + Math.sin(t * 0.7) * 0.004 + jolt * 0.03 * (sneezeIdx === 1 ? -1 : 1);
-      const pitch = w * 0.015 * Math.sin(ph * TAU * 2 + 1) - jolt * 0.02 + (hopT >= 0 ? -0.03 * envelope(hopT, 0.3, 0.6, 0.7, 1.2) * d.hopScale : 0);
+      // the weight lands on each foot as it comes down: the body drops a little, and dips towards that
+      // corner (front feet nod it forward, back feet tip it back, each side rolls it to that side)
+      let thud = 0, nod = 0, lean = 0;
+      for (const L of legs) {
+        const since = (ph + L.phase) % 1;
+        const k = since < THUD ? Math.sin((since / THUD) * Math.PI) * (1 - since / THUD) * 1.5 : 0;
+        thud += k; nod += k * Math.sign(L.hip.z); lean += k * L.side;
+      }
+      const bodyY = d.lift + hop + w * (0.25 - 0.55 * thud);
+      body.position.y = bodyY;
+      const roll = w * (0.03 * Math.sin(ph * TAU) - 0.02 * lean) + Math.sin(t * 0.7) * 0.004 + jolt * 0.03 * (sneezeIdx === 1 ? -1 : 1);
+      const pitch = w * (0.01 * Math.sin(ph * TAU * 2 + 1) + 0.03 * nod) - jolt * 0.02 + (hopT >= 0 ? -0.03 * envelope(hopT, 0.3, 0.6, 0.7, 1.2) * d.hopScale : 0);
       body.rotation.set(pitch, w * 0.02 * Math.sin(ph * TAU), roll);
       // the heap on top lags behind and overshoots, so the whole pile sways
       top.rotation.z = sway.roll.update(roll * 1.6, dt) - roll;
       top.rotation.x = sway.pitch.update(pitch * 1.8 + (hop > 0.5 ? -0.02 : 0), dt) - pitch;
+      // and it lags behind the body going up and down: it squashes when the body stops falling (a step,
+      // sitting down, landing a hop) and wobbles back. It stays on the hull, since it scales from its base.
+      if (!sagSet || Math.abs(sway.sag.x - bodyY) > 4) { sway.sag.set(bodyY); sagSet = true; }
+      const sag = clamp((sway.sag.update(bodyY, dt) - bodyY) * 0.06, -0.05, 0.045);
+      top.scale.set(1 - sag * 0.4, 1 + sag, 1 - sag * 0.4);
       body.updateMatrix();
 
       // ---- the tongue ----
       const [ta, tb, tc] = d.tongue;
-      tongueA.rotation.x = -(slopeA + 0.22) * (1 - smoothstep(0, 1, ta));
-      tongueB.position.copy(tuckB).multiplyScalar(1 - smoothstep(0, 1, tb));
-      tongueC.position.copy(tuckC).multiplyScalar(1 - smoothstep(0, 1, tc));
+      // the top plank falls open under its own weight, slaps down and bounces once; the other two slide out
+      // and knock against their stops
+      tongueA.rotation.x = -(slopeA + 0.22) * (1 - slap(ta, 0.09));
+      tongueB.position.copy(tuckB).multiplyScalar(1 - slap(tb, 0.04));
+      tongueC.position.copy(tuckC).multiplyScalar(1 - slap(tc, 0.04));
 
       // ---- eyelids blink now and then; the weathervane and flag turn in the wind ----
       blinkT -= dt;
@@ -505,6 +529,14 @@ export function makeHowlCastle(o: { profile: (zLocal: number) => number; smoke: 
         }
         burst = Math.max(0, burst - 0.34);
       }
+      // each front foot coming down jolts a quick dark puff out of one chimney, in turn
+      if (stepPuff > 0 && root.visible) {
+        root.updateMatrixWorld(true);
+        const c = chimneys[stepPuff % chimneys.length];
+        c.getWorldPosition(tmp);
+        smoke.emit(tmp, { n: 3, vel: new THREE.Vector3(0, 4.2, 0), spread: 0.7, size: 1.1, grow: 2.8, life: 2.2, color: 0xa8a29c, alpha: 0.85, jitter: 0.3 });
+        stepPuff = 0;
+      }
 
       // ---- legs: each foot steps on the ground (or the lake bed); the joint bends backward ----
       root.updateMatrixWorld(true);
@@ -524,7 +556,10 @@ export function makeHowlCastle(o: { profile: (zLocal: number) => number; smoke: 
         const gy = ground(tmp.x, tmp.z);
         F.set(fx, gy + 0.9 + lift * w * (1 - d.crouch), fzz);
         // a foot that has just come down
-        if (L.prev > DUTY && lp < DUTY && w > 0.3 && castle.onStep) { L.footW.set(fx, gy, fzz).applyMatrix4(root.matrixWorld); castle.onStep(L.footW); }
+        if (L.prev > DUTY && lp < DUTY && w > 0.3) {
+          if (castle.onStep) { L.footW.set(fx, gy, fzz).applyMatrix4(root.matrixWorld); castle.onStep(L.footW); }
+          if (L.hip.z > 0) stepPuff = ++puffN;
+        }
         L.prev = lp;
         // two-bone reach from hip to foot, bending away from the front
         D.subVectors(F, H);

@@ -300,11 +300,12 @@ export function makeRobot(): Robot {
       let leanT = 0.36 - pause * 0.2, twistT = 0, rsx = 0, rsz = 0.1 + Math.sin(t * 0.37) * 0.08, rel = -0.14 + Math.sin(t * 0.7 + 1) * 0.12, rwr = 0.3;
       let lsx = 0, lel = -0.25, curl = 0.45 + Math.sin(t * 1.1) * 0.2, glow = 0.95 + Math.sin(t * 1.7) * 0.05;
       let lookAt: THREE.Vector3 | null = null;
-      // somebody is coming: it looks up from its work and follows them with its eye
+      // Somebody is coming: first its eye turns to follow them, and only when they are closer does it slowly
+      // straighten up from its work, so the head leads and the heavy body follows.
       if (robot.watch) {
         const d = tmp2.copy(robot.watch).distanceTo(g.getWorldPosition(tmp));
-        const k = clamp(1 - (d - 12) / 28, 0, 1);
-        leanT = lerp(leanT, 0.12, k);
+        const k = clamp(1 - (d - 12) / 28, 0, 1), rise = clamp(1 - (d - 8) / 20, 0, 1);
+        leanT = lerp(leanT, 0.12, rise * rise * (3 - 2 * rise));
         if (k > 0.05) lookAt = robot.watch;
         glow += k * 0.15;
       }

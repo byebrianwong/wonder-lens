@@ -106,20 +106,34 @@ export function makeForestSpirit(scale = 1.4): ForestSpirit {
   head.add(antlers);
   outline(antlers, INK, 1.0, 0.02);
   const earGeo = earGeometry();
+  const ears: THREE.Mesh[] = [];
   for (const s of [-1, 1]) {
     const ear = new THREE.Mesh(earGeo, coatMat);
     ear.scale.set(s * 1.25, 1.25, 1.25);
     ear.position.set(s * 0.42, 0.62, 0.1);
     ear.rotation.set(0, 0, s * 0.35);
     head.add(ear);
+    ears.push(ear);
   }
 
   // ----- animation -----
   const look = new LookAt(0.9, 0.45);
-  const sp = { walk: new Spring(0, 1.2, 0.9), lift: new Spring(0, 1.1, 0.8) };
+  const sp = { walk: new Spring(0, 1.2, 0.9), lift: new Spring(0, 1.1, 0.8), dip: new Spring(0, 2.2, 0.55), nod: new Spring(0, 1.8, 0.6) };
   let walked = 0, gazeT = -1;
   const prevC = [0, 0, 0, 0];
   const tmp = new THREE.Vector3();
+  /** a hoof's weight in the first part of its stance: a quick rise after it lands, fading by mid-stance */
+  const landing = (c: number) => (c < 0.35 ? Math.sin((c / 0.35) * Math.PI) : 0);
+  /** a deterministic twitch: 0 most of the time, a quick 0 -> 1 -> 0 flick at times set by `seed` */
+  const twitch = (t: number, every: number, seed: number) => {
+    const k = Math.floor(t / every + seed), f = t / every + seed - k;
+    // only some periods have a twitch, and it sits at a different point in each
+    const h = Math.sin(k * 12.9898 + seed * 78.233) * 43758.5453;
+    const r = h - Math.floor(h);
+    if (r < 0.45) return 0;
+    const at = 0.2 + r * 0.5, d = (f - at) * every;
+    return d > 0 && d < 0.35 ? Math.sin((d / 0.35) * Math.PI) : 0;
+  };
   // everything is built at scale 1 (the rig-free parts and their outlines), then the whole deer is scaled
   g.scale.setScalar(scale);
   const ch: ForestSpirit = {
@@ -129,8 +143,10 @@ export function makeForestSpirit(scale = 1.4): ForestSpirit {
       const w = clamp(sp.walk.update(ch.walk, dt), 0, 1);
       // the stride is in world units; the legs are built at scale 1
       walked += ch.stride / scale;
-      // one full cycle of all four legs per 3.4 units walked
-      const cyc = walked / 3.4;
+      // One full cycle of all four legs per 2.6 units walked. A leg is on the ground for 0.7 of the cycle and
+      // its hoof sweeps back about 1.83 units in that time, so 0.7 * 2.6 matches it and the hooves do not skid.
+      const cyc = walked / 2.6;
+      let load = 0, roll = 0, front = 0;
       for (let i = 0; i < 4; i++) {
         const L = legs[i];
         const c = ((cyc + L.off) % 1 + 1) % 1;
@@ -142,9 +158,15 @@ export function makeForestSpirit(scale = 1.4): ForestSpirit {
           // lifted and carried forward, the lower leg folding
           const k = (c - 0.7) / 0.3;
           ang = lerp(0.3, -0.3, k * k * (3 - 2 * k)); bend = Math.sin(k * Math.PI) * 0.95;
+          // the body leans away from the side whose leg is lifted
+          roll += (i < 2 ? 1 : -1) * Math.sin(k * Math.PI);
         }
         L.hip.rotation.x = ang * w;
         L.knee.rotation.x = (L.front ? bend : -bend * 0.8) * w + (L.front ? 0.02 : -0.06);
+        // weight comes onto each hoof as it lands; the forelegs carry the head, so they also nod it
+        const ld = landing(c);
+        load += ld;
+        if (L.front) front += ld;
         // a hoof is set down as its leg finishes the swing
         if (w > 0.3 && c < prevC[i] && ch.onHoof) {
           L.hoof.getWorldPosition(tmp);
@@ -152,17 +174,29 @@ export function makeForestSpirit(scale = 1.4): ForestSpirit {
         }
         prevC[i] = c;
       }
-      // the body sways gently with the walk and breathes when still
-      body.position.y = BODY_Y + Math.sin(cyc * TAU * 2) * 0.04 * w + Math.sin(t * 1.3) * 0.015;
-      body.rotation.z = Math.sin(cyc * TAU) * 0.02 * w;
-      // the head nods with each step; on a gaze the neck rises and the head turns to the rider
+      // the body settles a little onto each hoof as it lands (through a soft spring, so it gives and recovers),
+      // rolls away from the lifted leg, and breathes when still
+      const dip = sp.dip.update((load - 0.89) * 0.04 * w, dt); // 0.89 is the average load, so it rides no lower on average
+      body.position.y = BODY_Y - dip + Math.sin(t * 1.3) * 0.015;
+      body.rotation.z = roll * 0.025 * w;
+      body.rotation.x = Math.sin(t * 1.3 + 0.6) * 0.006;
+      // the head nods down a little after each forefoot lands, then rises again; on a gaze the neck rises
+      // and the head turns to the rider
       let gz = 0;
       if (gazeT >= 0) { gazeT += dt; gz = envelope(gazeT, 0, 0.9, 3.4, 4.6); if (gazeT > 4.8) gazeT = -1; }
       const lift = sp.lift.update(gz, dt);
-      neckTilt.rotation.x = lerp(0.62, 0.22, lift) + Math.sin(cyc * TAU * 2) * 0.03 * w;
+      const nod = sp.nod.update(front * 0.07 * w, dt);
+      neckTilt.rotation.x = lerp(0.62, 0.22, lift) + nod;
       const [ly, lp] = look.update(head, ch.lookTarget, dt, lerp(0.35, 1, lift));
-      head.rotation.set(lerp(-0.45, -0.3, lift) + lp + Math.sin(t * 0.7) * 0.02, ly, 0);
-      tail.rotation.z = Math.sin(t * 2.1) * 0.15;
+      // the head moves less than the neck under it, so the face stays steady while the body walks
+      head.rotation.set(lerp(-0.45, -0.3, lift) + lp - nod * 0.6 + Math.sin(t * 0.7) * 0.02, ly, 0);
+      // now and then an ear flicks, and the tail gives a few quick flicks
+      for (let s = 0; s < 2; s++) {
+        const f = twitch(t, 3.1 + s * 0.9, 0.37 + s * 0.41);
+        ears[s].rotation.set(0, (s ? -1 : 1) * f * 0.5, (s ? 1 : -1) * (0.35 + f * 0.35));
+      }
+      const flick = twitch(t, 2.3, 0.11);
+      tail.rotation.set(-2.6 - flick * 0.35, 0, Math.sin(t * 2.1) * 0.05 + Math.sin(t * 19) * 0.22 * flick);
     },
   };
   return ch;

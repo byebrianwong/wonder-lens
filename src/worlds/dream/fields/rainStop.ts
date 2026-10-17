@@ -326,11 +326,24 @@ export function buildRainStop(groundAt: (x: number, z: number) => number, lamp: 
       // the scene itself is the pose; renewed before it runs out, so a photo never finds them 'idle'
       for (const s of subjects) if (s.pose === 'idle' || (s.pose === 'waiting' && s.poseTimer < 0.25)) s.setPose('waiting', 0.5);
 
+      // ---- while he waits, a fat drop off the tree lands on his umbrella every 2.9 s: it jolts, and a moment
+      // later he rolls his eyes up towards the sound (the moment before the film's big jump) ----
+      let plink = 0, glance = 0;
+      if (reactT < 0) {
+        const d = ((t + 0.8) % 2.9 + 2.9) % 2.9;
+        plink = envelope(d, 0, 0.06, 0.12, 0.7);
+        glance = envelope(d, 0.15, 0.45, 1.1, 1.7);
+        if (d < dt && camPos.distanceTo(totoro.group.position) < 60) {
+          totoro.umbrella?.getWorldPosition(umbTop);
+          splash.burst(umbTop.add(tmp.set(0, 1.9 * TOTORO_SCALE, 0)), 2, 0xc8d8ec, 1.2, 1.2, 0.45);
+        }
+      }
+
       // ---- Totoro: looks up the road, at the Catbus as it comes, up at his umbrella while it drums ----
       const near = camPos.distanceTo(totoro.group.position) < 34;
       lookAhead.copy(totoro.group.position).addScaledVector(FWD, 20).setY(totoro.group.position.y + 4);
       totoro.lookTarget = drum > 0.3 ? null : near ? camPos : lookAhead;
-      pose.head = -0.5 * drum - 0.15 * grin;
+      pose.head = -0.5 * drum - 0.15 * grin - 0.16 * glance;
       // (any opening at all shows his teeth, so the mouth stays shut until the grin)
       pose.mouth = 1.05 * grin;
       pose.stretch = 0.03 * drum;
@@ -342,7 +355,7 @@ export function buildRainStop(groundAt: (x: number, z: number) => number, lamp: 
         const u = totoro.umbrella;
         u.parent!.updateWorldMatrix(true, false);
         u.parent!.getWorldQuaternion(parentQ).invert();
-        totoro.group.getWorldQuaternion(umbQ).multiply(tiltQ.setFromEuler(tiltE.set(-0.32 + Math.sin(t * 0.8) * 0.03 + drum * Math.sin(t * 23) * 0.04, 0, 0.22)));
+        totoro.group.getWorldQuaternion(umbQ).multiply(tiltQ.setFromEuler(tiltE.set(-0.32 + Math.sin(t * 0.8) * 0.03 + drum * Math.sin(t * 23) * 0.04 + plink * 0.06, 0, 0.22)));
         u.quaternion.copy(parentQ.multiply(umbQ));
       }
 

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { charToon, Painter } from '../../../engine/Paint';
-import { Rng, TAU } from '../../../engine/math';
+import { Rng, TAU, smoothstep } from '../../../engine/math';
 
 /*
  * White birds for Laputa, drawn as three instanced meshes (bodies, left wings, right wings) however many
@@ -98,10 +98,28 @@ export function circlers(n: number, rng: Rng, o: { cx: number; cz: number; r: [n
   return out;
 }
 
+const beatOut = { lift: 0 };
+/**
+ * A bird's wings and the lift of its body for one moment: `beat` (0..1) blends from a glide, wings held a
+ * little up and barely moving, to full wingbeats. The body rises on each downstroke and sinks on the upstroke,
+ * so a flapping bird bobs. Returns the wing angle; `lift` is set to how far to raise the body.
+ */
+export function wingbeat(t: number, rate: number, phase: number, beat: number, amp = 0.7) {
+  const x = t * rate + phase;
+  // the downstroke (wings going down) is quicker than the upstroke
+  const stroke = Math.sin(x + 0.35 * Math.cos(x));
+  const glide = 0.12 + Math.sin(t * 1.3 + phase) * 0.05;
+  beatOut.lift = -0.1 * beat * Math.cos(x);
+  return glide + (stroke * amp - glide) * beat;
+}
+/** the body lift worked out by the last call of `wingbeat` */
+export const lastLift = () => beatOut.lift;
+
 const tmp = new THREE.Vector3();
 /**
  * Where a circling bird is at time t: on its ring, gliding most of the time and flapping in short bursts.
- * `spread` (0..) pushes the ring out and up, for a startled flock.
+ * The bursts start and stop over a fraction of a second rather than all at once. `spread` (0..) pushes
+ * the ring out and up, for a startled flock, and keeps them flapping.
  */
 export function circlePose(c: Circler, t: number, spread = 0) {
   const a = t * c.speed + c.phase;
@@ -109,7 +127,8 @@ export function circlePose(c: Circler, t: number, spread = 0) {
   tmp.set(c.cx + Math.cos(a) * r, y, c.cz + Math.sin(a) * r);
   // moving round the circle: the tangent direction
   const heading = Math.atan2(-Math.sin(a) * Math.sign(c.speed), Math.cos(a) * Math.sign(c.speed));
-  const burst = Math.max(0, Math.sin(t * 0.45 + c.phase * 3)) > 0.6 || spread > 0.2;
-  const flap = burst ? Math.sin(t * c.flapRate + c.phase) * 0.7 : 0.12 + Math.sin(t * 1.3 + c.phase) * 0.05;
+  const beat = Math.max(smoothstep(0.5, 0.7, Math.sin(t * 0.45 + c.phase * 3)), smoothstep(0.1, 0.3, spread));
+  const flap = wingbeat(t, c.flapRate, c.phase, beat);
+  tmp.y += lastLift();
   return { pos: tmp, heading, bank: -0.35 * Math.sign(c.speed), flap };
 }

@@ -308,6 +308,8 @@ function build(ctx: WorldContext): BuiltWorld {
         if (z > ARRIVE.run0 + 1) grinDone = false;
         cb.running = running;
         cb.stride = stride;
+        // it sweeps its tail aside while you climb on over its back
+        cb.tailAside = smoothstep(47.6, 46.4, z) * (1 - smoothstep(42.4, 40.6, z));
         ctx.camera.getWorldPosition(camPos);
         cb.lookTarget = z < ARRIVE.run1 + 2 && z > ARRIVE.turn0 ? camPos : null;
         const b = smoothstep(ARRIVE.rise0, ARRIVE.rise1, z);
@@ -326,6 +328,7 @@ function build(ctx: WorldContext): BuiltWorld {
         mount.root.userData.lastP = null;
         cb.running = true;
         cb.stride = moved;
+        cb.tailAside = 0;
         pickLook(dt);
         cb.lookTarget = lookHave ? lookTarget : null;
         anchor.set(0, seat.y + climbLift + cb.lift * 0.3 + (current.bump?.(z) ?? 0), seat.z);

@@ -34,9 +34,10 @@ export interface Totoro extends Character {
    * at least that open; `lean` tips the chest forward (+) or back (-). Null for the normal animation.
    * Optional extras: `stretch` makes the body taller (+, up on tiptoe) or squats it (-) as a fraction of
    * its height; `rise` lifts the whole body off the ground by that many (unscaled) units; `head` tips the
-   * head forward (+) or back to look up (-), in radians.
+   * head forward (+) or back to look up (-), in radians. `roll` rocks the body to its left (+) or right (-)
+   * from the hips, and `tilt` tips the head to one side the same way, in radians.
    */
-  pose: { out?: [number, number]; up?: [number, number]; mouth?: number; lean?: number; stretch?: number; rise?: number; head?: number } | null;
+  pose: { out?: [number, number]; up?: [number, number]; mouth?: number; lean?: number; stretch?: number; rise?: number; head?: number; roll?: number; tilt?: number } | null;
 }
 
 const ROAR = 2.6, JUMP = 1.45, HOP = 0.5;
@@ -344,6 +345,7 @@ export function makeTotoro(o: TotoroOpts = {}): Totoro {
   let roarT = -1, jumpT = -1, hopT = -1, landCb: (() => void) | null = null, landed = false;
   let blinkSince = 10, nextBlink = 2 + rng.next() * 3, earKickT = 3 + rng.next() * 4;
   let gait = 0;
+  const idlePhase = rng.next() * 40;
   const umbUp = new THREE.Quaternion(), tmpQ = new THREE.Quaternion();
 
   const ch: Totoro = {
@@ -355,9 +357,11 @@ export function makeTotoro(o: TotoroOpts = {}): Totoro {
     hop() { if (hopT < 0 || hopT > HOP * 0.7) hopT = 0; },
     update(dt, t) {
       // ---- targets for this frame ----
-      const breathe = Math.sin(t * 1.3) * 0.014;
+      // (the idle breathing and swaying run on this Totoro's own clock, so two side by side are out of step)
+      const ti = t + idlePhase;
+      const breathe = Math.sin(ti * 1.3) * 0.014;
       let sy = 1 + breathe * 0.5, sxz = 1 - breathe * 0.2, y = 0;
-      let hipsZ = Math.sin(t * 0.45) * 0.025, hipsX = 0, chestX = Math.sin(t * 0.7) * 0.015, headX = Math.sin(t * 0.6 + 1) * 0.03, headZ = -hipsZ * 0.7 + Math.sin(t * 0.37) * 0.025;
+      let hipsZ = Math.sin(ti * 0.45) * 0.025, hipsX = 0, chestX = Math.sin(ti * 0.7) * 0.015, headX = Math.sin(ti * 0.6 + 1) * 0.03, headZ = -hipsZ * 0.7 + Math.sin(ti * 0.37) * 0.025;
       const out = [0.32, 0.32], up = [-0.12, -0.12];
       if (umbrella) { up[UMB_ARM] = -2.45; out[UMB_ARM] = 0.22; }
       let earBack = 0, mouthT = 0;
@@ -433,6 +437,8 @@ export function makeTotoro(o: TotoroOpts = {}): Totoro {
         if (p.stretch) { sy += p.stretch; sxz -= p.stretch * 0.45; }
         if (p.rise) y += p.rise;
         if (p.head) headX += p.head;
+        if (p.roll) hipsZ += p.roll;
+        if (p.tilt) headZ += p.tilt;
       }
 
       // ---- springs ----
@@ -451,7 +457,7 @@ export function makeTotoro(o: TotoroOpts = {}): Totoro {
         // keep the shaft near upright whatever the arm is doing, leaning in over the head
         umbrella.parent!.updateWorldMatrix(true, false);
         g.getWorldQuaternion(umbUp);
-        umbUp.multiply(tmpQ.setFromEuler(new THREE.Euler(0.12 + Math.sin(t * 0.8) * 0.04, 0, 0.3)));
+        umbUp.multiply(tmpQ.setFromEuler(new THREE.Euler(0.12 + Math.sin(ti * 0.8) * 0.04, 0, 0.3)));
         umbrella.parent!.getWorldQuaternion(tmpQ).invert();
         umbrella.quaternion.copy(tmpQ.multiply(umbUp));
       }

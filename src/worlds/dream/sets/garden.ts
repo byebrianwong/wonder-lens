@@ -179,6 +179,18 @@ export function buildGarden(ctx: SetContext): BuiltSet {
     return out.copy(depCurve.getPoint(Math.pow(smoothstep(-204.5, -226, z), 1.6)));
   };
   const lerpAngle = (a: number, b: number, k: number) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * k;
+  /**
+   * The top's upper face sinks under Totoro's weight as he lands on it (z -20.5) and bobs back up, then
+   * settles: a damped bounce over the next few units of the ride.
+   */
+  const landDip = (z: number) => {
+    const s = -20.5 - z;
+    return s > 0 && s < 7 ? -0.6 * Math.sin(s * 2.3) * Math.exp(-s * 0.75) : 0;
+  };
+  const beat = { c: 0, r: 0, ph: 0 };
+  const pC = new THREE.Vector3(), accel = new THREE.Vector3(), leanT = new THREE.Vector3(), lean = new THREE.Vector3(), upV = new THREE.Vector3();
+  /** the troupe's turn about the vertical, without its lean */
+  let troupeYaw = 0;
 
   // ---------- reactions ----------
   let waveT = -1, duetT = -1, hopNext = 0;
@@ -256,7 +268,7 @@ export function buildGarden(ctx: SetContext): BuiltSet {
   /** Put a member at a world point and turn (it is a child of the troupe frame). */
   const putWorld = (o: THREE.Object3D, p: THREE.Vector3, yaw: number) => {
     tmp.copy(p); troupe.worldToLocal(tmp); o.position.copy(tmp);
-    o.rotation.set(0, yaw - troupe.rotation.y, 0);
+    o.rotation.set(0, yaw - troupeYaw, 0);
   };
   const arc = (a: THREE.Vector3, b: THREE.Vector3, k: number, h: number, out: THREE.Vector3) => out.copy(a).lerp(b, k).add(tmp2.set(0, h * Math.sin(Math.PI * clamp(k, 0, 1)), 0));
 
@@ -320,9 +332,16 @@ export function buildGarden(ctx: SetContext): BuiltSet {
     if (motes.intensity > 0.01) motes.update(dt, t, camPos); else motes.points.visible = false;
 
     // ---------- the dance beat: crouch, then a slow stretch up, every 4 s ----------
-    const ph = ((t / 4) % 1 + 1) % 1;
-    const c = smoothstep(0, 0.18, ph) * (1 - smoothstep(0.3, 0.55, ph));
-    const r = smoothstep(0.38, 0.72, ph) * (1 - smoothstep(0.88, 1, ph));
+    // Totoro leads; each of the others follows a fraction of a beat later (`lag`, in beats), so they do not
+    // all move on the same frame
+    const beatAt = (lag: number) => {
+      const p = ((t / 4 - lag) % 1 + 1) % 1;
+      beat.c = smoothstep(0, 0.18, p) * (1 - smoothstep(0.3, 0.55, p));
+      beat.r = smoothstep(0.38, 0.72, p) * (1 - smoothstep(0.88, 1, p));
+      beat.ph = p;
+      return beat;
+    };
+    const { c, r, ph } = beatAt(0);
 
     // ---------- the seed bed's shoots ----------
     const shoot = smoothstep(24, -8, z), burst = smoothstep(-17.5, -21, z);
@@ -365,7 +384,22 @@ export function buildGarden(ctx: SetContext): BuiltSet {
       else if (z > -166) yaw = lerpAngle(heading, toCam, 0.55);
       else if (z > -204.5) yaw = lerpAngle(lerpAngle(heading, toCam, 0.55), PERCH.yaw, smoothstep(-160, -168, z));
       else yaw = lerpAngle(PERCH.yaw, heading, smoothstep(-204.5, -208, z));
-      troupe.rotation.set(0, yaw, 0);
+      // flying, the top leans into its turns and tips forward as it speeds up, like anything with weight
+      // swung round a curve: its up axis tilts towards the horizontal part of the path's acceleration, read
+      // from how the path bends over the next and last 2.5 units, and eased so a sharp bend is not a jolt
+      const flyW = smoothstep(-21, -27, z) * (1 - smoothstep(-158, -165, z)) + smoothstep(-204.5, -209, z);
+      leanT.set(0, 0, 0);
+      if (flyW > 0.001) {
+        frameAt(z + 2.5, pA); frameAt(z - 2.5, pB); frameAt(z, pC);
+        accel.copy(pA).add(pB).addScaledVector(pC, -2).divideScalar(6.25);
+        leanT.set(accel.x * 3, 0, accel.z * 3).clampLength(0, 0.32).multiplyScalar(flyW);
+      }
+      if (jumped) lean.copy(leanT); else lean.lerp(leanT, 1 - Math.exp(-dt * 3));
+      troupeYaw = yaw;
+      upV.set(lean.x, 1, lean.z).normalize();
+      troupe.quaternion.setFromUnitVectors(yAxis, upV).multiply(qY.setFromAxisAngle(yAxis, yaw));
+      // landing on the top: it sinks under him and bobs back up
+      troupe.position.y += landDip(z);
       troupe.scale.setScalar(lerp(1, 1.3, smoothstep(-45, -110, z)));
       troupe.updateMatrixWorld(true);
 
@@ -400,6 +434,16 @@ export function buildGarden(ctx: SetContext): BuiltSet {
       else if (seated > 0.5) playPose(t, pose);
       else if (z > -20.5) gatherPose(gather, pose);
       else flyPose(t, pose);
+      // the hop onto the top (z -18 to -20.5): he sinks down to spring, stretches out in the air, and lands
+      // squashed; his body's springs carry the bounce back up
+      {
+        const crouch = envelope(-z, 16.5, 17.7, 17.95, 18.3);
+        const air = z < -18 && z > -20.5 ? Math.sin(Math.PI * (-18 - z) / 2.5) : 0;
+        const squash = envelope(-z, 20.35, 20.6, 20.8, 21.9);
+        pose.stretch = (pose.stretch ?? 0) - 0.17 * crouch + 0.1 * air - 0.2 * squash;
+        pose.lean = (pose.lean ?? 0) + 0.16 * crouch - 0.06 * air + 0.1 * squash;
+        pose.head = (pose.head ?? 0) + 0.14 * crouch - 0.16 * air + 0.1 * squash;
+      }
       totoro.pose = duetT >= 0 || totoro.roarTime > 0 ? null : pose;
       totoro.lookTarget = camPos.distanceTo(tW) < 70 ? camPos : null;
       totoro.update(dt, t);
@@ -415,16 +459,17 @@ export function buildGarden(ctx: SetContext): BuiltSet {
       if (z > -166) arc(DANCE.chu, hang, gather, 2, cW); else arc(hang, CONCERT.chu, seated, 2, cW);
       putWorld(chu.group, cW, z > -166 ? lerpAngle(facingFrom(DANCE.chu), yaw, gather) : PERCH.yaw);
       // Chibi: dances, then rides on Totoro's head, and stays there on the bough
-      const head = totoro.group.localToWorld(cast.slots.chibi.clone());
+      const head = cast.chibiSeat(new THREE.Vector3());
       const bW = arc(DANCE.chibi, head, gather, 2.4, new THREE.Vector3());
       putWorld(chibi.group, bW, lerpAngle(facingFrom(DANCE.chibi), tYaw + 0.25, gather));
-      if (dancing > 0.5) { dancePose(c, r, poseC); dancePose(c, r, poseB); }
-      else if (seated > 0.5) { playPose(t + 1, poseC); playPose(t + 2, poseB); }
-      else { Object.assign(poseC, { out: [0.12, 0.12], up: [-2.85, -2.85], mouth: 0.25, lean: 0, stretch: 0, rise: 0, head: 0 }); Object.assign(poseB, { out: [0.9, 0.5], up: [-2.1, -1.0], mouth: 0.2, lean: 0, stretch: 0, rise: 0, head: 0 }); }
+      if (dancing > 0.5) { const bc = beatAt(0.08); dancePose(bc.c, bc.r, poseC); const bb = beatAt(0.14); dancePose(bb.c, bb.r, poseB); }
+      else if (seated > 0.5) { playPose(t - 0.5, poseC); playPose(t - 1.0, poseB); }
+      else { Object.assign(poseC, { out: [0.12, 0.12], up: [-2.85, -2.85], mouth: 0.25, lean: 0, stretch: 0, rise: 0, head: 0, roll: 0, tilt: 0 }); Object.assign(poseB, { out: [0.9, 0.5], up: [-2.1, -1.0], mouth: 0.2, lean: 0, stretch: 0, rise: 0, head: 0, roll: 0, tilt: 0 }); }
       chu.pose = chu.roarTime > 0 ? null : poseC; chibi.pose = poseB;
       if (hopNext > 0) { hopNext -= dt; if (hopNext <= 0) chibi.hop(); }
-      // a little hop for Chibi at the top of every stretch
-      if (dancing > 0.5 && ph > 0.72 && ph < 0.74) chibi.hop();
+      // a little hop for Chibi at the top of every stretch (on his own beat, 0.14 of a beat behind Totoro's)
+      const chibiPh = ((ph - 0.14) % 1 + 1) % 1;
+      if (dancing > 0.5 && chibiPh > 0.72 && chibiPh < 0.74) chibi.hop();
       chu.lookTarget = chibi.lookTarget = camPos.distanceTo(cW) < 60 ? camPos : null;
       chu.update(dt, t); chibi.update(dt, t);
       chuAnchor.position.copy(troupe.worldToLocal(cW.clone().lerp(bW, 0.5).add(new THREE.Vector3(0, 1.2, 0))));
@@ -444,9 +489,12 @@ export function buildGarden(ctx: SetContext): BuiltSet {
         const ride = gather * (1 - seated);
         // now and then, flying, one waves at you
         const flyWave = flying ? smoothstep(0.7, 0.92, 0.5 + 0.5 * Math.sin(t * 0.6 + i * 2.2)) : 0;
+        const kb = beatAt(0.05 + 0.06 * i);
         const lift = poseKid(k, {
-          crouch: c * dancing, reach: r * dancing + (z > -20.5 ? 0.6 * Math.sin(Math.PI * gather) : 0), ride, sit: seated, play: seated * (1 - wave),
+          crouch: kb.c * dancing, reach: kb.r * dancing + (z > -20.5 ? 0.6 * Math.sin(Math.PI * gather) : 0), ride, sit: seated, play: seated * (1 - wave),
           wave: Math.max(wave, flyWave),
+          // swaying to the tune on the bough, Mei a little behind her sister
+          sway: seated * Math.sin(t * 1.6 - 0.6 - i * 0.7) * 0.09,
         }, t, i * 1.7);
         if (ride > 0.5) k.knee.forEach((kn, j) => { kn.rotation.x += Math.sin(t * 3.1 + j * 1.9 + i) * 0.2; });
         putWorld(k.group, kW.add(tmp2.set(0, lift, 0)), kYaw);

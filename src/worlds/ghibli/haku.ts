@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { glow } from '../../engine/Builders';
 import { charToon, Painter } from '../../engine/Paint';
 import { sculpt, profileShape, FlexTube, taperedTube, limbGeometry, outline } from '../../engine/Rig';
-import { clamp, lerp, Rng, smoothstep } from '../../engine/math';
+import { clamp, damp, lerp, Rng, smoothstep } from '../../engine/math';
 import { sphereFur, tealTuft } from './characterTextures';
 import type { Character } from './character';
 
@@ -418,6 +418,8 @@ export function makeHaku(): Haku {
   const mBasis = new THREE.Matrix4(), qA = new THREE.Quaternion(), qB = new THREE.Quaternion(), e = new THREE.Euler();
   const headQ = new THREE.Quaternion();
   let bank = 0;
+  /** ridden: the head's sideways and up-down speed across the flight, smoothed; the mane trails against it */
+  let latV = 0, upV = 0;
   const state = { target: new THREE.Vector3(), swoopT: 0, time: 0, seeded: false };
   // ridden mode and the dissolve: the flight direction without the head's glance, the full-size radii
   const flyQ = new THREE.Quaternion(), neckQ = new THREE.Quaternion(), eRide = new THREE.Euler(0, 0, 0, 'YXZ');
@@ -548,6 +550,10 @@ export function makeHaku(): Haku {
       if (ride) sBack.copy(ride.dir).normalize().negate(); else sBack.set(0, 0, -1).applyQuaternion(hq);
       hRight.set(1, 0, 0).applyQuaternion(ride ? flyQ : hq);
       hUp.set(0, 1, 0).applyQuaternion(ride ? flyQ : hq);
+      if (ride && dt > 0) {
+        latV = damp(latV, clamp(vel.dot(hRight), -4, 4), 5, dt);
+        upV = damp(upV, clamp(vel.dot(hUp), -4, 4), 5, dt);
+      }
       for (let s = 0; s < defs.length; s++) {
         const st = defs[s];
         let len = st.len;
@@ -602,6 +608,8 @@ export function makeHaku(): Haku {
             const rip = Math.sin(t * (whisker ? 4 : 6) - k * (whisker ? 0.7 : 1.1) + st.phase) * wave * f;
             sd.copy(sBack);
             // (each lock a little apart from its neighbours, so they do not lie in one flat sheet)
+            // (ridden, the locks and whiskers trail behind the head's own movement, more towards their tips)
+            if (ride) { const drag = (whisker ? 0.05 : 0.12) * f * f; sd.addScaledVector(hRight, -latV * drag).addScaledVector(hUp, -upV * drag); }
             if (ride && !whisker) sd.addScaledVector(hRight, part * (0.25 + 0.45 * f) + 0.15 * Math.sin(st.phase * 3) * f).addScaledVector(hUp, -0.2 * f - 0.3 * Math.abs(part) * f + 0.2 * Math.cos(st.phase * 2) * f + rip);
             else sd.addScaledVector(sOut, 0.45 * (1 - f * 0.5)).addScaledVector(hUp, (whisker ? -0.1 : 0.25 * (1 - f)) + rip).addScaledVector(hRight, rip * 0.6);
             sp.addScaledVector(sd.normalize(), len / SEGS);

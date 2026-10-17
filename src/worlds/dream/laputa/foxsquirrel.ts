@@ -78,6 +78,9 @@ function legPair(thick: number, len: number, haunch: boolean) {
   return mergeGeometries(parts, false)!;
 }
 
+/** Turn a heading towards another the short way round, quickly but not in one frame (about 0.1 s). */
+const turnTo = (a: number, b: number, dt: number) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * (1 - Math.exp(-18 * dt));
+
 /** A stretch of wall top a foxsquirrel can run along (both ends on the top surface). */
 export interface Run { a: THREE.Vector3; b: THREE.Vector3; race?: boolean }
 
@@ -85,7 +88,9 @@ type Mode = 'perch' | 'wall' | 'dash' | 'eat' | 'back';
 interface Sq {
   pos: THREE.Vector3; heading: number; phase: number; sit: number; sitT: number; mode: Mode;
   perch: THREE.Object3D | null; run: Run | null; t: number; target: number; wait: number; speed: number;
-  goal: THREE.Vector3; timer: number; holds: boolean; lift: number; ground: boolean;
+  goal: THREE.Vector3; timer: number; holds: boolean; ground: boolean;
+  /** 0 standing .. 1 running, eased over a few frames so a start or a stop is never a jump */
+  lift: number;
 }
 
 export class Foxsquirrels {
@@ -178,7 +183,7 @@ export class Foxsquirrels {
         s.t += dir * step;
         moving = step > 1e-5 ? 1 : 0;
         s.pos.lerpVectors(run.a, run.b, s.t);
-        if (moving) s.heading = Math.atan2((run.b.x - run.a.x) * dir, (run.b.z - run.a.z) * dir);
+        if (moving) s.heading = turnTo(s.heading, Math.atan2((run.b.x - run.a.x) * dir, (run.b.z - run.a.z) * dir), dt);
         else s.heading += Math.sin(t * 0.7 + s.phase) * dt * 0.6;
         s.sit = damp(s.sit, alert ? 1 : moving ? 0 : 0.35 + 0.35 * Math.max(0, Math.sin(t * 0.9 + s.phase)), 6, dt);
       } else if (s.mode === 'dash' || s.mode === 'back') {
@@ -186,7 +191,7 @@ export class Foxsquirrels {
         const goal = s.mode === 'back' && s.run ? this.v.lerpVectors(s.run.a, s.run.b, s.t) : s.goal;
         const dx = goal.x - s.pos.x, dz = goal.z - s.pos.z, d = Math.hypot(dx, dz);
         const step = Math.min(d, s.speed * dt);
-        if (d > 0.05) { s.pos.x += (dx / d) * step; s.pos.z += (dz / d) * step; s.heading = Math.atan2(dx, dz); moving = 1; }
+        if (d > 0.05) { s.pos.x += (dx / d) * step; s.pos.z += (dz / d) * step; s.heading = turnTo(s.heading, Math.atan2(dx, dz), dt); moving = 1; }
         const gy = this.floor(s.pos.x, s.pos.z);
         const ty = s.mode === 'back' && d < 1.2 ? goal.y : gy;
         s.pos.y = damp(s.pos.y, ty, 12, dt);
@@ -205,9 +210,11 @@ export class Foxsquirrels {
           s.mode = 'back'; s.holds = false; s.speed = this.rng.range(3.5, 4.5);
         }
       }
-      s.phase += moving * dt * (s.mode === 'dash' ? 16 : 13);
+      // the gait eases in and out over about a tenth of a second; the legs keep cycling while it does
+      s.lift = damp(s.lift, moving, 14, dt);
+      s.phase += s.lift * dt * (s.mode === 'dash' ? 16 : 13);
       this.m.compose(s.pos, this.q.setFromAxisAngle(this.v.set(0, 1, 0), s.heading), this.v.set(1, 1, 1));
-      this.pose(i, s, this.m, moving, t);
+      this.pose(i, s, this.m, s.lift, t);
       if (s.holds && this.acorn && this.acorn.userData.owner === 'herd') {
         // the acorn sits in its front paws, in front of its chest
         this.acorn.position.set(0, 0.42, 0.24).applyMatrix4(this.bodyMatrix(i));

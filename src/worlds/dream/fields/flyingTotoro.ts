@@ -203,6 +203,9 @@ export function makeFlyingTotoro(): FlyingTotoro {
   // ---------- life ----------
   let roarT = -1, rollT = -1;
   const waveS = [new Spring(0, 2.4, 0.6), new Spring(0, 2.4, 0.6)];
+  // Chu hangs like a pendulum: when the flight banks or pitches, he keeps his old angle for a moment, then
+  // swings back under the paw, past it and back (a slow, loose spring)
+  const swing = { z: new Spring(0, 0.9, 0.22), x: new Spring(0, 0.9, 0.22), bank: 0, pitch: 0, ready: false };
   const hangQ = new THREE.Quaternion(), parentQ = new THREE.Quaternion(), bodyQ = new THREE.Quaternion();
   const fly: FlyingTotoro = {
     group, totoro, centre, lookTarget: null,
@@ -243,8 +246,10 @@ export function makeFlyingTotoro(): FlyingTotoro {
       hang.parent!.getWorldQuaternion(parentQ).invert();
       body.getWorldQuaternion(bodyQ);
       hang.quaternion.copy(hangQ.copy(parentQ).multiply(bodyQ));
-      hang.rotateZ(Math.sin(t * 1.9) * 0.12);
-      hang.rotateX(Math.sin(t * 1.3 + 1) * 0.08);
+      if (swing.ready && dt > 0) { swing.z.x -= clamp(group.rotation.z - swing.bank, -0.2, 0.2); swing.x.x -= clamp(group.rotation.x - swing.pitch, -0.2, 0.2); }
+      swing.bank = group.rotation.z; swing.pitch = group.rotation.x; swing.ready = true;
+      hang.rotateZ(clamp(swing.z.update(0, dt), -0.6, 0.6) + Math.sin(t * 1.9) * 0.06);
+      hang.rotateX(clamp(swing.x.update(0, dt), -0.5, 0.5) + Math.sin(t * 1.3 + 1) * 0.05);
       chu.lookTarget = fly.lookTarget;
       chu.update(dt, t);
       chibi.lookTarget = fly.lookTarget;
