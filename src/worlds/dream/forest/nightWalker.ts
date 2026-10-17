@@ -291,7 +291,13 @@ export function makeNightWalker(): NightWalker {
 
   // ----- animation -----
   const look = new LookAt(1.0, 0.75);
-  const sp = { walk: new Spring(0, 0.6, 0.95), gaze: new Spring(0, 0.9, 0.85) };
+  const sp = {
+    walk: new Spring(0, 0.6, 0.95), gaze: new Spring(0, 0.9, 0.85),
+    // how upright it stands: slow, so it straightens over a few seconds and settles with a small overshoot
+    stand: new Spring(0, 0.22, 0.6),
+    // the long arms hang from the shoulders and follow the chest's bow late, swinging a little past it
+    arm: new Spring(0.08, 0.3, 0.35),
+  };
   let gazeT = -1;
   const ch: NightWalker = {
     group: g, head: B.head, rise: 1, walk: 0, walked: 0, lookTarget: null,
@@ -301,27 +307,45 @@ export function makeNightWalker(): NightWalker {
       const r = clamp(ch.rise, 0, 1);
       // it rises straight up out of the pool, slowing as it reaches full height
       lift.position.y = lerp(-SUNK, 0, easeOutCubic(r));
+      // It comes up bowed, head down and shoulders hunched, and only straightens to its full height once
+      // its shoulders are clear of the water. Sinking at dawn (after its walk) it slumps forward the same way
+      // but only half as far, because by then it is close to the path and a full bow would sweep its antlers
+      // across the rider's view.
+      const bow = (1 - sp.stand.update(smoothstep(0.55, 0.97, r), dt)) * (ch.walked > 0 ? 0.5 : 1);
       const w = clamp(sp.walk.update(ch.walk, dt), 0, 1);
       const ph = (ch.walked / STEP) * Math.PI;
+      const chestPitch = 0.08 + 0.42 * bow + Math.sin(t * 0.45) * 0.02;
+      // the arms' own tilt in the world: they follow half of the chest's bow, late, and swing a little past
+      const armRel = sp.arm.update(0.08 + 0.5 * (chestPitch - 0.08), dt) - chestPitch;
       for (const [s, off] of [['L', 0], ['R', Math.PI]] as Array<[string, number]>) {
-        const sw = Math.sin(ph + off);
+        const sw = Math.sin(ph + off), side = s === 'L' ? -1 : 1;
         B['hip' + s].rotation.x = -0.26 * sw * w;
         // the knee folds while the leg swings forward
         B['knee' + s].rotation.x = Math.max(0, Math.cos(ph + off)) * 0.45 * w;
-        // the long arms swing a little against the legs and hang straight when it stands
-        B['sh' + s].rotation.set(0.12 * sw * w + Math.sin(t * 0.6 + off) * 0.02, 0, (s === 'L' ? -1 : 1) * Math.sin(t * 0.4 + off) * 0.02);
-        B['el' + s].rotation.x = 0.06 + 0.08 * Math.max(0, -sw) * w;
+        // The long arms swing a little against the legs and hang straight when it stands. While it is bowed
+        // they hang lower than the tipped chest would carry them, and when the chest moves they follow it
+        // late, so they swing on after it straightens.
+        B['sh' + s].rotation.set(
+          0.12 * sw * w + Math.sin(t * 0.6 + off) * 0.02 + armRel,
+          0,
+          side * (Math.sin(t * 0.4 + off) * 0.02 + 0.1 * bow),
+        );
+        // the forearm swings a moment after the upper arm
+        B['el' + s].rotation.x = 0.06 + 0.08 * Math.max(0, -Math.sin(ph + off - 0.7)) * w + 0.12 * bow;
       }
-      // the body dips between steps, sways, and breathes slowly when still
-      B.hips.position.y = WALKER_HIPS - 1.4 * Math.pow(Math.sin(ph), 2) * w + Math.sin(t * 0.5) * 0.3;
-      B.chest.rotation.set(0.08 + Math.sin(t * 0.45) * 0.02, Math.sin(ph) * 0.05 * w, Math.sin(ph) * 0.03 * w);
+      // The body dips between steps and breathes slowly when still. Walking, its weight shifts over the foot
+      // on the ground: the hips slide and tip towards it, and the chest rolls the other way a moment later.
+      const shift = Math.cos(ph);
+      B.hips.position.set(1.6 * shift * w, WALKER_HIPS - 1.4 * Math.pow(Math.sin(ph), 2) * w + Math.sin(t * 0.5) * 0.3, 0);
+      B.hips.rotation.z = -0.035 * shift * w;
+      B.chest.rotation.set(chestPitch, Math.sin(ph) * 0.05 * w, 0.05 * Math.cos(ph - 0.6) * w);
       // the head watches the rider a little all the time; on a gaze it turns fully and bows towards them
       let gz = 0;
       if (gazeT >= 0) { gazeT += dt; gz = envelope(gazeT, 0, 1.2, 3.6, 5.2); if (gazeT > 5.4) gazeT = -1; }
       const k = sp.gaze.update(gz, dt);
-      B.neck.rotation.x = 0.1 + 0.2 * k;
-      const [ly, lp] = look.update(B.head, ch.lookTarget, dt, lerp(0.35, 1, k));
-      B.head.rotation.set(lerp(0.12, 0, k) + lp, ly, Math.sin(t * 0.3) * 0.03);
+      B.neck.rotation.x = 0.1 + 0.2 * k + 0.3 * bow;
+      const [ly, lp] = look.update(B.head, ch.lookTarget, dt, lerp(0.35, 1, k) * (1 - 0.7 * bow));
+      B.head.rotation.set(lerp(0.12, 0, k) + lp + 0.25 * bow, ly, Math.sin(t * 0.3) * 0.03);
       // light and fog
       const vis = clamp(r * 1.4, 0, 1);
       for (const m of [skin, crown]) {

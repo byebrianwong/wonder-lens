@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { charToon } from '../../../engine/Paint';
-import { Rng, clamp, damp, smoothstep } from '../../../engine/math';
+import { Rng, clamp, smoothstep } from '../../../engine/math';
 import { kodamaFace } from '../../ghibli/characterTextures';
 
 /*
@@ -9,9 +9,16 @@ import { kodamaFace } from '../../ghibli/characterTextures';
  * head meshes (one per face) for each stretch of z. They are the same shapes and faces as `makeKodama` in
  * ghibli/spirits.ts, which costs two draw calls per Kodama; here a stretch of a hundred costs five.
  *
- * Bodies never move. Heads turn on their necks every frame: an idle sway, a turn to watch the rider go by,
- * a turn towards a thrown acorn, and the clicking rattle, which spreads out in a wave from where it starts.
+ * Bodies never move. Heads turn on their necks every frame. Idle, each one holds a pose and every few
+ * seconds tips its head to a new one with a quick turn that overshoots a little and settles, like the
+ * click of a Kodama's head in the film, each on its own timing. They also turn to watch the rider go by,
+ * turn towards a thrown acorn, and do the clicking rattle, which spreads out in a wave from where it starts.
  */
+
+/** A fixed pseudo-random number in 0..1 for a pair of numbers (the same every run). */
+const hash = (a: number, b: number) => { const h = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return h - Math.floor(h); };
+/** The head's springy turn: about 2.6 turns a second, under-damped, so it overshoots a little and settles. */
+const W = 2.6 * Math.PI * 2, ZETA = 0.42;
 
 export interface KodamaSpot {
   p: THREE.Vector3;
@@ -33,6 +40,10 @@ interface Kod {
   phase: number;
   base: number;
   yaw: number; roll: number; pitch: number;
+  /** how fast the head is turning on each axis (the head moves on a quick, springy turn) */
+  vy: number; vr: number; vp: number;
+  /** seconds between the little head turns it makes on its own */
+  every: number;
   /** when the rattle starts and stops (ride time), and a point to look at while it lasts */
   r0: number; r1: number;
   look: THREE.Vector3 | null;
@@ -107,7 +118,7 @@ export class KodamaCrowd {
         const k: Kod = {
           spot, body, bodyQ, neck: new THREE.Vector3(0, NECK * spot.s, 0).applyQuaternion(bodyQ).add(spot.p),
           mesh, index: byFace[f].indexOf(spot), phase: rng.range(0, 10), base: (spot.tilt ?? 0) + rng.range(-0.25, 0.25),
-          yaw: 0, roll: 0, pitch: 0, r0: -1, r1: -1, look: null, lookUntil: -1,
+          yaw: 0, roll: 0, pitch: 0, vy: 0, vr: 0, vp: 0, every: rng.range(1.8, 4.2), r0: -1, r1: -1, look: null, lookUntil: -1,
         };
         this.kods.push(k);
       });
@@ -188,7 +199,10 @@ export class KodamaCrowd {
     for (const k of this.kods) {
       const d2 = k.spot.p.distanceToSquared(cam);
       if (d2 > r2) continue;
-      let ty = Math.sin(t * 0.31 + k.phase) * 0.3, tr = k.base + Math.sin(t * 0.5 + k.phase) * 0.15, tp = 0;
+      // its own pose for now: a new tilt and turn every `every` seconds, held in between (with a very slow drift)
+      const n = Math.floor(t / k.every + k.phase);
+      let ty = (hash(n, k.phase) - 0.5) * 0.75 + Math.sin(t * 0.4 + k.phase) * 0.04;
+      let tr = k.base + (hash(n + 0.5, k.phase) - 0.5) * 0.4, tp = (hash(n + 0.25, k.phase) - 0.5) * 0.25;
       // something to look at: a thrown acorn, or the rider going by
       const target = k.look && t < k.lookUntil ? k.look : d2 < 34 * 34 ? cam : null;
       if (target) {
@@ -207,10 +221,15 @@ export class KodamaCrowd {
         k.roll = tr * (1 - a) + Math.sin(t * 38 + k.phase) * 0.38 * a;
         k.yaw = ty * (1 - a) + Math.sign(Math.sin(t * 9 + k.phase)) * 0.5 * a;
         k.pitch = tp * (1 - a);
+        k.vy = k.vr = k.vp = 0;
       } else {
-        k.roll = damp(k.roll, tr, 3, dt);
-        k.yaw = damp(k.yaw, ty, 3, dt);
-        k.pitch = damp(k.pitch, tp, 3, dt);
+        // a quick springy turn towards the pose (semi-implicit Euler, in steps of at most 1/60 s so it stays stable)
+        const steps = Math.min(4, Math.ceil(dt * 60)), h = dt / Math.max(1, steps);
+        for (let i = 0; i < steps; i++) {
+          k.vy += (-2 * ZETA * W * k.vy - W * W * (k.yaw - ty)) * h; k.yaw += k.vy * h;
+          k.vr += (-2 * ZETA * W * k.vr - W * W * (k.roll - tr)) * h; k.roll += k.vr * h;
+          k.vp += (-2 * ZETA * W * k.vp - W * W * (k.pitch - tp)) * h; k.pitch += k.vp * h;
+        }
       }
       this.pose(k);
     }

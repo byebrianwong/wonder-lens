@@ -53,6 +53,8 @@ const GHIBLI: Record<string, Entry> = {
   chu: { make: () => { const c = C.makeTotoro({ color: 0x5f7fa8, belly: 0xe8e2d0, scale: 0.62, chevrons: false, bag: true }); return { group: c.group, act: () => c.hop(), update: (dt: number, t: number) => { c.walk = 1; c.stride = dt * 1.4; c.update(dt, t); } }; }, y: 1.8, dist: 7 },
   chibi: { make: () => { const c = C.makeTotoro({ color: 0xf4f1ea, belly: -1, scale: 0.34, chevrons: false, leaf: true }); return { group: c.group, update: c.update, act: () => c.hop() }; }, y: 1.0, dist: 4 },
   catbus: { make: () => { const c = C.makeCatbus(); return { ...c, act: () => c.grin() }; }, y: 2.2, dist: 15 },
+  // runs on the spot at about ride speed; act stops it, and acts again to start
+  catbusrun: { make: () => { const c = C.makeCatbus(); return { group: c.group, act: () => { c.running = !c.running; }, update: (dt: number, t: number) => { c.stride = c.running ? dt * 11 : 0; c.update(dt, t); } }; }, y: 2.2, dist: 15 },
   kiki: { make: () => { const c = C.makeKiki(); c.group.position.y = 1.5; return { ...c, act: () => c.wave() }; }, y: 2.4, dist: 4.5 },
   noface: { make: () => { const c = C.makeNoFace(); return { ...c, act: () => c.offer() }; }, y: 2.9, dist: 8 },
   nofacegulp: { make: () => { const c = C.makeNoFace(); return { ...c, act: () => c.gulp() }; }, y: 2.9, dist: 8 },

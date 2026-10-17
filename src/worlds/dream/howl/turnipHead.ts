@@ -96,7 +96,7 @@ export function makeTurnipHead(): TurnipHead {
 
   // ---------- motion ----------
   let hopPh = 0, bowT = -1, spinT = -1, spin0 = 0;
-  const sp = { sleeve: new Spring(0, 2.2, 0.35), squash: new Spring(1, 5, 0.4) };
+  const sp = { sleeve: new Spring(0, 2.2, 0.35), squash: new Spring(1, 5, 0.4), nod: new Spring(0, 2.6, 0.45) };
   const th: TurnipHead = {
     group: g, stride: 0,
     bow() { bowT = 0; },
@@ -105,11 +105,15 @@ export function makeTurnipHead(): TurnipHead {
       // hops in time with the ground covered; standing still it gives a small bounce now and then
       hopPh += th.stride / HOP;
       const moving = th.stride > 0.002;
-      const hopK = moving ? Math.abs(Math.sin(hopPh * Math.PI)) : Math.pow(Math.max(0, Math.sin(t * 2.6)), 6) * 0.35;
+      // each hop: a short crouch on the stick (landing and gathering for the next one), then a quick
+      // spring up with a stretch, an arc through the air, and the head nodding after the body
+      const p = hopPh % 1, GROUND = 0.2;
+      const air = p < GROUND ? 0 : (p - GROUND) / (1 - GROUND);
+      const hopK = moving ? Math.sin(air * Math.PI) : Math.pow(Math.max(0, Math.sin(t * 2.6)), 6) * 0.35;
       hopper.position.y = hopK * HOP_H;
-      // squash a little at each landing
-      const land = moving ? 1 - Math.pow(Math.abs(Math.cos(hopPh * Math.PI)), 12) * 0.1 : 1;
-      hopper.scale.y = sp.squash.update(land, dt);
+      const squash = moving ? (p < GROUND ? 1 - 0.16 * Math.sin((p / GROUND) * Math.PI) : 1 + 0.1 * Math.max(0, 1 - air * 3)) : 1 - 0.05 * hopK;
+      hopper.scale.y = sp.squash.update(squash, dt);
+      const nod = sp.nod.update(moving ? (p < GROUND ? 0.18 * Math.sin((p / GROUND) * Math.PI) : 0.08 * Math.cos(air * Math.PI)) : 0, dt);
       // the sleeves lag behind the hops; they flare out in a spin
       let flare = 0;
       if (spinT >= 0) {
@@ -119,7 +123,8 @@ export function makeTurnipHead(): TurnipHead {
         flare = envelope(spinT, 0, 0.3, 0.9, 1.4);
         if (spinT > 1.5) { spinT = -1; hopper.rotation.y = spin0; }
       }
-      const droop = sp.sleeve.update((moving ? -Math.cos(hopPh * TAU) * 0.18 : Math.sin(t * 1.7) * 0.05) + flare * 0.45, dt);
+      // the sleeves are left behind: down as he springs up, floating up as he falls, flopping as he lands
+      const droop = sp.sleeve.update((moving ? (p < GROUND ? -0.15 : -0.22 * Math.cos(air * Math.PI)) : Math.sin(t * 1.7) * 0.05) + flare * 0.45, dt);
       sleeves[0].rotation.z = -droop; sleeves[1].rotation.z = droop;
       coat.scale.set(1 + flare * 0.18, 1, 1 + flare * 0.18);
       // the bow: tip forward from the top of the stick; the hat lifts off, tips, and settles back
@@ -132,7 +137,7 @@ export function makeTurnipHead(): TurnipHead {
       }
       upper.rotation.x = bow * 0.6 + Math.sin(t * 1.3) * 0.03;
       upper.rotation.z = Math.sin(t * 0.9 + 1) * 0.04;
-      headG.rotation.x = bow * 0.25;
+      headG.rotation.x = bow * 0.25 + nod;
       headG.rotation.y = Math.sin(t * 0.6) * 0.12;
       hat.position.set(0, 0.3 + hatUp * 0.35, hatUp * 0.28);
       hat.rotation.set(hatUp * 0.9, 0, -0.12 + hatUp * 0.1);

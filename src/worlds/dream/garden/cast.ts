@@ -30,6 +30,11 @@ export interface Cast {
   slots: { satsuki: THREE.Vector3; mei: THREE.Vector3; chibi: THREE.Vector3 };
   /** Totoro's raised +x paw in world space (Chu hangs from it while they fly) */
   paw(out: THREE.Vector3): THREE.Vector3;
+  /**
+   * Chibi's seat on Totoro's head in world space. It follows the head bone, so Chibi rides down and up with
+   * the head when the body squashes and stretches (`slots.chibi` is the same point on the body at rest).
+   */
+  chibiSeat(out: THREE.Vector3): THREE.Vector3;
   /** each scene's photo subjects for these characters; a scene switches the other scene's off while it runs */
   subjects: { garden: Subject[]; home: Subject[] };
 }
@@ -142,12 +147,20 @@ function buildCast(): Cast {
   const chest = totoro.group.getObjectByName('chest');
   const arm = chest?.children.find((c) => !(c as THREE.Bone).isBone && (c as THREE.Group).isGroup && c.position.x > 0.5) ?? null;
   const pawLocal = new THREE.Vector3(0.15, -1.5, 0.05);
+  const chibiSlot = new THREE.Vector3(-0.32, 4.6, 0.48);
+  const headBone = totoro.group.getObjectByName('head');
+  // (the group is still at the origin and unturned here, so its space is the world)
+  const chibiOnHead = headBone ? headBone.worldToLocal(chibiSlot.clone()) : null;
   return {
     totoro, chu, chibi, satsuki, mei, top, topSpin, ocarinas, subjects: { garden: [], home: [] },
-    slots: { satsuki: new THREE.Vector3(-0.62, 0.52, 1.88), mei: new THREE.Vector3(0.74, 0.5, 1.86), chibi: new THREE.Vector3(-0.32, 4.6, 0.48) },
+    slots: { satsuki: new THREE.Vector3(-0.62, 0.52, 1.88), mei: new THREE.Vector3(0.74, 0.5, 1.86), chibi: chibiSlot },
     paw(out) {
       if (arm) { arm.updateWorldMatrix(true, false); return out.copy(pawLocal).applyMatrix4(arm.matrixWorld); }
       return totoro.group.localToWorld(out.set(2.9, 2.6, 0.3));
+    },
+    chibiSeat(out) {
+      if (headBone && chibiOnHead) { headBone.updateWorldMatrix(true, false); return headBone.localToWorld(out.copy(chibiOnHead)); }
+      return totoro.group.localToWorld(out.copy(chibiSlot));
     },
   };
 }
@@ -171,7 +184,8 @@ const mixJ = (a: Joints, b: Joints, w: number): Joints => {
   return { pelvisY: l(a.pelvisY, b.pelvisY), spineX: l(a.spineX, b.spineX), headX: l(a.headX, b.headX), sh: [l2(a.sh[0], b.sh[0]), l2(a.sh[1], b.sh[1])], el: [l2(a.el[0], b.el[0]), l2(a.el[1], b.el[1])], hip: [l2(a.hip[0], b.hip[0]), l2(a.hip[1], b.hip[1])], knee: l2(a.knee, b.knee) };
 };
 
-export interface KidPose { crouch?: number; reach?: number; ride?: number; sit?: number; cheer?: number; run?: number; play?: number; wave?: number; wave2?: number }
+/** `sway` leans the upper body to one side, in radians (+ to her left); 0 when left out. */
+export interface KidPose { crouch?: number; reach?: number; ride?: number; sit?: number; cheer?: number; run?: number; play?: number; wave?: number; wave2?: number; sway?: number }
 
 /**
  * Set a girl's joints from pose weights (each 0..1, applied in this order: crouch, reach, ride, sit, cheer,
@@ -200,13 +214,33 @@ export function poseKid(k: Kid, p: KidPose, t: number, phase = 0) {
   }
   const cheer = p.cheer ?? 0;
   if (cheer > 0) {
-    // jumping for joy: knees tuck at the top of each jump
-    const h = Math.abs(Math.sin(t * 5.2 + phase));
-    lift += h * 0.55 * cheer;
-    j = { ...j, knee: [j.knee[0] + h * 0.6 * cheer, j.knee[1] + h * 0.6 * cheer] };
+    // jumping for joy, one jump every 0.8 s: on the ground for the first third of it, sinking into the knees
+    // with the arms swinging down, then pushing off; in the air the arms fling up, the knees tuck at the top,
+    // and she comes down onto bent knees for the next jump
+    const u = ((t / 0.8 + phase / 6.283) % 1 + 1) % 1;
+    const G = 0.32;
+    const sink = u < G ? Math.sin(Math.PI * u / G) : 0;
+    const a = u < G ? 0 : (u - G) / (1 - G);
+    const h = 4 * a * (1 - a);
+    lift += h * 0.6 * cheer;
+    const tuck = Math.sin(Math.PI * a) * 0.55;
+    const kneel = sink * 0.6 * cheer;
+    const bend = kneel + (u < G ? 0 : tuck * 0.5) * cheer;
+    j = {
+      ...j,
+      // the hips drop by as much as the bent legs shorten (thigh and shin are each about 0.5 long), so the
+      // feet stay on the ground
+      pelvisY: j.pelvisY - (1 - Math.cos(kneel)),
+      spineX: j.spineX + sink * 0.3 * cheer,
+      headX: j.headX + sink * 0.15 * cheer,
+      sh: [[j.sh[0][0] + sink * 1.6 * cheer, j.sh[0][1] + sink * 0.25 * cheer], [j.sh[1][0] + sink * 1.6 * cheer, j.sh[1][1] - sink * 0.25 * cheer]],
+      hip: [[j.hip[0][0] - bend, j.hip[0][1]], [j.hip[1][0] - bend, j.hip[1][1]]],
+      knee: [j.knee[0] + bend * 1.9 + tuck * 0.4 * cheer, j.knee[1] + bend * 1.9 + tuck * 0.4 * cheer],
+    };
   }
   k.pelvis.position.y = j.pelvisY;
   k.spine.rotation.x = j.spineX;
+  k.spine.rotation.z = p.sway ?? 0;
   k.head.rotation.x += j.headX;
   for (let i = 0; i < 2; i++) {
     k.shoulder[i].rotation.set(j.sh[i][0], 0, j.sh[i][1]);
@@ -249,31 +283,41 @@ export function dancePose(c: number, r: number, out: TotoroPose = {}): TotoroPos
   out.head = 0.18 * c - 0.38 * r;
   out.mouth = 0.15 + 0.35 * r;
   out.lean = 0.1 * c - 0.05 * r;
+  out.roll = 0; out.tilt = 0;
   return out;
 }
 
 /** Arms spread wide, flying (as over the fields), with a slow flap. */
 export function flyPose(t: number, out: TotoroPose = {}): TotoroPose {
   const flap = Math.sin(t * 1.7) * 0.06;
-  out.out = [1.25 + flap, 1.25 + flap]; out.up = [-0.22, -0.22]; out.mouth = 0.55; out.lean = 0.06; out.stretch = 0; out.rise = 0; out.head = 0;
+  out.out = [1.25 + flap, 1.25 + flap]; out.up = [-0.22, -0.22]; out.mouth = 0.55; out.lean = 0.06; out.stretch = 0; out.rise = 0; out.head = 0; out.roll = 0; out.tilt = 0;
   return out;
 }
 
-/** Sitting on the bough with an ocarina at the lips in both paws. */
+/**
+ * Sitting on the bough with an ocarina at the lips in both paws, swaying to the tune: the body rocks from
+ * side to side about once every 4 s, the head follows a moment later, and he breathes in before each phrase.
+ */
 export function playPose(t: number, out: TotoroPose = {}): TotoroPose {
-  out.up = [-2.0, -2.0]; out.out = [-0.95, -0.95]; out.mouth = 0; out.lean = -0.06; out.stretch = -0.08 + Math.sin(t * 2.1) * 0.012; out.rise = 0; out.head = 0.06 + Math.sin(t * 1.05) * 0.04;
+  const w = t * 1.6;
+  out.up = [-2.0, -2.0]; out.out = [-0.95, -0.95]; out.mouth = 0; out.rise = 0;
+  out.roll = Math.sin(w) * 0.1;
+  out.tilt = Math.sin(w - 0.9) * 0.09;
+  out.lean = -0.06 + Math.sin(w * 2) * 0.025;
+  out.stretch = -0.08 + Math.max(0, Math.sin(w * 2 + 1.2)) * 0.03;
+  out.head = 0.06 + Math.sin(w * 2 - 0.5) * 0.04;
   return out;
 }
 
 /** Reaching both arms out to catch the girls. */
 export function gatherPose(k: number, out: TotoroPose = {}): TotoroPose {
-  out.up = [lerp(-0.2, -1.35, k), lerp(-2.4, -1.35, k)]; out.out = [lerp(0.4, 0.75, k), lerp(0.25, 0.75, k)]; out.lean = 0.14 * k; out.mouth = 0.4 * k; out.stretch = 0; out.rise = 0; out.head = 0.1 * k;
+  out.up = [lerp(-0.2, -1.35, k), lerp(-2.4, -1.35, k)]; out.out = [lerp(0.4, 0.75, k), lerp(0.25, 0.75, k)]; out.lean = 0.14 * k; out.mouth = 0.4 * k; out.stretch = 0; out.rise = 0; out.head = 0.1 * k; out.roll = 0; out.tilt = 0;
   return out;
 }
 
 /** Waving with the free (-x) paw; the umbrella stays up in the other. */
 export function wavePose(t: number, w: number, out: TotoroPose = {}): TotoroPose {
   out.up = [lerp(-0.25, -2.55 + Math.sin(t * 6) * 0.25, w), -2.45]; out.out = [lerp(0.4, 0.55 + Math.sin(t * 6) * 0.3, w), 0.22];
-  out.mouth = 0.2 + 0.3 * w; out.lean = 0; out.stretch = 0; out.rise = 0; out.head = -0.08 * w;
+  out.mouth = 0.2 + 0.3 * w; out.lean = 0; out.stretch = 0; out.rise = 0; out.head = -0.08 * w; out.roll = 0; out.tilt = 0;
   return out;
 }

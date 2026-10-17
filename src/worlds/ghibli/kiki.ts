@@ -25,6 +25,10 @@ export interface Kiki extends Character {
   lookTarget: THREE.Vector3 | null;
   /** her head, for the facing bonus */
   head: THREE.Object3D;
+  /** how fast she is flying, in units a second: the dress and the bow flutter harder the faster she goes */
+  airspeed: number;
+  /** the broom's roll (radians), set by whoever flies her: she leans with it a moment late and keeps her head nearer level */
+  bank: number;
 }
 
 const DRESS = 0x2b2946;
@@ -286,10 +290,12 @@ export function makeKiki(): Kiki {
   const bowMat = charToon({ map: bowCloth(0xd23b3f), rim: 0.35 });
   const bow = new THREE.Group();
   const loopR = bowLoop(0.27, 0.1, 0.045), loopL = mirrorX(loopR.clone());
+  const loops: THREE.Mesh[] = [];
   for (const s of [-1, 1]) {
     const loop = new THREE.Mesh(s > 0 ? loopR : loopL, bowMat);
     loop.rotation.z = s * 0.2;
     bow.add(loop);
+    loops.push(loop);
     outline(loop, 0x3a1014, 1.3, 0.012);
   }
   const knot = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), bowMat);
@@ -303,28 +309,53 @@ export function makeKiki(): Kiki {
   jiji.group.position.set(0, 0.04, -0.85);
   g.add(jiji.group);
 
-  const sp = { wave: new Spring(0, 2.5, 0.6), rock: new Spring(0, 1.8, 0.35), jump: new Spring(0, 3, 0.5) };
+  const sp = {
+    wave: new Spring(0, 2.5, 0.6), rock: new Spring(0, 1.8, 0.35), jump: new Spring(0, 3, 0.5),
+    // her body follows the broom's roll late and swings a little past it; the bow follows later still
+    lean: new Spring(0, 0.9, 0.45), bowLag: new Spring(0, 1.6, 0.35),
+  };
   const waveQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.4, 0, 2.5));
   let waveT = -1, startleT = -1;
   const ch: Kiki = {
-    group: g, head: kid.head, lookTarget: null,
+    group: g, head: kid.head, lookTarget: null, airspeed: 10, bank: 0,
     wave() { waveT = 0; },
     startle() { startleT = 0; sp.rock.v += 2.2; },
     update(dt, t) {
       kid.tick(dt, t, ch.lookTarget, 1);
-      // the loose parts of the dress flutter back in the wind of flying
+      // The loose parts of the dress are blown back by the wind of flying and flutter in it: the faster she
+      // flies, the further back and the quicker. The ripples run from the waist down to the hem, and a slower
+      // billow rolls round the skirt on top of them.
+      const wind = clamp(ch.airspeed / 14, 0, 1.3);
+      const push = 0.018 + 0.026 * wind, ripple = 0.012 + 0.018 * wind, rate = 7 + 5 * wind;
       const b = skirt.base;
       for (let c = 0; c <= skirt.cols; c++) {
+        const billow = Math.sin(t * 2.3 + c * 0.33) * 0.008;
         for (let r = 0; r <= skirt.rows; r++) {
           const i = c * (skirt.rows + 1) + r, w = skirt.free[i];
           if (w <= 0) continue;
-          const f = w * (0.03 + 0.025 * Math.sin(t * 9 + c * 0.7 + r * 0.45));
+          const f = w * (push + billow + ripple * Math.sin(t * rate - r * 0.5 + c * 0.7));
           skirtPos.setXYZ(i, b[i * 3], b[i * 3 + 1] + f * 0.4, b[i * 3 + 2] - f);
         }
       }
       skirtPos.needsUpdate = true;
       skirt.mesh.geometry.computeVertexNormals();
-      bow.rotation.z = Math.sin(t * 5) * 0.06;
+      // She leans with the broom's roll a moment late and a little further, and turns her head back towards
+      // level, so in a turn her body tips first and her head follows.
+      const lean = sp.lean.update(ch.bank, dt);
+      const bodyRoll = 0.25 * ch.bank + 0.8 * (lean - ch.bank);
+      kid.spine.rotation.z = bodyRoll;
+      kid.neck.rotation.z = -0.55 * (ch.bank + bodyRoll);
+      // the bow is pressed back by the wind and swings after her head; each loop flutters on its own
+      const bowSwing = sp.bowLag.update(ch.bank + bodyRoll, dt) - (ch.bank + bodyRoll);
+      bow.rotation.set(-0.3 - 0.14 * wind, 0, Math.sin(t * 5) * 0.03 + bowSwing * 0.9);
+      loops.forEach((loop, i) => {
+        const s = i ? 1 : -1;
+        loop.rotation.set(
+          (Math.sin(t * (10 + 5 * wind) + i * 1.9) * 0.07 + Math.sin(t * 3.1 + i) * 0.04) * (0.4 + wind),
+          s * Math.sin(t * (8 + 4 * wind) + i * 0.7) * 0.05 * wind,
+          s * (0.2 - 0.06 * wind),
+        );
+      });
       kid.knee.forEach((k, i) => { k.rotation.x = KNEE + Math.sin(t * 2.2 + i * 1.7) * 0.1; });
       // wave: the right arm lets go of the handle, lifts from the shoulder and the hand waves from the elbow
       let w = 0;

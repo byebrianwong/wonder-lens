@@ -175,6 +175,7 @@ export class KasugaLine {
     this.walk += dt * Math.min(1.4, rate) * 2.6;
     if (this.lookT > 0) this.lookT -= dt;
     const p = new THREE.Vector3(), dir = new THREE.Vector3(), local = new THREE.Vector3();
+    const ahead = new THREE.Vector3(), behind = new THREE.Vector3(), tmpDir = new THREE.Vector3();
     for (const sp of this.spirits) {
       const s = sp.s0 + progress * this.travel;
       // below the ferry's deck before they climb out; gone into the dark porch at the end
@@ -184,6 +185,12 @@ export class KasugaLine {
       if (!on) continue;
       this.at(Math.max(0, s), p, dir);
       if (s < 0) p.y += s * 1.1;
+      // face along the route a little ahead and behind, so a spirit turns a corner over a step or two
+      // instead of swinging round in one frame
+      this.at(clamp(s + 0.9, 0, this.total), ahead, tmpDir);
+      this.at(clamp(s - 0.9, 0, this.total), behind, tmpDir);
+      ahead.sub(behind).setY(0);
+      if (ahead.lengthSq() > 1e-6) dir.copy(ahead).normalize();
       const g = sp.k.group;
       const ph = this.walk + sp.phase;
       g.position.set(p.x, p.y + Math.abs(Math.sin(ph)) * 0.05 * Math.min(1, rate), p.z);

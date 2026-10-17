@@ -261,7 +261,10 @@ export function buildMeadow(ctx: SetContext): BuiltSet {
   const castleDrive = (zr: number) => {
     const d = castle.drive;
     d.x = look(tab.x, zr); d.z = look(tab.z, zr); d.yaw = look(tab.yaw, zr); d.gait = look(tab.gait, zr);
-    d.lift = 7 * (1 - smoothstep(-1694, -1714, zr));
+    // sitting down: it lowers itself slowly at first, then drops the last of the way with its weight,
+    // squashes onto its haunches and comes back up a little (all done by -1718, where the room appears)
+    const sit = clamp((-1694 - zr) / 20, 0, 1), settle = clamp((-1714 - zr) / 4, 0, 1);
+    d.lift = 7 * (1 - sit * sit) - 0.5 * Math.sin(settle * Math.PI) * (1 - settle * 0.6);
     d.walk = 1 - smoothstep(-1702, -1714, zr);
     d.crouch = smoothstep(-1698, -1714, zr);
     d.tongue[0] = smoothstep(-1714, -1719, zr); d.tongue[1] = smoothstep(-1717, -1721.5, zr); d.tongue[2] = smoothstep(-1720, -1724.5, zr);
@@ -389,7 +392,7 @@ export function buildMeadow(ctx: SetContext): BuiltSet {
   });
   const subjects = [castleS, thS, calS, hutS];
 
-  let inside = false, settled = false;
+  let inside = false, settled = false, lastTongueZ = 0;
   return {
     id: 'meadow', group, show: [road.u(-1500), road.u(-1815)], occluders: [castle.proxy], subjects,
     water: 0,
@@ -425,6 +428,11 @@ export function buildMeadow(ctx: SetContext): BuiltSet {
         // ---- the castle ----
         castleDrive(zr);
         castle.update(dt, t, ground);
+        // the end of the tongue hits the grass in a puff of dust
+        if (zr < -1722.9 && lastTongueZ >= -1722.9 && zr > -1730) {
+          for (const x of [-1.8, 0, 1.8]) smoke.emit(new THREE.Vector3(x, ground(x, -1733) + 0.3, -1733), { n: 4, vel: new THREE.Vector3(x * 0.8, 1.6, 1.2), spread: 1.2, size: 0.7, grow: 2.4, life: 1.4, color: 0xd8c8a0, alpha: 0.6, jitter: 0.8 });
+        }
+        lastTongueZ = zr;
         const d = castle.drive;
         lake.update(t, fog, { x: d.x, z: d.z, yaw: d.yaw, lift: castle.body.position.y });
         // ---- the valley ----

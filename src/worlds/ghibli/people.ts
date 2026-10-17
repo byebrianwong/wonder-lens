@@ -292,17 +292,30 @@ export function makeSatsukiMei(): Sisters {
   mei.group.position.set(0.17, -0.46, -0.4);
   mei.group.rotation.y = -0.25;
 
-  const sp = { wave: new Spring(0, 2.4, 0.6) };
+  // Mei is heavy: every few seconds Satsuki bobs down at the knees and heaves her back up her back. Mei's
+  // body follows on a soft spring, a moment late, and her head nods with it.
+  const sp = { wave: new Spring(0, 2.4, 0.6), meiY: new Spring(0, 2.6, 0.32) };
+  const meiY0 = mei.group.position.y, satsHip = sats.hip.map((h) => h.rotation.x), satsKnee = sats.knee.map((k) => k.rotation.x), satsSpine = sats.spine.rotation.x;
+  const HITCH = 3.4;
   let waveT = -1;
   const ch: Sisters = {
     group: g, lookTarget: null,
     wave() { waveT = 0; },
     update(dt, t) {
       sats.tick(dt, t, ch.lookTarget, 1);
-      // Mei sleeps: no blinking, a slow breath, her head lolling on her sister's shoulder
+      // the hitch: 0.35 s down into the knees, a quick push up that throws Mei a little higher, then settle
+      const h = ((t + 1.7) % HITCH + HITCH) % HITCH;
+      const dip = envelope(h, 0, 0.35, 0.38, 0.6);
+      const push = envelope(h, 0.4, 0.52, 0.56, 0.9);
+      sats.knee.forEach((k, i) => { k.rotation.x = satsKnee[i] + dip * 0.64; });
+      sats.hip.forEach((hp, i) => { hp.rotation.x = satsHip[i] - dip * 0.32; });
+      sats.spine.rotation.x = satsSpine + dip * 0.1 - push * 0.05;
+      sats.group.position.y = Math.sin(t * 1.3) * 0.008 - dip * 0.06 + push * 0.025;
+      mei.group.position.y = meiY0 + sp.meiY.update(push * 0.1 - dip * 0.02, dt);
+      // Mei sleeps: no blinking, a slow breath, her head lolling on her sister's shoulder (and nodding when
+      // she is bumped up)
       mei.spine.scale.setScalar(1 + Math.sin(t * 1.1) * 0.012);
-      mei.neck.rotation.set(0.25, 0, 0.35 + Math.sin(t * 0.5) * 0.04);
-      sats.group.position.y = Math.sin(t * 1.3) * 0.008;
+      mei.neck.rotation.set(0.25 + clamp(sp.meiY.v * 0.3, -0.2, 0.2), 0, 0.35 + Math.sin(t * 0.5) * 0.04);
       // the umbrella stands up over her head whatever her arm is doing, leaning back a little over Mei
       sats.elbow[0].getWorldQuaternion(parentQ).invert();
       g.getWorldQuaternion(umbQ).multiply(tilt.setFromEuler(tiltE.set(-0.3 + Math.sin(t * 0.7) * 0.03, 0, 0.18 + Math.sin(t * 0.9) * 0.04)));

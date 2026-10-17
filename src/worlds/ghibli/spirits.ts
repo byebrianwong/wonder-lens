@@ -13,6 +13,8 @@ export interface NoFace extends Character {
   offer(): void;
   /** a huge mouth opens in his body and gulps (1.6 s) */
   gulp(): void;
+  /** extra turn of the head (radians, + to his left), set by the scene; the twist runs down into the body */
+  turn: number;
 }
 
 export function makeNoFace(): NoFace {
@@ -84,7 +86,7 @@ export function makeNoFace(): NoFace {
   const sp = { offer: new Spring(0, 1.6, 0.8), gulp: new Spring(0, 4, 0.55), lean: new Spring(0, 2, 0.6) };
   let offerT = -1, gulpT = -1;
   const ch: NoFace = {
-    group: g,
+    group: g, turn: 0,
     offer() { offerT = 0; },
     gulp() { gulpT = 0; },
     update(dt, t) {
@@ -92,6 +94,9 @@ export function makeNoFace(): NoFace {
       B.low.rotation.z = Math.sin(t * 0.7) * 0.025;
       B.mid.rotation.z = -Math.sin(t * 0.7 - 0.6) * 0.035;
       B.top.rotation.z = Math.sin(t * 0.7 - 1.2) * 0.04;
+      // a turn of the head twists the soft body under it: most at the mask, less at the middle
+      B.mid.rotation.y = ch.turn * 0.35;
+      B.top.rotation.y = ch.turn * 0.65;
       B.mid.scale.setScalar(1 + Math.sin(t * 0.9) * 0.01);
       let off = 0, gulp = 0;
       if (offerT >= 0) { offerT += dt; off = envelope(offerT, 0, 0.7, 3.3, 4.0); if (offerT > 4) offerT = -1; }
@@ -202,11 +207,14 @@ export function makeRadishSpirit(): RadishSpirit {
       let b = 0;
       if (bowT >= 0) { bowT += dt; b = envelope(bowT, 0, 0.7, 1.4, 2.2); if (bowT > 2.4) bowT = -1; }
       const k = sp.bow.update(b, dt);
+      // standing, he shifts his great weight slowly from foot to foot; the head and shoulders follow a
+      // moment later, and the stubby arms swing a little after that
+      const shift = Math.sin(t * 0.55), late = Math.sin(t * 0.55 - 0.9);
       // bows from the waist, head and shoulders folding forward, arms coming together
-      B.waist.rotation.x = 0.18 * k;
-      B.chest.rotation.x = 0.32 * k;
+      B.waist.rotation.set(0.18 * k, 0, shift * 0.03 * (1 - k));
+      B.chest.rotation.set(0.32 * k, 0, -late * 0.04 * (1 - k));
       B.chest.scale.setScalar(1 + Math.sin(t * 1.1) * 0.01);
-      arms.forEach((a, i) => { const s = i === 0 ? -1 : 1; a.rotation.set(-0.5 * k, 0, s * lerp(0.7, 0.35, k)); });
+      arms.forEach((a, i) => { const s = i === 0 ? -1 : 1; a.rotation.set(-0.5 * k + Math.sin(t * 0.55 - 1.6) * 0.06, 0, s * lerp(0.7, 0.35, k) - late * 0.05); });
     },
   };
   return ch;

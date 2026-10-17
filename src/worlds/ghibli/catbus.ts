@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { canvasTexture, glow } from '../../engine/Builders';
 import { charToon } from '../../engine/Paint';
-import { Rig, band, Spring, LookAt, limbGeometry, taperedTube, outline } from '../../engine/Rig';
-import { clamp, damp } from '../../engine/math';
+import { Rig, band, Spring, LookAt, limbGeometry, taperedTube, outline, envelope, easeInOut } from '../../engine/Rig';
+import { clamp, damp, lerp } from '../../engine/math';
 import { sphereFur, catbusBody, catbusHead, catbusEye, catbusBands, catbusEar } from './characterTextures';
 import type { Character } from './character';
 
@@ -17,6 +17,8 @@ export interface Catbus extends Character {
   lookWhileRunning: boolean;
   /** the destination board on top of the head */
   sign: THREE.Group;
+  /** 0 to 1: sweeps the tail aside and down, out of the way of someone climbing on at the back */
+  tailAside: number;
   /** how far the body is lifted by the gallop this frame */
   readonly lift: number;
   grin(): void;
@@ -77,12 +79,14 @@ export function makeCatbus(): Catbus {
   // glowing headlamp eyes in dark fur rims
   const eyeMat = new THREE.MeshBasicMaterial({ map: catbusEye(), color: new THREE.Color(1.5, 1.5, 1.5) });
   const rimMat = charToon({ color: 0x4a2a16, rim: 0 });
+  const eyes: THREE.Mesh[] = [];
   for (const s of [-1, 1]) {
     const rim = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), rimMat);
     rim.scale.set(0.58, 0.5, 0.26); rim.position.set(s * 0.7, 0.35, 1.22); rim.rotation.y = s * 0.25;
     const eye = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), eyeMat);
     eye.scale.set(0.5, 0.42, 0.25); eye.position.set(s * 0.7, 0.35, 1.3); eye.rotation.y = s * 0.25;
     head.add(rim, eye);
+    eyes.push(eye);
   }
   // whiskers: three long curved strands on each side of the muzzle
   const whiskerMat = charToon({ color: 0x3a2a20, rim: 0 });
@@ -147,7 +151,7 @@ export function makeCatbus(): Catbus {
   const legMat = charToon({ map: catbusBands(5, 3), rim: 0.4 });
   const pawMat = charToon({ map: sphereFur(0xf0d7a8, 13, { w: 128 }).texture(), rim: 0.3 });
   const thighGeo = limbGeometry(0.21, 0.15, 0.62, 12, 6), shinGeo = limbGeometry(0.15, 0.12, 0.56, 12, 6);
-  const legs: Array<{ hip: THREE.Group; knee: THREE.Group; paw: THREE.Object3D; i: number; side: number }> = [];
+  const legs: Array<{ hip: THREE.Group; knee: THREE.Group; paw: THREE.Mesh; i: number; side: number; lift: number }> = [];
   for (const side of [-1, 1]) for (let i = 0; i < 6; i++) {
     const z = i * 1.1 - 2.75;
     const hip = new THREE.Group();
@@ -163,7 +167,7 @@ export function makeCatbus(): Catbus {
     const bone = z > 1.2 ? 'front' : z < -1.2 ? 'back' : 'mid';
     onBone(bone, hip, new THREE.Vector3(side * 0.98, 1.25, z));
     outline(thigh, ink, 1.3, 0.035);
-    legs.push({ hip, knee, paw, i, side });
+    legs.push({ hip, knee, paw, i, side, lift: 0 });
   }
   // ----- tail: a chain of striped segments that sways, with a fluffy tip -----
   const tailMat = charToon({ map: catbusBands(6, 2), rim: 0.4 });
@@ -203,43 +207,141 @@ export function makeCatbus(): Catbus {
   }
 
   // ----- animation -----
-  const sp = { run: new Spring(1, 2, 0.9), headX: new Spring(0, 3, 0.6), headZ: new Spring(0, 2, 0.7) };
+  const sp = {
+    // how hard it is running: 0 standing, about 1 at ride speed
+    move: new Spring(0, 1.6, 0.9),
+    // nose down when it slows, nose up when it speeds away; loosely damped so it rocks and settles
+    pitch: new Spring(0, 1.3, 0.35),
+    // leaning into a turn
+    roll: new Spring(0, 1.2, 0.6),
+    headX: new Spring(0, 3, 0.6), headZ: new Spring(0, 2, 0.7),
+    // the tail swings forward when it stops and out to the side in a turn, a little after the body
+    tailX: new Spring(0, 1.1, 0.3), tailZ: new Spring(0, 1.0, 0.35),
+    grin: new Spring(0, 3.2, 0.45),
+    aside: new Spring(0, 1.4, 0.8),
+  };
+  const earSp = [new Spring(0, 5, 0.3), new Spring(0, 5, 0.3)];
   const look = new LookAt(0.6, 0.25);
-  let gait = 0, grinT = 0;
+  const fwd = new THREE.Vector3();
+  const STANCE = 0.62; // share of each step the paw spends on the ground
+  let gait = 0, grinT = 0, heading = NaN, speed = 0, lastSpeed = 0, accel = 0;
+  let blinkIn = 2.5, blinkSince = 9, earIn = 1.5, shiftIn = 1.2, shiftT = -1, shiftLeg = 0;
+  let seed = 7;
+  const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   const ch: Catbus = {
-    group: g, running: true, stride: 0, lookTarget: null, lookWhileRunning: false, sign,
+    group: g, running: true, stride: 0, lookTarget: null, lookWhileRunning: false, sign, tailAside: 0,
     get lift() { return B.root.position.y; },
     grin() { grinT = 3; },
     update(dt, t) {
-      const run = clamp(sp.run.update(ch.running ? 1 : 0, dt), 0, 1.2);
+      dt = Math.max(dt, 1e-4);
+      // how far it turned this frame: turning on the spot moves the paws as well
+      g.updateWorldMatrix(true, false);
+      fwd.set(0, 0, 1).transformDirection(g.matrixWorld);
+      const h = Math.atan2(fwd.x, fwd.z);
+      let turn = Number.isNaN(heading) ? 0 : Math.atan2(Math.sin(h - heading), Math.cos(h - heading));
+      heading = h;
+      if (Math.abs(turn) > 0.4) turn = 0; // it was put somewhere new, not turned
+      const travel = Math.min(1.5, (ch.running ? ch.stride : 0) + Math.abs(turn) * 2.4);
+      speed = damp(speed, travel / dt, 6, dt);
+      accel = damp(accel, (speed - lastSpeed) / dt, 5, dt);
+      lastSpeed = speed;
+      const move = clamp(sp.move.update(clamp(speed / 9, 0, 1.15), dt), 0, 1.2);
+      const m1 = Math.min(1, move);
       // one full stepping cycle per 4.5 units travelled, so the paws don't slide
-      gait += ch.running ? (ch.stride / 4.5) * Math.PI * 2 : 0;
-      gait += dt * 0.6 * (1 - run); // a slow shuffle while waiting
+      gait += (travel / 4.5) * Math.PI * 2;
+
+      // ---- legs: a wave of steps runs from the front pair to the back, the two sides half a step apart ----
+      // On the ground the paw sweeps back under the body and the knee gives under the weight; then it lifts,
+      // swings forward and reaches. The paw stays flat on the ground and curls as it lifts.
+      const a = Math.min(1, move * 1.6);
+      if (move < 0.08) {
+        // standing: now and then one paw lifts and is put down again, as a cat shifts its weight
+        shiftIn -= dt;
+        if (shiftIn <= 0 && shiftT < 0) { shiftT = 0; shiftLeg = Math.floor(rand() * legs.length); shiftIn = 1.4 + rand() * 2.6; }
+      }
+      if (shiftT >= 0) { shiftT += dt; if (shiftT > 0.5) shiftT = -1; }
       for (const l of legs) {
         const ph = gait - l.i * 0.95 + (l.side > 0 ? Math.PI : 0);
-        const swing = Math.sin(ph), lift = Math.max(0, Math.cos(ph));
-        l.hip.rotation.x = damp(l.hip.rotation.x, -swing * 0.6 * run, 20, dt);
-        l.knee.rotation.x = damp(l.knee.rotation.x, (0.25 + lift * 1.1) * run + 0.15, 20, dt);
+        const p = (((ph / (Math.PI * 2)) % 1) + 1) % 1;
+        let hip: number, knee: number, curl = 0;
+        if (p < STANCE) {
+          const k = p / STANCE;
+          hip = lerp(-0.5, 0.48, k);
+          knee = 0.18 + 0.28 * Math.sin(k * Math.PI);
+        } else {
+          const k = (p - STANCE) / (1 - STANCE);
+          hip = lerp(0.48, -0.5, easeInOut(k));
+          knee = 0.2 + 1.25 * Math.sin(k * Math.PI);
+          curl = 0.7 * Math.sin(k * Math.PI);
+        }
+        // standing: the front legs reach a little forward and the back ones back, so it stands square
+        const restHip = (2.5 - l.i) * -0.035, restKnee = 0.14;
+        l.lift = l === legs[shiftLeg] ? envelope(shiftT, 0, 0.15, 0.25, 0.5) : 0;
+        const amp = Math.min(1.1, move);
+        const hx = lerp(restHip, hip * amp, a) - l.lift * 0.25;
+        const kx = lerp(restKnee, lerp(0.18, knee, amp), a) + l.lift * 0.9;
+        l.hip.rotation.x = hx;
+        l.knee.rotation.x = kx;
+        l.paw.rotation.x = -(hx + kx) * (1 - l.lift) + curl * a + l.lift * 0.5;
       }
-      // the spine flexes and the body bobs with the stride
-      B.root.position.y = Math.abs(Math.sin(gait)) * 0.18 * run;
-      B.front.rotation.x = Math.sin(gait) * 0.06 * run;
-      B.back.rotation.x = -Math.sin(gait) * 0.06 * run;
-      B.mid.rotation.z = Math.sin(gait * 0.5) * 0.03 * run;
-      const [ly, lp] = look.update(B.head, ch.running && !ch.lookWhileRunning ? null : ch.lookTarget, dt);
-      B.head.rotation.set(sp.headX.update(Math.sin(gait + 0.6) * 0.05 * run, dt) + lp, ly, sp.headZ.update(Math.sin(t * 0.7) * 0.05, dt));
-      ears.forEach((e, i) => { e.rotation.x = -0.1 - 0.35 * run + Math.sin(t * 1.3 + i) * 0.05; });
-      // tail streams out behind when running and curls lazily when waiting
-      tailSegs.forEach((s, i) => {
-        if (i > 0) s.rotation.x = damp(s.rotation.x, run * 0.06 - (1 - run) * 0.22 + Math.sin(t * 3 - i * 0.7) * 0.05, 4, dt);
-        s.rotation.z = Math.sin(t * (2 + run * 4) - i * 0.6) * (0.12 + 0.1 * (1 - run));
-      });
-      mice.forEach((m, i) => { m.m.position.y = m.y + Math.abs(Math.sin(gait + i)) * 0.05 * run; });
-      // the grin spreads out from the middle of the face, holds, and shrinks back
+
+      // ---- body: it rides up twice a step, rolls with each pair of steps, and a slow wave runs down the spine ----
+      const bob = (1 - Math.cos(gait * 2)) * 0.5;
+      B.root.position.y = bob * 0.17 * m1;
+      B.mid.position.y = rig.restPos('mid').y + Math.sin(t * 1.7) * 0.022 * (1 - m1); // breathing while it waits
+      B.front.rotation.x = Math.sin(gait * 2 + 0.4) * 0.05 * m1;
+      B.back.rotation.x = Math.sin(gait * 2 - 1.2) * 0.05 * m1;
+      B.mid.rotation.z = Math.sin(gait) * 0.035 * m1;
+      // weight: braking tips it nose down and it rocks back level; speeding off sits it back on its haunches
+      // It tips about its front paws when it brakes (the back end comes up) and about its back paws when it
+      // sets off, so no paw sinks into the ground.
+      const lean = sp.pitch.update(clamp(-accel * 0.008, -0.06, 0.075), dt);
+      const pivot = lean > 0 ? 2.75 : -2.85;
+      const turnRate = turn / dt;
+      const roll = sp.roll.update(clamp(-turnRate * Math.min(speed, 14) * 0.006, -0.1, 0.1), dt);
+      B.root.rotation.set(lean, 0, roll);
+      B.root.position.y += pivot * Math.sin(lean);
+      B.root.position.z = pivot * (1 - Math.cos(lean));
+
+      // ---- head: held steady against the bobbing body, like a cat's; looks at things; tips back to grin ----
       grinT = Math.max(0, grinT - dt);
-      const open = clamp(grinT * 4, 0, 1) * clamp((3 - grinT) * 4, 0, 1);
+      const open = clamp(sp.grin.update(grinT > 0.3 ? 1 : 0, dt), 0, 1.25);
+      const [ly, lp] = look.update(B.head, ch.running && !ch.lookWhileRunning ? null : ch.lookTarget, dt);
+      const steady = -B.front.rotation.x - lean * 0.7 + Math.sin(gait * 2 + 0.9) * 0.025 * m1;
+      B.head.rotation.set(sp.headX.update(steady - open * 0.1, dt) + lp, ly, sp.headZ.update(Math.sin(t * 0.7) * 0.05 * (1 - m1 * 0.6) - roll * 0.5, dt));
+
+      // ---- ears: laid back and fluttering in the wind of running; upright and twitching when it waits ----
+      earIn -= dt;
+      if (earIn <= 0) { earIn = 1.5 + rand() * 3.5; if (move < 0.5) earSp[rand() < 0.5 ? 0 : 1].v -= 6; }
+      ears.forEach((e, i) => {
+        const flutter = (Math.sin(t * 13 + i * 1.7) * 0.05 + Math.sin(t * 7.3 + i) * 0.03) * m1;
+        const back = earSp[i].update(0.38 * m1 - open * 0.15, dt);
+        const s = i === 0 ? -1 : 1;
+        e.rotation.x = -0.1 - back + flutter + Math.sin(t * 1.3 + i) * 0.04 * (1 - m1);
+        e.rotation.z = -s * (0.3 + back * 0.35);
+      });
+
+      // ---- eyes: a quick blink every few seconds, wide open when it grins ----
+      blinkIn -= dt; blinkSince += dt;
+      if (blinkIn <= 0) { blinkIn = 2.5 + rand() * 4; blinkSince = 0; }
+      const shut = envelope(blinkSince, 0, 0.06, 0.1, 0.2);
+      for (const e of eyes) { e.scale.y = 0.42 * (1 - 0.88 * shut) * (1 + 0.12 * open); e.scale.x = 0.5 * (1 + 0.08 * open); }
+
+      // ---- tail: streams out behind when running and curls lazily when waiting, and swings after the body ----
+      const tx = sp.tailX.update(clamp(accel * 0.02, -0.5, 0.35), dt);
+      const tz = sp.tailZ.update(clamp(turnRate * 0.35, -0.6, 0.6), dt);
+      const aside = sp.aside.update(ch.tailAside, dt);
+      tailSegs.forEach((s, i) => {
+        const w = i / (tailSegs.length - 1);
+        if (i > 0) s.rotation.x = damp(s.rotation.x, move * 0.06 - (1 - m1) * 0.22 + Math.sin(t * 3 - i * 0.7) * 0.05 + tx * 0.18 * (0.5 + w) + aside * 0.12, 6, dt);
+        else s.rotation.x = -0.75 - aside * 0.5;
+        s.rotation.z = Math.sin(t * (2 + m1 * 4) - i * 0.6) * (0.12 + 0.1 * (1 - m1)) * (1 - aside * 0.6) + tz * 0.14 * (0.4 + w) + aside * (i === 0 ? 1.1 : 0.22);
+      });
+      mice.forEach((m, i) => { m.m.position.y = m.y + Math.abs(Math.sin(gait + i)) * 0.05 * m1; });
+
+      // ---- the grin spreads out from the middle of the face with a little overshoot, holds, and shrinks back ----
       grin.visible = open > 0.01;
-      grin.scale.set(open, 0.5 + 0.5 * open, 1);
+      grin.scale.set(open, 0.5 + 0.5 * Math.min(1, open), 1);
     },
   };
   return ch;
